@@ -26,6 +26,8 @@ markdown_extensions:
   - admonition
   - toc:
       permalink: true
+  - pymdownx.betterem:
+      smart_enable: underscore
   - pymdownx.highlight
   - pymdownx.superfences
   - pymdownx.arithmatex:
