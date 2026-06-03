@@ -38,7 +38,7 @@ OPD 的 per-token KL loss 中，high-loss token 是师生失配最直接的信�
 
 ## 6. 方法详解(通俗、分步骤)
 
-- **Rock Score 识别（What）**：per-token KL b_{ℓv} = E[D_KL(πθ‖πT) | x_t=v]（用学生 rollout 估计），在 N=500 MATH-500 轨迹上计算。结合 KL 覆盖（蓝）与跨样本选择稳定性（红）的交点定 **top-K=100**——该边界覆盖约 60% 的语料级 KL 蒸馏负担，且在 n∈[50,400] 下稳定（更大 cutoff 反而退化）。识别出的 Rock Tokens 主要是句法/结构脚手架：格式分隔符、空白符号、高频话语标记（如 "So"、"Wait"）；rare token 则是噪声主导。
+- **Rock Score 识别（What）**：per-token KL \(b_{\ell v} = \mathbb{E}[D_{\mathrm{KL}}(\pi_\theta\|\pi_T)\mid x_t=v]\)（用学生 rollout 估计），在 N=500 MATH-500 轨迹上计算。结合 KL 覆盖（蓝）与跨样本选择稳定性（红）的交点定 **top-K=100**——该边界覆盖约 60% 的语料级 KL 蒸馏负担，且在 n∈[50,400] 下稳定（更大 cutoff 反而退化）。识别出的 Rock Tokens 主要是句法/结构脚手架：格式分隔符、空白符号、高频话语标记（如 "So"、"Wait"）；rare token 则是噪声主导。
 - **机制检验（Why）**：用 token knock-out（推理时屏蔽该 token）测功能贡献，按 Δaccuracy 把 token 分为 **Pillar / Neutral / Stumbling**（|Δ|<ε 为 Neutral）。结果绝大多数落在 Neutral（如 MATH-500：7 Pillar / 0 Stumbling / 193 Neutral；IFEval：3 Pillar / 0 Stumbling / 197 Neutral），证明它们既非不可或缺也非有害，而是"冗余"。结论：持久性源于学生主动保护这些 token 以维持推理流的 path dependency。
 - **利用（How）**：从训练起冻结这些高成本 token 的梯度（gradient sparsification）。对 30% 高成本 token 做 freeze-weighting 取得 **1.4× wall-clock 加速**且性能持平（performance parity）；对照 Random 冻结则 ΔKL 呈对称噪声、无净变化。
 

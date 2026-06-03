@@ -41,19 +41,19 @@ RLVR(可验证奖励 RL)是提升 LLM LongCoT 推理的有效范式，但 on-pol
 ## 6. 方法详解(通俗、分步骤;关键公式用白话解释,必要时给伪代码)
 三部分：
 
-**(1) Adaptive Multi-Guidance Replacement(自适应多引导替换)**：构建 Multi-Guidance Pool `P_G`(多教师的正确 off-policy 解)。π_old 对 query 采 G 个解；若全部奖励 < 阈值 τ(置替换标志 I=True)，随机选 k 个错误 on-policy 解，用 P_G 中按可理解度选出的 top-k off-policy 解替换，`k=min(k_0, N_g)`；否则不替换。保证每步都有正确解可学，但优先自探索。
+**(1) Adaptive Multi-Guidance Replacement(自适应多引导替换)**：构建 Multi-Guidance Pool `P_G`(多教师的正确 off-policy 解)。π_old 对 query 采 G 个解；若全部奖励 < 阈值 τ(置替换标志 I=True)，随机选 k 个错误 on-policy 解，用 P_G 中按可理解度选出的 top-k off-policy 解替换，\(k = \min(k_0, N_g)\)；否则不替换。保证每步都有正确解可学，但优先自探索。
 
 **(2) Comprehension-based Guidance Selection(基于可理解度的选择)**：定义 **Probability Reward r_p**：把教师推理路径 z_off 与 ground-truth 答案 y* 拼成 o*=(z_off, y*)，r_p = 学生 π_θ 在给定 z_off 下生成正确答案 token 的**几何平均概率**(log-prob 平均后 exp，clip 到 [0,1])。白话：r_p 高 = "顺着这条教师推理，学生自己几乎就能写出正确答案" = 最易吸收。按 r_p 取 top-k，平局取**更短(更简洁)** 路径。
 
-**(3) Policy Optimization with Multi-Guidance**：在增广 batch G_aug 上统一归一化算 advantage(GRPO 式)。`J_Mixed = off-policy 目标 + on-policy 目标` 加权和：
+**(3) Policy Optimization with Multi-Guidance**：在增广 batch G_aug 上统一归一化算 advantage(GRPO 式)。\(J_{\text{Mixed}} = J_{\text{off-policy}} + J_{\text{on-policy}}\) 加权和：
 
 - **off-policy 用 sequence-level 聚合**——避免长教师序列主导梯度，保证每条教师解等权(`compute_token_on_seq_off_policy_loss`：对每条教师序列先 masked_mean，再跨序列 `.mean()`)。
 - **on-policy 用 token-level 聚合**(DAPO 式)。
 
 **off-policy 重要性采样比的两条实现路径**(已核 `mix_core_alg.py`)：
 
-- **路径(a) 论文正文形式**：传入 `target_probs` 时，`off_ratio = π_θ / π_target`（教师概率显式出现，对应论文 Eq.7 `r̂=π_θ/π_φj`）。
-- **路径(b) 默认发布脚本**：`train_ampo.sh` 用 `off_policy_reshape="p_div_p_0.1"` 走 reshape 分支，`off_ratio = f(π_θ) = π_θ/(π_θ+0.1)`——**教师概率不显式出现**，shaping 直接作用于学生概率，与 LUFFY(Yan et al. 2025)实现一致。两者数学上不同：默认实验跑的是(b)，论文公式写的是(a)。`f(x)=x/(x+0.1)` 为沿用 LUFFY 的 shaping 函数。
+- **路径(a) 论文正文形式**：传入 `target_probs` 时，\(\text{off\_ratio} = \pi_\theta / \pi_{\text{target}}\)（教师概率显式出现，对应论文 Eq.7 \(\hat{r} = \pi_\theta / \pi_{\varphi_j}\)）。
+- **路径(b) 默认发布脚本**：`train_ampo.sh` 用 `off_policy_reshape="p_div_p_0.1"` 走 reshape 分支，\(\text{off\_ratio} = f(\pi_\theta) = \pi_\theta / (\pi_\theta + 0.1)\)——**教师概率不显式出现**，shaping 直接作用于学生概率，与 LUFFY(Yan et al. 2025)实现一致。两者数学上不同：默认实验跑的是(b)，论文公式写的是(a)。\(f(x) = x / (x + 0.1)\) 为沿用 LUFFY 的 shaping 函数。
 
 ## 7. 实验数据集
 
@@ -79,7 +79,7 @@ RLVR(可验证奖励 RL)是提升 LLM LongCoT 推理的有效范式，但 on-pol
 
 ## 11. 残留问题 / 局限
 
-- **公式-实现缺口**(见 §10)：默认脚本未用论文 Eq.7 的 `π_θ/π_target`，而用 `π_θ/(π_θ+0.1)`，二者数学不等价。
+- **公式-实现缺口**(见 §10)：默认脚本未用论文 Eq.7 的 \(\pi_\theta / \pi_{\text{target}}\)，而用 \(\pi_\theta / (\pi_\theta + 0.1)\)，二者数学不等价。
 - 教师池需 4 个现成强教师，构建/采样成本不小；"同量级同伴"在更大/更小规模下是否仍优于单一强教师未充分验证。
 - 阈值 τ、替换数 k_0 为超参，跨任务自适应性未知。
 - 主验证集中在数学推理 + 少量 OOD，覆盖面有限。

@@ -37,13 +37,13 @@
 - **对比 + 投票挑 token**：不是取单点最大 logit 差，而是用对比 log 概率 + 跨位置/样本投票聚合，得到对 refusal direction 最敏感的稳健稀疏子集。
 
 ## 5. 主要解决思路(一段话讲清核心)
-三步：(1) 提取 refusal direction d，在某层 ℓ 用 forward pre-hook 把残差流 h_ℓ 替换为 h_ℓ+d 并在所有 token 位持续注入，得稳定拒答的安全 teacher πt；(2) 在 harmless 指令上用 πt 采拒答轨迹，对每个位置算 token v 的对比 log 概率 Δ=log[pt(v)/p0(v)]（teacher vs base），用投票聚合挑出稀疏安全 token 子集 S；(3) student πs 在有害指令上 on-policy 自采样轨迹，仅对 S 内 token 最小化 D_KL(πs‖πt)（reverse-KL），从而只改安全特征、保留通用能力。
+三步：(1) 提取 refusal direction d，在某层 ℓ 用 forward pre-hook 把残差流 h_ℓ 替换为 h_ℓ+d 并在所有 token 位持续注入，得稳定拒答的安全 teacher πt；(2) 在 harmless 指令上用 πt 采拒答轨迹，对每个位置算 token v 的对比 log 概率 \(\Delta = \log\left[\frac{p_t(v)}{p_0(v)}\right]\)（teacher vs base），用投票聚合挑出稀疏安全 token 子集 S；(3) student πs 在有害指令上 on-policy 自采样轨迹，仅对 S 内 token 最小化 \(D_{\mathrm{KL}}(\pi_s \| \pi_t)\)（reverse-KL），从而只改安全特征、保留通用能力。
 
 ## 6. 方法详解(通俗、分步骤)
 
-- **安全 teacher 构造**：按 Arditi et al. (2024) 提取 refusal direction d；在层 ℓ 用 forward pre-hook 令 h⋆_ℓ = h_ℓ + d，对所有 token 位持续注入，得 πt——它对**有害与无害输入都一致拒答**（即设计上会 over-refuse，但目的是提供稳定拒答信号）。
-- **安全 token 选择**：在 harmless 指令（Alpaca）上用 πt 采 N 条拒答轨迹（长度 H）；每条每步算 token v 的对比 log 概率 Δ=log[pt(v|·)/p0(v|·)]；每位置取 top-K′，再用指示函数跨 harmless 数据、N 条轨迹、各 step 做**投票聚合** vote(v)=Σ 1[v∈C(x,n,j)]，得对 refusal direction 最敏感的稀疏子集 S（比单纯最大 logit 差更稳）。
-- **localized OPD 训练**：student πs 在有害指令（PKU-SafeRLHF，仅 100 条）上 on-policy 生成轨迹，仅对 S 内 token 最小化 reverse-KL D_KL(πs‖πt)。
+- **安全 teacher 构造**：按 Arditi et al. (2024) 提取 refusal direction d；在层 ℓ 用 forward pre-hook 令 \(h^{\star}_{\ell} = h_{\ell} + d\)，对所有 token 位持续注入，得 πt——它对**有害与无害输入都一致拒答**（即设计上会 over-refuse，但目的是提供稳定拒答信号）。
+- **安全 token 选择**：在 harmless 指令（Alpaca）上用 πt 采 N 条拒答轨迹（长度 H）；每条每步算 token v 的对比 log 概率 \(\Delta = \log\left[\frac{p_t(v \mid \cdot)}{p_0(v \mid \cdot)}\right]\)；每位置取 top-K′，再用指示函数跨 harmless 数据、N 条轨迹、各 step 做**投票聚合** \(\mathrm{vote}(v) = \sum \mathbb{1}[v \in C(x, n, j)]\)，得对 refusal direction 最敏感的稀疏子集 S（比单纯最大 logit 差更稳）。
+- **localized OPD 训练**：student πs 在有害指令（PKU-SafeRLHF，仅 100 条）上 on-policy 生成轨迹，仅对 S 内 token 最小化 reverse-KL \(D_{\mathrm{KL}}(\pi_s \| \pi_t)\)。
 
 ## 7. 实验数据集
 

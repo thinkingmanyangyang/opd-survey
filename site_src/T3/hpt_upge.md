@@ -28,15 +28,15 @@
 若能把各类后训练算法的梯度统一表达，就能在理论上厘清 SFT 与 RL 的关系，并导出一个按模型当前表现自适应混合两种信号的算法，避免两阶段范式的遗忘与僵化。
 
 ## 4. 主要灵感 / 核心直觉
-核心论断：**SFT 与 RL 并非对立，而是同一优化过程在不同数据分布假设与不同 bias-variance 权衡下的实例**。SFT 可看作优势估计 Â 退化、且 off-policy 算法常令参考策略分母 π_ref(τ)=1 的特例。既然同源，就能按"模型在某问题上是否已能自解"动态决定该用 RL（能自解→探索）还是 SFT（解不出→示范）。
+核心论断：**SFT 与 RL 并非对立，而是同一优化过程在不同数据分布假设与不同 bias-variance 权衡下的实例**。SFT 可看作优势估计 Â 退化、且 off-policy 算法常令参考策略分母 \(\pi_{\text{ref}}(\tau) = 1\) 的特例。既然同源，就能按"模型在某问题上是否已能自解"动态决定该用 RL（能自解→探索）还是 SFT（解不出→示范）。
 
 ## 5. 主要解决思路(一段话讲清核心)
-把广泛后训练算法的策略梯度写成 `grad_Uni = 𝟙_stable · (1/π_ref) · Â · ∇π_θ` 四组件（稳定化掩码、参考策略分母、优势估计、似然梯度），不同算法对应不同取值；据此设计 HPT：对每个 question 采 n=8 条 on-policy rollout，用 rule-based verifier 得准确率 P，P>γ 走纯 on-policy RL（Dr. GRPO）、P≤γ 在外部 supervising trajectory 上走纯 SFT，混合损失 `L=αL_RL+βL_SFT`（α,β 为二值开关）。
+把广泛后训练算法的策略梯度写成 \(\nabla_{\mathrm{Uni}} = \mathbb{1}_{\text{stable}} \cdot \frac{1}{\pi_{\text{ref}}} \cdot \hat{A} \cdot \nabla \pi_\theta\) 四组件（稳定化掩码、参考策略分母、优势估计、似然梯度），不同算法对应不同取值；据此设计 HPT：对每个 question 采 n=8 条 on-policy rollout，用 rule-based verifier 得准确率 P，P>γ 走纯 on-policy RL（Dr. GRPO）、P≤γ 在外部 supervising trajectory 上走纯 SFT，混合损失 \(L = \alpha L_{\mathrm{RL}} + \beta L_{\mathrm{SFT}}\)（α,β 为二值开关）。
 
 ## 6. 方法详解(通俗、分步骤)
-**UPGE 四组件**：(1) Stabilization mask 𝟙_stable（如 PPO clip）；(2) Reference-Policy denominator 1/π_ref（off-policy SFT 类常令 π_ref(τ)=1）；(3) Advantage estimate Â（SFT 为 Â 退化特例）；(4) Likelihood gradient ∇π_θ。
-**HPT 二值开关（Algorithm 1, Eq.10-13）**：每 question 采 n=8 rollout 得 P；`P>γ→(α,β)=(1,0)` 纯 RL；`P≤γ→(α,β)=(0,1)` 在 τ⋆ 上纯 SFT。gate γ：Qwen 系固定 **γ=0**（仅 8 条全错才转 SFT），LLaMA 系 **γ=2/8**。RL 原语论文正文明确为 **Dr. GRPO**（不除组内 std、去 token-mean 长度偏置）。
-〔已核-代码〕工程实现 `select_on_off_ada_balance` 按每 prompt 正确 rollout 数 `on_solve_num`：`≤switch_gate`(默认0)→移除 on-policy、注入示范走 SFT；`switch_gate<…≤switch_gate_off`→过渡；更高→纯 on-policy RL。actor 端（`mix_actor.py`）对 off-policy 部分用 `compute_sft_pure_loss`，以 `sft_loss_coef`（默认1.0，Qwen2.5-Math-1.5B 用0.3）与 pg_loss 相加：`loss=sft_loss·sft_loss_coef+pg_loss`。仓库另含 `off_policy`/`off_sft`/`switch_off_sft`/`srft`(`sft_coef=0.5·exp(-H_coef)`) 等变体。仓库 `adv_estimator` 默认写 `grpo`，与正文 Dr. GRPO 通过 `loss_remove_token_mean`/`loss_remove_clip` 旋钮区分。
+**UPGE 四组件**：(1) Stabilization mask 𝟙_stable（如 PPO clip）；(2) Reference-Policy denominator 1/π_ref（off-policy SFT 类常令 \(\pi_{\text{ref}}(\tau) = 1\)）；(3) Advantage estimate Â（SFT 为 Â 退化特例）；(4) Likelihood gradient ∇π_θ。
+**HPT 二值开关（Algorithm 1, Eq.10-13）**：每 question 采 n=8 rollout 得 P；\(P > \gamma \to (\alpha,\beta) = (1,0)\) 纯 RL；\(P \le \gamma \to (\alpha,\beta) = (0,1)\) 在 τ⋆ 上纯 SFT。gate γ：Qwen 系固定 **γ=0**（仅 8 条全错才转 SFT），LLaMA 系 **γ=2/8**。RL 原语论文正文明确为 **Dr. GRPO**（不除组内 std、去 token-mean 长度偏置）。
+〔已核-代码〕工程实现 `select_on_off_ada_balance` 按每 prompt 正确 rollout 数 `on_solve_num`：`≤switch_gate`(默认0)→移除 on-policy、注入示范走 SFT；`switch_gate<…≤switch_gate_off`→过渡；更高→纯 on-policy RL。actor 端（`mix_actor.py`）对 off-policy 部分用 `compute_sft_pure_loss`，以 `sft_loss_coef`（默认1.0，Qwen2.5-Math-1.5B 用0.3）与 pg_loss 相加：\(\text{loss} = \text{sft\_loss} \cdot \text{sft\_loss\_coef} + \text{pg\_loss}\)。仓库另含 `off_policy`/`off_sft`/`switch_off_sft`/`srft`(\(\text{sft\_coef} = 0.5 \cdot \exp(-H_{\text{coef}})\)) 等变体。仓库 `adv_estimator` 默认写 `grpo`，与正文 Dr. GRPO 通过 `loss_remove_token_mean`/`loss_remove_clip` 旋钮区分。
 
 ## 7. 实验数据集
 

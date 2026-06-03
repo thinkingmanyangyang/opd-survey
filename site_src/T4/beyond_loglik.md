@@ -1,6 +1,6 @@
 # beyond_loglik — Beyond Log Likelihood: Probability-Based Objectives for Supervised Fine-Tuning across the Model Capability Continuum
 
-> **一句话重点 (TL;DR)**：SFT 默认用 NLL（−log p），但它在"从零训练分类"才最优；后训练时基座已有先验。本文把 NLL 推广成参数族 f_α(p)=(1−p^α)/α，并提出一个统一刻画——**模型能力连续谱**：基座先验强（如数学）时，**下调低概率 token 的 prior-leaning 目标**（如 −p）持续胜过 NLL；基座先验弱（如 figfont 谜题）时 NLL 主导；中间区两者难分。
+> **一句话重点 (TL;DR)**：SFT 默认用 NLL（−log p），但它在"从零训练分类"才最优；后训练时基座已有先验。本文把 NLL 推广成参数族 \(f_\alpha(p) = (1 - p^\alpha)/\alpha\)，并提出一个统一刻画——**模型能力连续谱**：基座先验强（如数学）时，**下调低概率 token 的 prior-leaning 目标**（如 −p）持续胜过 NLL；基座先验弱（如 figfont 谜题）时 NLL 主导；中间区两者难分。
 
 **元信息**：arXiv:2510.00526v3（2026-05-22）｜ UIUC（共一 Gaotang Li、Ruizhong Qiu、Xiusi Chen；Heng Ji、Hanghang Tong）｜ **ICML 2026 Spotlight**（PMLR 306, 2026）｜ 主题：系统研究 SFT 训练目标（不再默认 NLL），**与 OPD/SFT 损失设计、token 加权高度相关**｜ 代码 https://github.com/GaotangLi/Beyond-Log-Likelihood ｜ 框架 VeRL（`main_verl`）。
 
@@ -32,21 +32,21 @@
 - 上述 RL 启发的改进各自在某些域有效，但**缺乏"何时用哪种目标"的统一刻画**。
 
 ## 3. Motivation
-把 NLL 推广为参数族 **f_α(p) = (1−p^α)/α**（α→0 退化为 NLL；α=1 即 −p，对应最大化期望平均预测准确率）。实证发现 α=1、α=10 在数学上比 NLL 提升高达 **+15.75 / +14.50**（Fig.1）。由此系统性追问：何种场景适合 NLL、何种适合其他目标——**不主张单一万能损失**。
+把 NLL 推广为参数族 \(f_\alpha(p) = (1 - p^\alpha)/\alpha\)（α→0 退化为 NLL；α=1 即 −p，对应最大化期望平均预测准确率）。实证发现 α=1、α=10 在数学上比 NLL 提升高达 **+15.75 / +14.50**（Fig.1）。由此系统性追问：何种场景适合 NLL、何种适合其他目标——**不主张单一万能损失**。
 
 ## 4. 主要灵感 / 核心直觉
-一个目标对"correct logit"的梯度权重 **W_f(p) = −f'(p)·p·(1−p)** 决定它强调哪类 token：
+一个目标对"correct logit"的梯度权重 \(W_f(p) = -f'(p) \cdot p \cdot (1 - p)\) 决定它强调哪类 token：
 
 - **凸目标**（−log p）：W_f 峰值在 [0,0.5] → 强调**低概率 token**（prior-averse，先验排斥）。
 - **凹目标**（−p、−p^10）：W_f 峰值在 [0.5,1] → 强调**高概率 token**（prior-leaning，先验倚靠）。
 凸凹相当于"对模型先验尊重程度"的代理；f_α 族在 prior-averse↔prior-leaning 间平滑过渡。
 
 ## 5. 主要解决思路（一段话讲清核心）
-把 SFT 目标统一写成 L_f = E[f(p_θ(y|x))]（f 可微非增）；用 W_f 的凸凹分析把各种损失归到 prior-leaning / prior-averse 两端；再提出**模型能力连续谱**：损失的好坏取决于基座先验强度——先验强用 prior-leaning，先验弱用 prior-averse（NLL），中间无单一最优。
+把 SFT 目标统一写成 \(L_f = \mathbb{E}\!\left[f(p_\theta(y \mid x))\right]\)（f 可微非增）；用 W_f 的凸凹分析把各种损失归到 prior-leaning / prior-averse 两端；再提出**模型能力连续谱**：损失的好坏取决于基座先验强度——先验强用 prior-leaning，先验弱用 prior-averse（NLL），中间无单一最优。
 
 ## 6. 方法详解（通俗、分步骤）
 
-- **统一框架**（§3）：Lemma 3.1 给出 correct-logit 梯度 = W_f(p)；Prop 3.2 证明凹目标的 W_f 峰值落 [0.5,1]、凸目标落 [0,0.5]。f_α 族 W_f(p)=p^α(1−p)：α→0 得 (1−p)（重低概率），α≥1 时低概率信号迅速衰减。
+- **统一框架**（§3）：Lemma 3.1 给出 correct-logit 梯度 = W_f(p)；Prop 3.2 证明凹目标的 W_f 峰值落 [0.5,1]、凸目标落 [0,0.5]。\(W_f(p) = p^\alpha (1 - p)\)：α→0 得 (1−p)（重低概率），α≥1 时低概率信号迅速衰减。
 - **能力连续谱三段**：
   - **Model-Strong (MS)**（基座先验强，如数学）：prior-leaning（−p、阈值化 −log p·1{p≥0.2}）**持续优于** NLL。
   - **Model-Weak (MW)**（无相关预训练，如 figfont 谜题）：**NLL 主导**——逼模型从所有 token（尤其低概率/错误处）广泛学习。

@@ -31,15 +31,15 @@
 把 SFT/FKLD/RKLD 看作同一 token 级 reweighted log-likelihood 目标的不同权重特例：FKL/RKL 用 teacher 全分布给 dense 监督但丢了 one-hot 的效率。用 K1 估计器在每个 token 上廉价判断"student 是否低估了 expert token"，据此决定走 FKL 还是 RKL，并把被抑制 token 的概率质量重分配回 expert token。
 
 ## 5. 主要解决思路(一段话讲清核心)
-对每个 offline expert token 算 `k1=qθ(a*|s)·(log p(a*|s)−log qθ(a*|s))`：k1>0（student 低估 expert）触发 forward-KL 式增强、k1≤0（高估）取负值抑制；同时让学生在 offline 前缀下采一个替代 token、对其算 k'1，仅当 k'1<0（高估非 expert token）才以负权重抑制；当 k1>0 且 k'1<0 同时成立则把 expert 权重加倍，将从被抑制 token 释放的概率质量定向回流给 expert token。整套在保留 one-hot 效率的同时混合 FKL/RKL，且无额外超参。
+对每个 offline expert token 算 \(k_1 = q_\theta(a^* \mid s) \cdot (\log p(a^* \mid s) - \log q_\theta(a^* \mid s))\)：k1>0（student 低估 expert）触发 forward-KL 式增强、k1≤0（高估）取负值抑制；同时让学生在 offline 前缀下采一个替代 token、对其算 k'1，仅当 k'1<0（高估非 expert token）才以负权重抑制；当 k1>0 且 k'1<0 同时成立则把 expert 权重加倍，将从被抑制 token 释放的概率质量定向回流给 expert token。整套在保留 one-hot 效率的同时混合 FKL/RKL，且无额外超参。
 
 ## 6. 方法详解(通俗、分步骤)
 
-- **expert 权重 w\*（Eq.12/14）**：`k1>0` → `p(a*|s)+k1`（forward-KL）；`k1≤0` → 取 `k1`（负，抑制）。
+- **expert 权重 w\*（Eq.12/14）**：`k1>0` → \(p(a^* \mid s) + k_1\)（forward-KL）；`k1≤0` → 取 `k1`（负，抑制）。
 - **sampled token 权重 wₜ（Eq.13）**：学生在 offline 前缀下采 `aₜ≠a*`，算 `k'1`；仅 `k'1<0` 保留为负权重，`k'1≥0` 置 0。
-- **reinforce 加倍（Eq.14）**：`k1>0 且 k'1<0` → expert 权重升为 `2p(a*|s)+k1`，把释放的概率质量重分配回 expert token。
+- **reinforce 加倍（Eq.14）**：`k1>0 且 k'1<0` → expert 权重升为 \(2p(a^* \mid s) + k_1\)，把释放的概率质量重分配回 expert token。
 - **效率/兼容性**：保留 one-hot 监督，天然兼容 off-policy 数据 + 轻量近似 on-policy 采样。
-- 〔已核-代码〕`LlamaFactory/src/llamafactory/train/hpd.py::compute_hpd_loss` 与 Eq.11-15/Algorithm 1 逐式吻合：`k1_gt_raw=(teacher_nll−student_nll)·exp(student_nll)`、`mask3=mask1&mask2` 时 `adv1+=exp(teacher_nll)` 实现加倍；loss=`−student_nll·adv1 − adv2·sampled_student_nll·(labels≠sampled)`。论文消融明确 "HPD introduces no additional hyperparameters"（已核-PDF）。
+- 〔已核-代码〕`LlamaFactory/src/llamafactory/train/hpd.py::compute_hpd_loss` 与 Eq.11-15/Algorithm 1 逐式吻合：\(k_{1,\mathrm{gt\_raw}} = (\mathrm{teacher\_nll} - \mathrm{student\_nll}) \cdot \exp(\mathrm{student\_nll})\)、`mask3=mask1&mask2` 时 `adv1+=exp(teacher_nll)` 实现加倍；loss=`−student_nll·adv1 − adv2·sampled_student_nll·(labels≠sampled)`。论文消融明确 "HPD introduces no additional hyperparameters"（已核-PDF）。
 
 ## 7. 实验数据集
 

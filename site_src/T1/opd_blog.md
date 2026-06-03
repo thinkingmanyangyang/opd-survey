@@ -20,14 +20,14 @@
 RL 的问题是奖励稀疏、SFT 的问题是分布失配；若让学生自己采样（解决失配），同时让教师对每个 token 打分（解决稀疏），就能两全。教师 logprob 提供的稠密信号比序列级 outcome reward 样本/步效率高得多。
 
 ## 5. 主要解决思路(一段话讲清核心)
-学生采样响应，环境不提供任何 reward（既非正确性也非格式），唯一监督是最小化学生与教师在**学生轨迹**上的逐 token **reverse KL**（KL[p‖q]=log p_student − log q_teacher，仅在学生采样到的 token 上算）。代码上把 **−kl_penalty_coef·reverse_KL 作为 per-token advantage**，经 Tinker 的 importance-sampling loss 回传——即用策略梯度形式实现 token 级 KL 蒸馏，而非直接的 KL 散度损失项。全程 LoRA。
+学生采样响应，环境不提供任何 reward（既非正确性也非格式），\(D_{\mathrm{KL}}[p \| q] = \log p_{\mathrm{student}} - \log q_{\mathrm{teacher}}\)。代码上把 **−kl_penalty_coef·reverse_KL 作为 per-token advantage**，经 Tinker 的 importance-sampling loss 回传——即用策略梯度形式实现 token 级 KL 蒸馏，而非直接的 KL 散度损失项。全程 LoRA。
 
 ## 6. 方法详解(通俗、分步骤)
 代码确认（`distillation/train_on_policy.py::incorporate_kl_penalty`）：
 
 1. 学生采样轨迹，记录 token 级 sampled_logprobs(p) 与 mask。
 2. 对每条 datum 用其对应 teacher sampling client 计算 teacher_logprobs(q)。
-3. reverse_KL = (log p − log q)·mask；逐 token advantage = −kl_penalty_coef·mask·reverse_KL（默认 kl_penalty_coef=1.0）。
+3. \(D_{\mathrm{KL}}^{\mathrm{reverse}} = (\log p - \log q)\cdot \mathrm{mask}\)；\(-\mathrm{kl\_penalty\_coef}\cdot \mathrm{mask}\cdot D_{\mathrm{KL}}^{\mathrm{reverse}}\)。
 4. 可选 `kl_discount_factor`（默认 0.0）优化折扣未来 KL——博客实验称无明显增益。
 5. 把该 advantage 加到 datum 的 advantages，经 importance-sampling loss 更新。
 6. 仅对学生生成 token 计 loss（系统提示、用户消息、工具返回、assistant header 等被 mask）。

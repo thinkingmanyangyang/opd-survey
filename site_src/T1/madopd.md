@@ -31,16 +31,16 @@ OPD(on-policy distillation)已成主流后训练配方：student 在自身轨迹
 突破单 teacher 上限需多模型协作；但现有多 teacher 蒸馏是 off-policy(student 被动消费预算好的信号)，缺对自身 rollout 的实时反应。MAD 的涌现集体智能此前只在推理期消费——把它搬进 on-policy 训练环作 token 级监督源，可同时破 L1，并以专门方法填补 L2、以理论原则解 L3。
 
 ## 4. 主要灵感 / 核心直觉
-OPD = teacher-forcing 下 dense token 级 RL，per-token 奖励 r_D(s_t)=−D(p‖q)，选散度即选奖励。privileged p–q gap(teacher 见辩论 transcript c、student 不见)在 student 访问态造成结构性不对称：(a) teacher 对 student 采样 token 赋近零概率(p→0 而 q>0，主导 agentic)；(b) teacher 集中在多个有效 token(主导代码)。这恰对应两种散度需求：agentic 需 logit 梯度有界(JSD，Lemma 1.2 worst-case ∥∇_z JSD_0.5∥_∞≤2，与轨迹长 M 和师生 gap 无关；reverse KL 含 q log(q/p) 项在 p→0 时无界、forward KL 有界但 mode-covering 损 agentic)；代码需 mode concentration(reverse KL，Lemma 2 收敛到主导 mode，避免拼接不兼容实现；forward KL/JSD 会拼接)。
+OPD = teacher-forcing 下 dense token 级 RL，per-token 奖励 \(r_D(s_t) = -D(p \| q)\)，选散度即选奖励。privileged p–q gap(teacher 见辩论 transcript c、student 不见)在 student 访问态造成结构性不对称：(a) teacher 对 student 采样 token 赋近零概率(p→0 而 q>0，主导 agentic)；(b) teacher 集中在多个有效 token(主导代码)。这恰对应两种散度需求：agentic 需 logit 梯度有界(JSD，Lemma 1.2 worst-case \(\|\nabla_z \mathrm{JSD}_{0.5}\|_\infty \le 2\)，与轨迹长 M 和师生 gap 无关；reverse KL 含 \(q \log(q/p)\) 项在 p→0 时无界、forward KL 有界但 mode-covering 损 agentic)；代码需 mode concentration(reverse KL，Lemma 2 收敛到主导 mode，避免拼接不兼容实现；forward KL/JSD 会拼接)。
 
 ## 5. 主要解决思路(一段话讲清核心)
-MAD-OPD 在 OPD 训练环每个决策点让 K teacher 就 student on-policy 状态做 R 轮辩论(round 1 独立、之后读全部历史修订)，辩论历史 H_R^m 作 privileged context c；各 teacher 辩论后自报置信 c_k∈[0,100]，softmax(温度 τ_conf=1.0)归一成权重 w_k；teacher 带 c force-decode student 的 on-policy 样本、student 不带 c，按 w_k 加权的散度 D(p_Tk‖p_S) 求 token 级 loss(式 8)，梯度只流 student。按 Remark 1：agentic 用 JSD_β、代码用 reverse KL。OPAD(式 9/10)给 agentic 加 step-level 采样：student 逐步 rollout、环境返回观察、teacher 每步就实际观察辩论 force-decode，监督随 student 实际轨迹自适应。
+MAD-OPD 在 OPD 训练环每个决策点让 K teacher 就 student on-policy 状态做 R 轮辩论(round 1 独立、之后读全部历史修订)，辩论历史 H_R^m 作 privileged context c；各 teacher 辩论后自报置信 c_k∈[0,100]，softmax(温度 τ_conf=1.0)归一成权重 w_k；teacher 带 c force-decode student 的 on-policy 样本、student 不带 c，按 w_k 加权的散度 \(D(p_{T_k} \| p_S)\) 求 token 级 loss(式 8)，梯度只流 student。按 Remark 1：agentic 用 JSD_β、代码用 reverse KL。OPAD(式 9/10)给 agentic 加 step-level 采样：student 逐步 rollout、环境返回观察、teacher 每步就实际观察辩论 force-decode，监督随 student 实际轨迹自适应。
 
 ## 6. 方法详解(通俗、分步骤)
 
 1. **辩论生成 privileged info(§4.1)**：K teacher 对状态 s_m 辩论 R 轮(式 5)，得 H_R^m 作 c(只对 teacher 可见)。
 2. **置信加权(§4.2)**：辩论后各 teacher 自报 c_k，式 7 softmax 归一为 w_k；反映 deliberation 后确定性(辩论中立场被削弱者贡献小)。
-3. **token 级目标(§4.3，式 8)**：teacher 带 H_R^m force-decode、student 不带；Σ_k w_k·D(p_Tk‖p_S)；**散度跨全词表(full vocabulary)**，teacher logits 作固定目标。
+3. **token 级目标(§4.3，式 8)**：teacher 带 H_R^m force-decode、student 不带；\(\sum_k w_k \cdot D(p_{T_k} \| p_S)\)；**散度跨全词表(full vocabulary)**，teacher logits 作固定目标。
 4. **OPAD(§4.4)**：agentic 走 step-level——s_m=(x,τ<m)，student 采 a_m，env 返回 o_m；每步辩论 force-decode a_m，per-step loss(式 9)求和成轨迹 loss(式 10)；条件于实际观察使监督自适应。
 5. **散度选择(Remark 1)**：agentic→JSD_β(β=0.5)，代码→reverse KL。
 

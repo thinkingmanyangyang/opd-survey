@@ -41,11 +41,11 @@
 ## 6. 方法详解(通俗、分步骤)
 
 - **切段**：按 "\n\nWait"、"\n\nAlternatively" 等转折关键词将 CoT 切为 {S1..Sn}（完整关键词表见 Appendix C.2）。
-- **IG 归因**：IGi(x)=(xi−x'i)·∫∂F/∂xi dα，J 步插值近似，baseline x' 取 padding token embedding；token 归因 IG(x)=Σ_i IGi(x)。用绝对值捕捉影响幅度（负 IG 可能是必要的探索性推理，不应丢弃）。
-- **两个段落指标**（Eq.3）：Strength(S)=Σ|IG(on)|/√N（√N 长度归一防偏长段），再在 CoT 内跨段归一化（Eq.4）；Consistency(S)=|Σ IG(on)| ÷ Σ|IG(on)|。
+- **IG 归因**：\(\mathrm{IG}_i(x) = (x_i - x'_i) \cdot \int \frac{\partial F}{\partial x_i} \, d\alpha\)，J 步插值近似，baseline x' 取 padding token embedding；token 归因 \(\mathrm{IG}(x) = \sum_i \mathrm{IG}_i(x)\)。用绝对值捕捉影响幅度（负 IG 可能是必要的探索性推理，不应丢弃）。
+- **两个段落指标**（Eq.3）：\(\mathrm{Strength}(S) = \sum |\mathrm{IG}(o_n)| / \sqrt{N}\)（√N 长度归一防偏长段），再在 CoT 内跨段归一化（Eq.4）；\(\mathrm{Consistency}(S) = \left|\sum \mathrm{IG}(o_n)\right| \div \sum |\mathrm{IG}(o_n)|\)。
 - **重要段落判据**（Eq.5-7）：按归一化 strength 降序，取累计 ≥ τ 的最小 top-k* 段落集，其中 Consistency ≤ β 者为"重要"。
 - **超参**：贪心搜索（最大化重要/不重要段落的"正确答案置信度变化 ∆"之差）定 τ=0.7、β=0.8；τ=0.7 时平均 ~33% 段落被判重要、占 CoT 中 ~45% token（重要段落偏长）。
-- **选择性 SFT**（Eq.9）：L=−(1/Σ I(ot))Σ_t I(ot)·log P(ot|·)，I(ot) 标记 token 是否属重要段落；mask 其余、保留完整轨迹连贯性。
+- **选择性 SFT**（Eq.9）：\(L = -\frac{1}{\sum I(o_t)} \sum_t I(o_t) \cdot \log P(o_t \mid \cdot)\)，I(ot) 标记 token 是否属重要段落；mask 其余、保留完整轨迹连贯性。
 
 ## 7. 实验数据集
 

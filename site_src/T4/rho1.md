@@ -3,7 +3,7 @@
 - **arXiv/链接**: arXiv:2404.07965v4 (https://arxiv.org/abs/2404.07965)
 - **机构/作者**: 厦门大学 / 清华 / 上海AI Lab / Microsoft。Zhenghao Lin, Zhibin Gou(共一)等,Weizhu Chen 等
 - **发表/时间**: NeurIPS 2024(Best Paper Runner-up);v4 2025-01-08
-- **主题/相关性**: token 级数据选择 / 选择性预训练。提出 Selective Language Modeling(SLM):用参考模型给 token 打分,只在"高 excess loss"的有用 token 上算损失。**与 OPD/蒸馏中"token 级加权/选择"高度同源**——其"参考模型打分→选 token"机制,与 OPD 里"teacher 信号决定哪些 token 值得学"在思想上一致(rho1 用 excess loss = ref − train,可视为一种静态、离线的 token 级蒸馏信号),是 TSRD"教 path-selection、token 异质性"的经典先验工作。
+- **主题/相关性**: token 级数据选择 / 选择性预训练。提出 Selective Language Modeling(SLM):用参考模型给 token 打分,只在"高 excess loss"的有用 token 上算损失。**与 OPD/蒸馏中"token 级加权/选择"高度同源**——其"参考模型打分→选 token"机制,与 OPD 里"teacher 信号决定哪些 token 值得学"在思想上一致(rho1 用 \(\text{excess loss} = \mathrm{ref} - \mathrm{train}\),可视为一种静态、离线的 token 级蒸馏信号),是 TSRD"教 path-selection、token 异质性"的经典先验工作。
 
 ## 关键图示
 

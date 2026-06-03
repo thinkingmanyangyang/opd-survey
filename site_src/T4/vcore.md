@@ -1,6 +1,6 @@
 # vcore — VCORE: Variance-Controlled Optimization-based Reweighting for Chain-of-Thought Supervision
 
-> **一句话重点 (TL;DR)**：把长 CoT SFT 的 token 加权形式化为"单步 SGD 下使期望 loss 下降最大、且加权分布与均匀分布 KL ≤ δ"的约束优化，闭式解为 Gibbs 分布 q\*∝exp(τ·gradient-utility)，配一个 one-backward 探针估 utility + 方差控制系数 α 稳训练；不依赖 teacher 引导/置信阈值/熵过滤，在中小模型与综合均值上稳定优于 SFT/DFT/iw-SFT。
+> **一句话重点 (TL;DR)**：把长 CoT SFT 的 token 加权形式化为"单步 SGD 下使期望 loss 下降最大、且加权分布与均匀分布 KL ≤ δ"的约束优化，闭式解为 Gibbs 分布 \(q^{*} \propto \exp(\tau \cdot \text{gradient-utility})\)，配一个 one-backward 探针估 utility + 方差控制系数 α 稳训练；不依赖 teacher 引导/置信阈值/熵过滤，在中小模型与综合均值上稳定优于 SFT/DFT/iw-SFT。
 
 **元信息**：arXiv 2510.27462（v1 2025-10，v2 2026-04-18，cs.CL）｜ 上海交通大学 & 香港中文大学（深圳）（Xuan Gong、Senmiao Wang、Hanbo Huang、Ruoyu Sun、Shiyu Liang 通讯）｜ ACL 2026 Main ｜ 主题 长 CoT SFT 阶段 token 级 loss reweighting（与 DFT/iw-SFT 同类），与本项目蒸馏/OPD 的 token 加权/credit assignment 直接相关，但路线是"从训练信号自身导权重"、无需 teacher 引导 ｜ 代码 https://github.com/coder-gx/VCORE （已 clone ~219MB，含 LLaMA-Factory + 改过的 transformers-4.52.4 + paper_pdf）｜ 框架 LLaMA-Factory + 定制 transformers 4.52.4
 
@@ -27,20 +27,20 @@
 均匀加权（标准交叉熵对所有 token 等权）两大缺陷：(1) 并非所有 token 都值得学——很多 next-token 预测要么过易要么过歧义，梯度学习价值低、浪费更新拖慢收敛；(2) 自动蒸馏的 CoT（动辄 >1k token）常含幻觉/错位的 spurious token，均匀加权让噪声主导梯度、损害泛化。已有 reweighting（DFT/iw-SFT）依赖 1/π_θ 或 RL 目标下界的重要性加权，而非直接从训练时梯度信息出发。
 
 ## 3. Motivation
-中心问题：能否用**优化驱动**而非启发式的方式给 token 加权？把 token 加权形式化为"在单步 SGD 下使期望 loss 下降最大、且加权分布 q 与均匀分布 u 的 KL(q‖u)≤δ"的约束优化，从一阶下降动力学直接导出权重，不依赖 teacher 引导、置信度阈值或熵过滤。
+中心问题：能否用**优化驱动**而非启发式的方式给 token 加权？把 token 加权形式化为"在单步 SGD 下使期望 loss 下降最大、且加权分布 q 与均匀分布 u 的 \(D_{\mathrm{KL}}(q \,\|\, u) \leq \delta\)"的约束优化，从一阶下降动力学直接导出权重，不依赖 teacher 引导、置信度阈值或熵过滤。
 
 ## 4. 主要灵感 / 核心直觉
-"信用分配=梯度该去哪"。把 token 的价值定义为其梯度与全局下降方向的对齐度（gradient utility s_t=⟨∇L,∇ℓ_t⟩）——对齐度高的 token 最能降总 loss、应优先；约束 KL(q‖u)≤δ 防过度集中致不稳。这样既不靠 teacher/熵/阈值等启发式，又把"哪些 token 重要"直接从训练信号读出。
+"信用分配=梯度该去哪"。把 token 的价值定义为其梯度与全局下降方向的对齐度（\(s_t = \langle \nabla L, \nabla \ell_t \rangle\)）——对齐度高的 token 最能降总 loss、应优先；约束 \(D_{\mathrm{KL}}(q \,\|\, u) \leq \delta\) 防过度集中致不稳。这样既不靠 teacher/熵/阈值等启发式，又把"哪些 token 重要"直接从训练信号读出。
 
 ## 5. 主要解决思路(一段话讲清核心)
-对每条轨迹：(1) 一阶 Taylor 展开期望 loss 下降，定义 token 梯度效用 s_t=⟨∇L,∇ℓ_t⟩；(2) 在单纯形上 max Σq(t)s_t s.t. KL(q‖u)≤δ，闭式解 Gibbs 分布 q\*(t)∝exp(τ s_t)（τ→0 退均匀、τ→∞ 集中最高效用）；(3) 用 one-backward 探针无偏估 s_t；(4) 乘方差控制系数 α=√(V_u/V_q) 把重加权更新方差对齐到均匀加权方差。
+对每条轨迹：(1) 一阶 Taylor 展开期望 loss 下降，定义 token 梯度效用 s_t=⟨∇L,∇ℓ_t⟩；(2) 在单纯形上 \(\max \sum q(t) s_t \quad \text{s.t.}\quad D_{\mathrm{KL}}(q \,\|\, u) \leq \delta\)，闭式解 Gibbs 分布 \(q^{*}(t) \propto \exp(\tau s_t)\)（τ→0 退均匀、τ→∞ 集中最高效用）；(3) 用 one-backward 探针无偏估 s_t；(4) 乘方差控制系数 \(\alpha = \sqrt{V_u / V_q}\) 把重加权更新方差对齐到均匀加权方差。
 
 ## 6. 方法详解(通俗、分步骤)
 
-- **最优加权（Gibbs，§4.1）**：对 loss 一阶 Taylor，L(θ+)−L(θ)=−η Σ q_t s_t + O(η²)，s_t=⟨∇L,∇ℓ_t⟩；约束优化闭式解 q\*(t)=exp(τs_t)/Σ_j exp(τs_j)。
-- **One-backward probing trick（关键效率点）**：朴素估 s_t 需每 token 一次 backward（长序列不可行）。VCORE 另抽 mini-batch B' 算均匀权下降方向 ∇L_{B'}(θ;u)，沿该方向做小扰动 ϵ 测 token loss 变化 lim_{ϵ→0}[ℓ_t(θ)−ℓ_t(θ−ϵ∇L_{B'})]/ϵ = s_t（无偏）——仅 1 次 backward + 1 次 forward 覆盖全部 |y| token，无二阶梯度/hook。
-- **Variance-Controlled 缩放（§4.2）**：Gibbs 重加权改变更新方差 V_q；引入 α=√(V_u/V_q)（V_u 为均匀权方差），把重加权更新方差对齐到均匀加权（q 越尖/序列越长 α 越小以稳训练，q 平衡时 α≈1）；无额外架构改动。
-- **Algorithm 1**：每 batch 抽 B'→算均匀下降方向→估 s_t→得 q\*→算 α→θ←θ−η E_{(x,y),t~q\*}[∇(α·ℓ_t)]。
+- **最优加权（Gibbs，§4.1）**：对 loss 一阶 Taylor，\(L(\theta^{+}) - L(\theta) = -\eta \sum q_t s_t + O(\eta^2)\)，s_t=⟨∇L,∇ℓ_t⟩；约束优化闭式解 \(q^{*}(t) = \exp(\tau s_t) \,\big/\, \sum_j \exp(\tau s_j)\)。
+- **One-backward probing trick（关键效率点）**：朴素估 s_t 需每 token 一次 backward（长序列不可行）。VCORE 另抽 mini-batch B' 算均匀权下降方向 ∇L_{B'}(θ;u)，沿该方向做小扰动 ϵ 测 token loss 变化 \(\lim_{\epsilon \to 0} \big[\ell_t(\theta) - \ell_t(\theta - \epsilon \nabla L_{B'})\big] / \epsilon = s_t\)（无偏）——仅 1 次 backward + 1 次 forward 覆盖全部 |y| token，无二阶梯度/hook。
+- **Variance-Controlled 缩放（§4.2）**：Gibbs 重加权改变更新方差 V_q；引入 \(\alpha = \sqrt{V_u / V_q}\)（V_u 为均匀权方差），把重加权更新方差对齐到均匀加权（q 越尖/序列越长 α 越小以稳训练，q 平衡时 α≈1）；无额外架构改动。
+- **Algorithm 1**：每 batch 抽 B'→算均匀下降方向→估 s_t→得 q\*→算 α→\(\theta \leftarrow \theta - \eta\, \mathbb{E}_{(x,y),\, t \sim q^{*}}[\nabla(\alpha \cdot \ell_t)]\)。
 
 ## 7. 实验数据集
 

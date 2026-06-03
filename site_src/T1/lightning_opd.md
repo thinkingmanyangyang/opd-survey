@@ -30,19 +30,19 @@ OPD 是有效的 LLM 后训练范式：在学生自生成 rollout 上让学生�
 若强制 teacher consistency，离线 OPD 在理论上可等价标准 OPD，从而彻底去掉常驻教师 server、把全部 GPU 投入学生训练以大幅提速，并让此前 OOM 的 MoE 教师场景变可行。
 
 ## 4. 主要灵感 / 核心直觉
-标准 OPD 的梯度可经重要性采样分解为 `∇J_on=E_{x∼π_ref}[w(x;θ)·f(x;θ)]`（w=π_θ/π_ref）；离线版相当于令 w≡1 的特例。在 teacher consistency 下（SFT 得到的 π_ref 与 OPD 教师同源），丢掉重要性权重所引入的偏差有界，且固定 rollout 分布 π_ref 反而带来一种隐式正则、抑制 policy drift——于是离线化既省又稳。
+标准 OPD 的梯度可经重要性采样分解为 \(\nabla J_{\text{on}} = \mathbb{E}_{x \sim \pi_{\text{ref}}}\left[ w(x;\theta) \cdot f(x;\theta) \right]\)（w=π_θ/π_ref）；离线版相当于令 w≡1 的特例。在 teacher consistency 下（SFT 得到的 π_ref 与 OPD 教师同源），丢掉重要性权重所引入的偏差有界，且固定 rollout 分布 π_ref 反而带来一种隐式正则、抑制 policy drift——于是离线化既省又稳。
 
 ## 5. 主要解决思路(一段话讲清核心)
-两阶段：Stage-1 SFT 在与 OPD 同一教师生成的轨迹上 MLE 得 π_ref（teacher consistency）；Stage-2 离线 OPD——从 π_ref 采 rollout 并对教师只查询一次、预算缓存每 token 教师 log-prob 形成 D_OPD，训练阶段全程复用该缓存，无需 live teacher。OPD advantage `A_t=log π_T(a_t|s_t)−log π_θ(a_t|s_t)`（stop-gradient，等价对 reverse-KL 做 dense per-token 监督），训练时 clip 到 [−τ,τ]。
+两阶段：Stage-1 SFT 在与 OPD 同一教师生成的轨迹上 MLE 得 π_ref（teacher consistency）；Stage-2 离线 OPD——从 π_ref 采 rollout 并对教师只查询一次、预算缓存每 token 教师 log-prob 形成 D_OPD，训练阶段全程复用该缓存，无需 live teacher。OPD advantage \(A_t = \log \pi_T(a_t \mid s_t) - \log \pi_\theta(a_t \mid s_t)\)（stop-gradient，等价对 reverse-KL 做 dense per-token 监督），训练时 clip 到 [−τ,τ]。
 
 ## 6. 方法详解(通俗、分步骤)
 设教师 π_T（固定）、学生 π_θ、SFT 参考策略 π_ref。
 
-- **per-token OPD advantage**：`A_t(θ)=log π_T(a_t|s_t)−log π_θ(a_t|s_t)`（教师比学生更自信处为正，反之为负；视作 stop-gradient 标量）。
-- **标准 OPD**：`J_on=E_{x∼π_θ}[Σ_t A_t]`（rollout 来自当前学生，需实时教师）。
-- **Lightning OPD（离线）**：`J_off=E_{x∼π_ref}[Σ_t A_t]`（rollout 分布固定为 π_ref）。二者共用 advantage、仅响应分布不同；IS 分解显示 `∇J_off` 是 w≡1 特例，teacher consistency 下偏差有界 + 隐式正则。
+- **per-token OPD advantage**：\(A_t(\theta) = \log \pi_T(a_t \mid s_t) - \log \pi_\theta(a_t \mid s_t)\)（教师比学生更自信处为正，反之为负；视作 stop-gradient 标量）。
+- **标准 OPD**：\(J_{\text{on}} = \mathbb{E}_{x \sim \pi_\theta}\left[ \sum_t A_t \right]\)（rollout 来自当前学生，需实时教师）。
+- **Lightning OPD（离线）**：\(J_{\text{off}} = \mathbb{E}_{x \sim \pi_{\text{ref}}}\left[ \sum_t A_t \right]\)（rollout 分布固定为 π_ref）。二者共用 advantage、仅响应分布不同；IS 分解显示 `∇J_off` 是 w≡1 特例，teacher consistency 下偏差有界 + 隐式正则。
 - **流程**：Stage-1 SFT（D_SFT 须由 OPD 同一教师生成）→ Stage-2 预处理（从 π_ref 采 rollout、对教师只查询一次缓存 log-prob）→ 训练（复用缓存，无 live teacher）。`A_t` clip 到 [−τ,τ]（Alg.1 第13行）。OPD 阶段训 **150 step**（论文称足够收敛）。
-- 〔已核-代码〕`slime/backends/megatron_utils/loss.py`（`advantage_estimator=="on_policy_distillation"`）：`advantages=teacher_log_prob−student_log_prob` 逐 token、与 Eq.2 一致、`returns=advantages`。`slime/rollout/on_policy_distillation.py` 用 `is_lightning_opd`/`is_offline_opd` 区分离线缓存 vs 在线查询，离线分支直接读预存 `teacher_log_probs`。SFT=LLaMA-Factory（configs/sft YAML）、OPD=slime（configs/opd 为标准 OPD 含 `deploy_teacher_model`+`--rm-url`；configs/lightning_opd 为离线版，含 4B/8B/30B-A3B 三套）。
+- 〔已核-代码〕`slime/backends/megatron_utils/loss.py`（`advantage_estimator=="on_policy_distillation"`）：\(\text{advantages} = \text{teacher\_log\_prob} - \text{student\_log\_prob}\) 逐 token、与 Eq.2 一致、`returns=advantages`。`slime/rollout/on_policy_distillation.py` 用 `is_lightning_opd`/`is_offline_opd` 区分离线缓存 vs 在线查询，离线分支直接读预存 `teacher_log_probs`。SFT=LLaMA-Factory（configs/sft YAML）、OPD=slime（configs/opd 为标准 OPD 含 `deploy_teacher_model`+`--rm-url`；configs/lightning_opd 为离线版，含 4B/8B/30B-A3B 三套）。
 
 ## 7. 实验数据集
 

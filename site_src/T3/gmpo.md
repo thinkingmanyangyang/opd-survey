@@ -26,7 +26,7 @@
 
 ## 2. 现有工作存在的问题
 
-- GRPO 目标是 token 级奖励的**算术平均**，对离群值敏感：当某些 token 的重要性比 ρt(θ)=πθ/πθold 达到极值时，importance-weighted reward ρt·Â 出现离群，驱动**激进策略更新**并进一步放大 ρt 方差，导致不稳定甚至退化。
+- GRPO 目标是 token 级奖励的**算术平均**，对离群值敏感：当某些 token 的重要性比 \(\rho_t(\theta) = \pi_\theta/\pi_{\theta_{\mathrm{old}}}\) 达到极值时，importance-weighted reward ρt·Â 出现离群，驱动**激进策略更新**并进一步放大 ρt 方差，导致不稳定甚至退化。
 - GRPO 用 clip 限制 ρt 偏离，但过窄的 clip **压制探索、过早收敛到确定性策略**，熵快速塌缩、性能 plateau。
 
 ## 3. Motivation
@@ -43,9 +43,9 @@
 ## 6. 方法详解(通俗、分步骤)
 
 1. 与 GRPO 同样采样 G 个 rollout、组内标准化得优势 Âi。
-2. **几何平均目标（式 3/4）**：loss = −Â · exp( Σ_t clip(sgn(Â)·(logπθ−logπθold), −ε, ε)·sgn(Â) / |o| )（伪代码见 Algorithm 1，全程 log 空间）。
+2. **几何平均目标（式 3/4）**：\(\text{loss} = -\hat{A} \cdot \exp\left(\sum_t \mathrm{clip}(\mathrm{sgn}(\hat{A}) \cdot (\log\pi_\theta - \log\pi_{\theta_{\mathrm{old}}}), -\varepsilon, \varepsilon) \cdot \mathrm{sgn}(\hat{A}) / |o|\right)\)（伪代码见 Algorithm 1，全程 log 空间）。
 3. **token 级裁剪（关键设计 i）**：对每个 token 的对数比做 clip，而非对整条序列乘积做 clip。理由：(1) token 级 clip 的重要性比范围更小、更稳（Fig.3）；(2) 序列级 clip 一旦触发会把整条序列所有 token 梯度清零，过于激进、丢弃有用信号。
-4. **放宽裁剪窗口（关键设计 ii）**：设 (ε_low, ε_high)=(e^−0.4, e^0.4)，显著宽于 GRPO/DAPO，兼顾稳定与探索；过宽（如 −∞,+∞）反而不稳。
+4. **放宽裁剪窗口（关键设计 ii）**：设 \((\varepsilon_{\mathrm{low}}, \varepsilon_{\mathrm{high}}) = (e^{-0.4}, e^{0.4})\)，显著宽于 GRPO/DAPO，兼顾稳定与探索；过宽（如 −∞,+∞）反而不稳。
 5. 沿用 Dr.GRPO 设置，忽略显式 KL 正则项以省显存。
 
 ## 7. 实验数据集

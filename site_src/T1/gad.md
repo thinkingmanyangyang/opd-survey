@@ -37,7 +37,7 @@
 把蒸馏看成 GAN：学生=生成器 G，再训一个判别器 D 去区分"这是学生还是教师的文本"。G 努力骗过 D(让自己的文本被打高分)，D 努力分开二者，形成极大极小博弈。D 本质是一个**随学生策略共同演化的 reward model**——它始终针对学生当前行为给反馈，因此不像固定 reward model 那样被 hack。
 
 ## 5. 主要解决思路(一段话讲清核心)
-价值函数 max_G min_D V = E_{(x,y_t)}[ −log σ(D(y_t) − D(G(x))) ](Bradley-Terry 偏好，教师分高于学生)。判别器由生成器参数初始化、加一个标量预测头(取末 token 隐状态投影为序列级分数)，用 BT loss 在线更新；生成器目标 max_G E[D(G(x))]，因采样不可微，把 D(G(x)) 当 reward 用 **GRPO** 做策略梯度优化。二者交替更新、co-evolve。
+价值函数 \(\max_G \min_D V = \mathbb{E}_{(x,y_t)}[-\log\sigma(D(y_t) - D(G(x)))]\)(Bradley-Terry 偏好，教师分高于学生)。判别器由生成器参数初始化、加一个标量预测头(取末 token 隐状态投影为序列级分数)，用 BT loss 在线更新；生成器目标 \(\max_G \mathbb{E}[D(G(x))]\)，因采样不可微，把 D(G(x)) 当 reward 用 **GRPO** 做策略梯度优化。二者交替更新、co-evolve。
 
 ## 6. 方法详解(通俗、分步骤)
 

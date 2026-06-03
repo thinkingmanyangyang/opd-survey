@@ -31,18 +31,18 @@
 把 token 重要性放到 (学生熵 ht, 师生散度 δt) 两轴平面系统化，理论证明熵单轴的结构盲区，并给出**免参数、无额外计算**（两轴量在标准 OPD 训练中已算）的补救选择规则。
 
 ## 4. 主要灵感 / 核心直觉
-信息性 token 来自两个区域：(1) 高学生熵（学生不确定、仍在成形）——熵可检测；(2) 低学生熵但高师生散度（学生自信却错）——熵不可见。从信号-曲率视角看：token 重要性 ∝ ‖梯度‖²/(梯度·Hessian·梯度)，Q3 的 numerator 可大（teacher 强烈反对自信预测），而近确定的学生分布给出小 softmax 曲率，故重要——但 Q4（自信且对）numerator 近零。Q3 vs Q4 是信号差异、非熵差异。
+信息性 token 来自两个区域：(1) 高学生熵（学生不确定、仍在成形）——熵可检测；(2) 低学生熵但高师生散度（学生自信却错）——熵不可见。从信号-曲率视角看：token \(\propto \|\nabla\|^2 / (\nabla \cdot H \cdot \nabla)\)，Q3 的 numerator 可大（teacher 强烈反对自信预测），而近确定的学生分布给出小 softmax 曲率，故重要——但 Q4（自信且对）numerator 近零。Q3 vs Q4 是信号差异、非熵差异。
 
 ## 5. 主要解决思路(一段话讲清核心)
-TIP 是诊断 + 选择规则：把每个 token 按 (ht, δt) 分到四象限（Q1 高熵高散度=最密纠错信号；Q2 高熵低散度=稳定欠自信；Q3 低熵高散度=过度自信盲区；Q4 低熵低散度=已解决可丢）。用**免参数 Soft-OR 评分** st=ĥt+δ̂t−ĥt·δ̂t（两轴 min-max 归一后，任一轴非零即非零）做 top-ρ 选择，只对选中 token 计标准 reverse-KL OPD loss。
+TIP 是诊断 + 选择规则：把每个 token 按 (ht, δt) 分到四象限（Q1 高熵高散度=最密纠错信号；Q2 高熵低散度=稳定欠自信；Q3 低熵高散度=过度自信盲区；Q4 低熵低散度=已解决可丢）。用**免参数 Soft-OR 评分** \(s_t = \hat{h}_t + \hat{\delta}_t - \hat{h}_t \cdot \hat{\delta}_t\)（两轴 min-max 归一后，任一轴非零即非零）做 top-ρ 选择，只对选中 token 计标准 reverse-KL OPD loss。
 
 ## 6. 方法详解(通俗、分步骤)
 
-- **两个轴**（论文 Eq.2/3）：学生熵 ht=H(P_S)/log|V|∈[0,1]；师生散度 δt=D_KL(P_S‖P_T)，即 per-token 训练 loss 本身（无额外计算）。
+- **两个轴**（论文 Eq.2/3）：\(h_t = H(P_S) / \log|V| \in [0,1]\)；\(\delta_t = D_{\mathrm{KL}}(P_S \,\|\, P_T)\)，即 per-token 训练 loss 本身（无额外计算）。
 - **四象限统计高度不均衡**（§4）：Q4 约 40–47% token，Q1+Q2 合计约 40–52%，**Q3 仅 3–15%** 但携带超比例纠错信号。
-- **理论三结论**：Prop.1 oracle 权重 w\*_t=φ̄_t/(ηβ M̄_t)（φ̄_t=⟨∇L,μ̄_t⟩，M̄_t=E‖g_t‖²）压制 Q4、对 Q1/Q3 给正权；Prop.2 熵单调评分对 Q3 结构盲；Remark 1 Soft-OR 恢复 Q3 覆盖同时压制 Q4。（Prop.1/2、Remark 1 编号已在论文 §5 + Table 2 逐字核到。）
-- **选择 = 训练两种 KL 方向的精确区分（论文 §7.3，关键）**：用于 token **排序/选择**的散度是 **forward KL** δ^fwd_t=D_KL(P_T‖P_S)（理由：学生在某 token 近乎确定时 reverse-KL 对 teacher 偏好的其它候选不敏感，forward KL 直接惩罚漏掉的 teacher 概率质量、给出更锐利的 Q3 排序）；**训练 loss 仍是标准 reverse-KL** D_KL(P_S‖P_T)（Eq.1，mode-seeking、数值稳定、前向已算）。Q3-only 检测器 w^Q3_t=δ^fwd_t·(1−ĥt)。
-- **仓库实现的散度轴**：通用 Soft-OR 选择器（`entropy_weighted_sample`/`_compute_per_token_entropy_and_jsd`）用的是**归一化 JSD**（weight=entropy_norm^α · jsd_norm^γ，JSD 支持 teacher top-K 截断减噪），三种**训练**散度 reverse_kl/forward_kl/jsd 经 `LOSS_FN_MAP` 切换；另有 `compute_teacher_token_stats` 区分"学生 OOD（teacher 熵高且 p_T(yt) 低）vs 真分叉点"。即论文 Q3 实验用 forward-KL 检测器、通用选择器用 JSD，两者都不是"δt 就是 reverse-KL"。
+- **理论三结论**：Prop.1 oracle 权重 \(w^{*}_t = \bar{\varphi}_t / (\eta\beta\, \bar{M}_t)\)（\(\bar{\varphi}_t = \langle \nabla L, \bar{\mu}_t \rangle\)，\(\bar{M}_t = \mathbb{E}\|g_t\|^2\)）压制 Q4、对 Q1/Q3 给正权；Prop.2 熵单调评分对 Q3 结构盲；Remark 1 Soft-OR 恢复 Q3 覆盖同时压制 Q4。（Prop.1/2、Remark 1 编号已在论文 §5 + Table 2 逐字核到。）
+- **选择 = 训练两种 KL 方向的精确区分（论文 §7.3，关键）**：用于 token **排序/选择**的散度是 **forward KL** \(\delta^{\mathrm{fwd}}_t = D_{\mathrm{KL}}(P_T \,\|\, P_S)\)（理由：学生在某 token 近乎确定时 reverse-KL 对 teacher 偏好的其它候选不敏感，forward KL 直接惩罚漏掉的 teacher 概率质量、给出更锐利的 Q3 排序）；**训练 loss 仍是标准 reverse-KL** \(D_{\mathrm{KL}}(P_S \,\|\, P_T)\)（Eq.1，mode-seeking、数值稳定、前向已算）。Q3-only 检测器 \(w^{Q3}_t = \delta^{\mathrm{fwd}}_t \cdot (1 - \hat{h}_t)\)。
+- **仓库实现的散度轴**：通用 Soft-OR 选择器（`entropy_weighted_sample`/`_compute_per_token_entropy_and_jsd`）用的是**归一化 JSD**（\(\text{weight} = \text{entropy\_norm}^\alpha \cdot \text{jsd\_norm}^\gamma\)，JSD 支持 teacher top-K 截断减噪），三种**训练**散度 reverse_kl/forward_kl/jsd 经 `LOSS_FN_MAP` 切换；另有 `compute_teacher_token_stats` 区分"学生 OOD（teacher 熵高且 p_T(yt) 低）vs 真分叉点"。即论文 Q3 实验用 forward-KL 检测器、通用选择器用 JSD，两者都不是"δt 就是 reverse-KL"。
 - **落地（§6）**：给定保留比 ρ，按 st top-K 选 token；选前对每 batch 熵 clip 顶 2% 再 min-max 归一，稳排序；额外成本仅 O(m log m) 排序，可忽略。
 
 ## 7. 实验数据集

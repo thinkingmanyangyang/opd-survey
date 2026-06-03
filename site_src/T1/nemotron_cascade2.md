@@ -30,7 +30,7 @@
 MOPD 在此设定下有三点吸引力：(1) 教师 checkpoint 直接从 Cascade RL pipeline 里按各 benchmark 类别选最强验证 checkpoint，无需引入外部模型家族即可组成能力多样的教师池；(2) 这些教师源自同一 SFT 初始化，共享 tokenizer/词表，降低分布漂移、避免跨家族对齐；(3) MOPD 提供**稠密 token 级**训练优势，比 GRPO 稀疏序列级 outcome reward 样本/步更高效。
 
 ## 5. 主要解决思路(一段话讲清核心)
-全程用 GRPO + 严格 on-policy（每轮采一组 rollout 后只做单次梯度更新，IS ratio 恒为 1，并完全移除 KL 项，使 GRPO 退化为 group-normalized REINFORCE + token-level loss）。在 Cascade RL 的特定位置插入 MOPD：学生在 inference 引擎用 π_inf 采样响应，为该样本选一个域教师 π_domain，定义 token 级蒸馏优势 a_t = log π_domain(y_t|s_t) − log π_train(y_t|s_t)（教师比当前策略给该 token 更高概率时为正，训练中收敛到 0），仅在学生采样 token 上计算；因采样/优化策略不一致，加截断重要性权重 w_t = sg[r_t]·1[ε_low≤r_t≤ε_high]（ε_low=0.5, ε_high=2.0），优化 surrogate 损失 L_MOPD（Eq.4）。
+全程用 GRPO + 严格 on-policy（每轮采一组 rollout 后只做单次梯度更新，IS ratio 恒为 1，并完全移除 KL 项，使 GRPO 退化为 group-normalized REINFORCE + token-level loss）。在 Cascade RL 的特定位置插入 MOPD：学生在 inference 引擎用 π_inf 采样响应，为该样本选一个域教师 π_domain，\(a_t = \log \pi_{\mathrm{domain}}(y_t \mid s_t) - \log \pi_{\mathrm{train}}(y_t \mid s_t)\)（教师比当前策略给该 token 更高概率时为正，训练中收敛到 0），仅在学生采样 token 上计算；因采样/优化策略不一致，\(w_t = \mathrm{sg}[r_t]\cdot \mathbb{1}[\varepsilon_{\mathrm{low}} \le r_t \le \varepsilon_{\mathrm{high}}]\quad(\varepsilon_{\mathrm{low}}=0.5,\ \varepsilon_{\mathrm{high}}=2.0)\)，优化 surrogate 损失 L_MOPD（Eq.4）。
 
 ## 6. 方法详解(通俗、分步骤)
 **总体流程（Figure 2）**：Base → SFT → **IF-RL** → **Multi-domain RL** → **MOPD** → **RLHF** → **Long-context RL** → **Code RL** → **SWE RL**。

@@ -19,7 +19,7 @@
 *Figure 2: Token-level importance ratio log ρ t ( θ ) during training. Left and Right track the per-step upper and lower envelopes respectively. As p decreases, the upper envelope drops and the lower envelope rises, tightening the gap monotonically. Our decaying schedule p : 2 →-2 (solid green) thus*
 
 ## 1. 相关工作与进展
-GRPO（Shao et al. 2024）用组内采样轨迹估优势、无需 critic，推动了 DeepSeek-R1 等推理模型。把轨迹级优势映射到策略更新时，需将序列内 token 级重要性比 `r_{i,t}=π_θ/π_{θ_old}` 聚合成序列级标量：GRPO 用算术均值（p=1）、GMPO/GSPO（Zhao et al. 2025）用几何均值（p→0）。并发工作 PMPO（Zhao et al. 2026）也在调聚合算子。
+GRPO（Shao et al. 2024）用组内采样轨迹估优势、无需 critic，推动了 DeepSeek-R1 等推理模型。把轨迹级优势映射到策略更新时，需将序列内 token 级重要性比 `\(r_{i,t} = \pi_\theta/\pi_{\theta_{\mathrm{old}}}\)` 聚合成序列级标量：GRPO 用算术均值（p=1）、GMPO/GSPO（Zhao et al. 2025）用几何均值（p→0）。并发工作 PMPO（Zhao et al. 2026）也在调聚合算子。
 
 ## 2. 现有工作存在的问题
 固定聚合算子施加静态优化 landscape，出现临界 trade-off：稠密信号任务（监督分散在大量 token，如 MATH）下 GRPO（p=1）过度放大微小 token 误差→高方差梯度→训练坍塌；稀疏信号任务（正确性集中在罕见高幅 token，如 AIME）下 GSPO（p→0）过度平滑、压制罕见"aha moment"。无单一静态 p 兼得两端——实测 AIME24 在 p=3 峰值、MATH500 在 p=−1 峰值。
@@ -31,13 +31,13 @@ GRPO（Shao et al. 2024）用组内采样轨迹估优势、无需 critic，推�
 用 Hölder mean（p-范数）把所有均值型聚合统一为单参数 p∈ℝ 的连续谱，并把 p 扩到全实轴——发现 p<0 是一个先前未探索的"逆向集中 (inverse-concentration)"相位（把梯度权重集中到最小比 token，即模型"犹豫"处）。早期用高正 p 激进放大稀疏信号、后期退到负 p 收紧方差，即可在训练生命周期内动态走完 trade-off 两端。与 PMPO 的区别：(i) p 扩到全实轴含 p<0；(ii) 沿训练时间轴（跨 step）而非按轨迹自适应 p。
 
 ## 5. 主要解决思路(一段话讲清核心)
-把 GRPO 目标中对 token 级重要性比的算术均值替换为 Hölder p-mean `ρ_{i,p}=((1/|y_i|)Σ_t r_{i,t}^p)^{1/p}`，套上 PPO 式序列级 clip 形成目标；p 是连续旋钮，p→0 取几何均值（极限）恢复 GSPO，p=1 恢复 GRPO。理论上证明大 p 集中梯度权重以放大稀疏信号（代价方差界变松）、小/负 p 严格收紧梯度方差（代价削弱稀疏响应）。再用一个沿训练从高正值退火到负值的调度，无额外计算开销地兼顾两端。
+把 GRPO 目标中对 token 级重要性比的算术均值替换为 Hölder p-mean `\(\rho_{i,p} = \left((1/|y_i|)\sum_t r_{i,t}^p\right)^{1/p}\)`，套上 PPO 式序列级 clip 形成目标；p 是连续旋钮，p→0 取几何均值（极限）恢复 GSPO，p=1 恢复 GRPO。理论上证明大 p 集中梯度权重以放大稀疏信号（代价方差界变松）、小/负 p 严格收紧梯度方差（代价削弱稀疏响应）。再用一个沿训练从高正值退火到负值的调度，无额外计算开销地兼顾两端。
 
 ## 6. 方法详解(通俗、分步骤)
 
-- **Hölder 聚合**：`ρ_{i,p}(θ)=((1/|y_i|)·Σ_t r_{i,t}^p)^{1/p}`（p≠0），p=0 取几何均值。目标用序列级 clip：`J=E[ min(ρ_{i,p}·Â_i, clip(ρ_{i,p},1−ε,1+ε)·Â_i) ]`，以控梯度方差。
-- **梯度集中（Thm 1）**：per-token 梯度权重 `W_{i,t}(p)=r_{i,t}^p/Σ_k r_{i,k}^p` 构成概率分布；其 Shannon 熵在 p=0 取全局最大（均匀），|p| 增大严格下降；p→+∞ 集中到最大比 token（上向集中），p→−∞ 集中到最小比 token（下向集中，放大模型犹豫处的非常规有效决策点→促进多样性）。
-- **方差界（Thm 2）**：给出 `‖Var(∇J)‖` 上界，刻画"集中度↑→方差↑"的风险。
+- **Hölder 聚合**：\(\rho_{i,p}(\theta) = \left((1/|y_i|) \cdot \sum_t r_{i,t}^p\right)^{1/p}\)（p≠0），p=0 取几何均值。目标用序列级 clip：\(J = \mathbb{E}[\min(\rho_{i,p} \cdot \hat{A}_i, \mathrm{clip}(\rho_{i,p}, 1-\varepsilon, 1+\varepsilon) \cdot \hat{A}_i)]\)，以控梯度方差。
+- **梯度集中（Thm 1）**：per-token 梯度权重 \(W_{i,t}(p) = r_{i,t}^p / \sum_k r_{i,k}^p\) 构成概率分布；其 Shannon 熵在 p=0 取全局最大（均匀），|p| 增大严格下降；p→+∞ 集中到最大比 token（上向集中），p→−∞ 集中到最小比 token（下向集中，放大模型犹豫处的非常规有效决策点→促进多样性）。
+- **方差界（Thm 2）**：给出 \(\|\mathrm{Var}(\nabla J)\|\) 上界，刻画"集中度↑→方差↑"的风险。
 - **动态退火**：p 从高正值（早期激进信号放大）线性/分段调度到负值（后期方差受控收敛）。
 
 ## 7. 实验数据集

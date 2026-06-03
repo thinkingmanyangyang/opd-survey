@@ -1,6 +1,6 @@
 # dr_grpo — Understanding R1-Zero-Like Training: A Critical Perspective (Dr. GRPO)
 
-> **一句话重点 (TL;DR)**：批判性审视 R1-Zero 范式的两大成分——base 模型与 RL 算法——指出 Qwen2.5 base 已"类 SFT"、"Aha moment"在 base 中早已存在；并发现 GRPO 目标里的 1/|o_i|（响应级长度偏置）与 std(R)（题目级难度偏置）会人为推高（尤其错误）响应长度；去掉这两项得到无偏的 **Dr. GRPO**，在不损推理性能下大幅缩短错误响应、提升 token 效率，并给出 7B 极简 SOTA 配方（AIME24 43.3%，8×A100/27h）。
+> **一句话重点 (TL;DR)**：批判性审视 R1-Zero 范式的两大成分——base 模型与 RL 算法——指出 Qwen2.5 base 已"类 SFT"、"Aha moment"在 base 中早已存在；并发现 \(1/|o_i|\)会人为推高（尤其错误）响应长度；去掉这两项得到无偏的 **Dr. GRPO**，在不损推理性能下大幅缩短错误响应、提升 token 效率，并给出 7B 极简 SOTA 配方（AIME24 43.3%，8×A100/27h）。
 
 **元信息**：arXiv 2503.20783（v1 2025-03-21，v2 2025-10-06）｜ Sea AI Lab、新加坡国立大学(NUS)、新加坡管理大学(SMU)；Zichen Liu, Changyu Chen, Wenjun Li, Penghui Qi 等 ｜ COLM 2025；ICML 2025 AI4Math Workshop Best Paper Honorable Mention ｜ 主题 T3（RLVR / R1-Zero 训练机理 + RL 算法，High）｜ 代码 https://github.com/sail-sg/understand-r1-zero（已克隆约 56MB，基于自研 RL 框架 Oat）。
 
@@ -45,7 +45,7 @@ Dr. GRPO（GRPO Done Right）= 在 GRPO 目标中移除 1/|o_i| 长度归一化�
 1. **移除长度偏置（Modification 1）**：把 masked_mean（除以 mask.sum=本响应长度）换成 masked_sum 除以常数。
    - 代码（`train_zero_math.py` 第 288–290，已核对）：`masked_sum(..., constant_normalizer=args.generate_max_length) if critic_type=="drgrpo" else masked_mean`。
 2. **移除难度偏置（Modification 2）**：优势只减组均值、不除以 std。
-   - 代码（`compute_monte_carlo_advantages`，第 294–308，已核对）：`advantages = rewards - values`；仅当 `critic_type=="grpo"` 时才 `advantages /= (std_grouped_rewards + 1e-8)`，drgrpo 不除。
+   - 代码（`compute_monte_carlo_advantages`，第 294–308，已核对）：\(\text{advantages} = \text{rewards} - \text{values}\)；仅当 `critic_type=="grpo"` 时才 `advantages /= (std_grouped_rewards + 1e-8)`，\(\text{advantages} \mathrel{/}= (\mathrm{std\_grouped\_rewards} + 10^{-8})\)。
 3. **效果**：响应长度不再失控增长，错误响应长度大幅下降，token 效率更高；两者最终 reward 相近。
 4. **配套分析**：模板对 base 作答至关重要；模板-模型不匹配先破坏能力再由 RL 重建；领域（数学）预训练提升 RL 上限（Llama-3.2-3B + FineMath/NuminaQA 续训后 RL 更强）。
 

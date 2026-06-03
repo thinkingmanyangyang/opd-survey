@@ -31,16 +31,16 @@ o1、DeepSeek-R1-Zero 展示了大规模 RL 的 "训练时间 scaling"：随算�
 "少即是多"：大规模数据天然降低方差，使无偏配置（GAE λ=γ=1）可行；学习到的 critic 比无 value 的 GRPO 能更准地做 token 级 credit assignment、识别并 devalue 重复等劣化模式；去掉 KL 与 reference model 反而鼓励探索、省显存省调参。
 
 ## 5. 主要解决思路(一段话讲清核心)
-直接在 Qwen2.5 base 上用 R1-Zero 风格 prompt 启动 RL，采用极简(minimalist)配方：vanilla PPO + GAE(λ=1,γ=1) + 仅检查 `<answer>` 与参考答案精确匹配的二值奖励，完全不加任何 KL 正则，并配合大规模、多样化数据，即可稳定 scale up 性能与响应长度。
+直接在 Qwen2.5 base 上用 R1-Zero 风格 prompt 启动 RL，\(\mathrm{GAE}\ (\lambda=1,\ \gamma=1)\) + 仅检查 `<answer>` 与参考答案精确匹配的二值奖励，完全不加任何 KL 正则，并配合大规模、多样化数据，即可稳定 scale up 性能与响应长度。
 
 ## 6. 方法详解(通俗、分步骤)
 
 - **选 PPO 而非 GRPO**：学习到的 critic 给出更准的 token 级 value 与 credit assignment；分析显示 PPO 对重复 token 赋更负的 advantage，能抑制坍缩。
-- **GAE λ=1, γ=1**：无偏配置充分捕捉长程依赖；优势简化为 Â = R − V_φ(s_t)，value 目标 (V_φ(s_t) − R)²。
+- **GAE λ=1, γ=1**：无偏配置充分捕捉长程依赖；\(\hat{A} = R - V_\varphi(s_t),\quad (V_\varphi(s_t) - R)^2\)。
 - **去掉 KL**：免去 reference model 的显存/计算与调参，鼓励探索。
 - **极简 reward**：二值（1/0）精确匹配，无 format reward，reward hacking 空间最小；base 模型也能很快学会正确格式。
 - **scale up data**：数据规模与多样性对持续提升至关重要。
-- **采样/训练细节**：每步 128 prompt × 每 prompt 64 response，temperature/top-p=1.0；严格 on-policy；batch-level advantage 归一化。32B 末段加 100 步 annealing（13k 难题）。〔已核 repo playground/orz_32b_ppo.py：gamma=lambd=1.0、init_kl_coef=0、kl_loss_coef=0.0（use_kl_loss=True 但系数为 0，即 KL 实际关闭）、n_samples_per_prompt=64〕
+- **采样/训练细节**：每步 128 prompt × 每 prompt 64 response，temperature/top-p=1.0；严格 on-policy；batch-level advantage 归一化。32B 末段加 100 步 annealing（13k 难题）。〔已核 repo playground/orz_32b_ppo.py：\(\gamma = \lambda = 1.0,\ \mathrm{init\_kl\_coef}=0,\ \mathrm{kl\_loss\_coef}=0.0\)（use_kl_loss=True 但系数为 0，即 KL 实际关闭）、n_samples_per_prompt=64〕
 
 ## 7. 实验数据集
 

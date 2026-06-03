@@ -48,16 +48,16 @@
 ## 6. 方法详解（通俗、分步骤）
 形式化建立在 **token-level reverse-KL advantage** 上（§2.1，完整推导见 Appendix B.1）：
 
-- 学生在前缀 h_t=(x,y_<t) 的下一 token 分布 p_t(v)；teacher 在第 m 个视图下的分布 q_t^(m)(v)=sg[P^T(v|h_t,r^(m))]（sg 为 stop-gradient）。
-- **per-view 蒸馏 advantage**：Δ_t^(m)(v) = log q_t^(m)(v) − log p_t(v)。>0 表示该视图想 promote 此 token，<0 想 suppress。reverse-KL 的负梯度写成 policy-gradient 形式即 E_{v∼p}[A_t(v)∇log p_t(v)]。
+- 学生在前缀 h_t=(x,y_<t) 的下一 token 分布 p_t(v)；teacher 在第 m 个视图下的分布 \(q_t^{(m)}(v) = \mathrm{sg}\!\left[P^{T}(v \mid h_t, r^{(m)})\right]\)（sg 为 stop-gradient）。
+- **per-view 蒸馏 advantage**：\(\Delta_t^{(m)}(v) = \log q_t^{(m)}(v) - \log p_t(v)\)。>0 表示该视图想 promote 此 token，<0 想 suppress。reverse-KL 的负梯度写成 policy-gradient 形式即 \(\mathbb{E}_{v \sim p}\!\left[A_t(v) \nabla \log p_t(v)\right]\)。
 
 分步：
 
-1. **构造 M 个视图**：r^(m)=T_m(r)，保留任务相关信息、改变暴露给 teacher 的特权形式。本文数学/代码均用 **M=3** 个视图。
+1. **构造 M 个视图**：\(r^{(m)} = T_m(r)\)，保留任务相关信息、改变暴露给 teacher 的特权形式。本文数学/代码均用 **M=3** 个视图。
 2. **几何共识目标**：对各视图概率取几何均值再归一化 → 强调"被所有视图共同支持"的 token（交集支持）。
 3. **算术边际目标**：取算术均值 → 保留"至少被一个视图强支持"的 token（并集支持）。
 4. **残差** = 算术边际 − 几何共识。
-5. **门控加残差**（正文 Eq.2）：从共识出发，仅当 (a) 各视图方向一致 (b) 残差幅度 ∝ 共识幅度时，按比例 λ=C·R 加入残差。代码实现于 `src/avsd/common/multiview_distill.py::build_avsd_target`，`avsd` 模式即 λ = `consensus_adv.abs()/delta_abs_mean × |A^G|/(|A^G|+J)`，与正文 Eq.2 一致，且断言要求**各视图权重均匀**。
+5. **门控加残差**（正文 Eq.2）：从共识出发，仅当 (a) 各视图方向一致 (b) 残差幅度 ∝ 共识幅度时，按比例 λ=C·R 加入残差。代码实现于 `src/avsd/common/multiview_distill.py::build_avsd_target`，`avsd` 模式即 \(\lambda = \frac{|\text{consensus\_adv}|}{\text{delta\_abs\_mean}} \times \frac{|A^{G}|}{|A^{G}| + J}\)，与正文 Eq.2 一致，且断言要求**各视图权重均匀**。
 6. **消融**显示：consensus-only（只蒸馏几何共识）与 arithmetic-only（只蒸馏算术边际）变体均逊于完整 AVSD —— 证明"共识做骨架 + 门控加残差"两件事都不可或缺。
 
 ## 7. 实验数据集

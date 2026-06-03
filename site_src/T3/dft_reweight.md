@@ -44,10 +44,10 @@
 
 ## 6. 方法详解（通俗、分步骤）
 
-1. **理论刻画**（eq.6）：SFT 梯度 ≈ E[w(y|x)·∇log πθ(y|x)·r(x,y)]，其中 r 是稀疏指示函数，w=1/πθ 是重要性权重；这说明标准 SFT 是带病态奖励的特殊策略梯度。
-2. **奖励整流**（eq.7）：在期望内乘以 sg(1/w)=sg(πθ(y⋆|x))，抵消 1/πθ；sg 保证梯度不流过该缩放项。
-3. **轨迹级 DFT loss**（eq.8）：L = E[ −sg(πθ(y⋆|x))·log πθ(y⋆|x) ]。
-4. **token 级稳定化**（eq.9，实际使用版本）：因整轨迹重要性权重会数值不稳，仿 PPO 在 **token 级**做重要性采样：L = −Σ_t sg(πθ(y⋆_t|y⋆_{<t},x))·log πθ(y⋆_t|...)。
+1. **理论刻画**（eq.6）：\(\mathbb{E}[w(y \mid x) \cdot \nabla \log \pi_\theta(y \mid x) \cdot r(x,y)]\)，\(r(x,y) = \mathbb{1}[y = y^\star],\quad w = 1/\pi_\theta\)；这说明标准 SFT 是带病态奖励的特殊策略梯度。
+2. **奖励整流**（eq.7）：\(\mathrm{sg}(1/w) = \mathrm{sg}(\pi_\theta(y^\star \mid x))\)，抵消 1/πθ；sg 保证梯度不流过该缩放项。
+3. \(L = \mathbb{E}\big[ -\mathrm{sg}(\pi_\theta(y^\star \mid x)) \cdot \log \pi_\theta(y^\star \mid x) \big]\)。
+4. **token 级稳定化**（eq.9，实际使用版本）：因整轨迹重要性权重会数值不稳，仿 PPO 在 **token 级**做重要性采样：\(L = -\sum_t \mathrm{sg}(\pi_\theta(y^\star_t \mid y^\star_{<t}, x)) \cdot \log \pi_\theta(y^\star_t \mid \cdots)\)。
 5. **一行代码实现**（README/仓库 `fsdp_dft_trainer.py` 第 369–371 行，已核对）：
    ```python
    probs = torch.softmax(shift_logits, dim=-1)

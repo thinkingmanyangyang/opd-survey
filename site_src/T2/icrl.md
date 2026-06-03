@@ -1,6 +1,6 @@
 # icrl — ICRL: Learning to Internalize Self-Critique with Reinforcement Learning
 
-> **一句话重点 (TL;DR)**：让同一 backbone 用 role-specific prompt 同时当 solver 与 critic 联合 RL，把"有 critique 才能做对"内化为"无 critique 也能做对"——核心是一个把 critique-conditioned 修订轨迹按 token 级 re-weight 比率 `w_t=π(y_t|q)/π(y_t|q,c)` 迁移到 critique-free 分布的"分布校准"，外加逐角色组内归一化以稳定联合优化。
+> **一句话重点 (TL;DR)**：让同一 backbone 用 role-specific prompt 同时当 solver 与 critic 联合 RL，把"有 critique 才能做对"内化为"无 critique 也能做对"——核心是一个把 critique-conditioned 修订轨迹按 token 级 re-weight 比率 \(w_t = \frac{\pi(y_t \mid q)}{\pi(y_t \mid q,c)}\) 迁移到 critique-free 分布的"分布校准"，外加逐角色组内归一化以稳定联合优化。
 
 **元信息**：arXiv 2605.15224v1（2026-05-13）｜ 港科大(GZ)、南京大学、中山大学、NUS、NTU、SAP、Microsoft Research（多机构）｜ Preprint，2026-05｜ 主题 solver-critic 联合 RL / 自我改进，与 OPD/TSRD 间接相关（"critique-conditioned→critique-free 的 token 级 re-weight"与 OPD"教师条件分布→学生无条件分布"形式同构）；不涉及 MTP，非 teacher-student 蒸馏｜ 代码 https://github.com/brick-pid/ICRL ｜ 框架 slime (THUDM, SGLang-native RL) + AgentGym。
 
@@ -35,15 +35,15 @@
 修订轨迹虽在 critique 上下文下产生，但其中一部分 token 在 critique-free 分布下本就可信——只把这部分迁移给 solver、下调重度依赖 critique 上下文的 token，即可内化而不强化依赖。critic 的价值应由"实际有用的反馈"（带来奖励提升）而非"听起来合理的反馈"来定义。
 
 ## 5. 主要解决思路(一段话讲清核心)
-solver 采初解，失败则 critic 产 critique、solver 据此产修订解（最多 K=2 轮）；对修订轨迹去掉 critique 前缀、重视作 (y|q) 的证据，引入 token 级 re-weight 比率 `w_t=π(y_t|q)/π(y_t|q,c)`（上界 w_max=2）选择性迁移可信 token；solver 组与 critic 组分别做组内归一化（role-wise group advantage）保留各自学习信号；critic 奖励取修订成功记 1 否则等于 solver 奖励的时序提升 r(τᵢ₊₁)−r(τᵢ)。
+solver 采初解，失败则 critic 产 critique、solver 据此产修订解（最多 K=2 轮）；对修订轨迹去掉 critique 前缀、重视作 (y|q) 的证据，引入 token 级 re-weight 比率 \(w_t = \frac{\pi(y_t \mid q)}{\pi(y_t \mid q,c)}\)（上界 w_max=2）选择性迁移可信 token；solver 组与 critic 组分别做组内归一化（role-wise group advantage）保留各自学习信号；critic 奖励取修订成功记 1 否则等于 solver 奖励的时序提升 \(r(\tau_{i+1}) - r(\tau_i)\)。
 
 ## 6. 方法详解(通俗、分步骤)
 
 - **Self-Improving Workflow**：solver 采初解 τ₁；失败→critic 产 critique cᵢ→solver 产修订解 τᵢ₊₁；最多 K 轮（实现 K=2，论文 "set the iteration round to 2 to improve training efficiency"）。
-- **奖励**：solver 用任务 outcome reward r(τ)∈[0,1]；critic reward=修订成功记 1，否则 r(τᵢ₊₁)−r(τᵢ)（仅 dense reward 下非零）。
-- **Critique-Conditioned Distribution Calibration（核心）**：token 级 `w_t=π(y_t|q)/π(y_t|q,c)`，只迁移 critique-free 下本就可信的 token、下调依赖 critique 上下文的 token。
+- **奖励**：solver 用任务 outcome reward \(r(\tau) \in [0,1]\)；critic reward=修订成功记 1，否则 \(r(\tau_{i+1}) - r(\tau_i)\)（仅 dense reward 下非零）。
+- **Critique-Conditioned Distribution Calibration（核心）**：token 级 \(w_t = \frac{\pi(y_t \mid q)}{\pi(y_t \mid q,c)}\)，只迁移 critique-free 下本就可信的 token、下调依赖 critique 上下文的 token。
 - **Role-wise Group Advantage（Eq.5）**：solver 组与 critic 组分别组内归一化。
-- **目标（Eq.6）**：`J=E[ min(w_t,w_max)·min(ρ_t(θ)Â, clip(ρ_t,1∓ε)Â) ]`，仅 critique-guided 修订 solver 轨迹用 w_t（其余 w_t=1），**w_max=2** 防梯度方差爆炸。
+- **目标（Eq.6）**：\(J = \mathbb{E}\left[ \min(w_t, w_{\max}) \cdot \min\left(\rho_t(\theta)\hat{A},\ \mathrm{clip}(\rho_t, 1\mp\varepsilon)\hat{A}\right) \right]\)，仅 critique-guided 修订 solver 轨迹用 w_t（其余 w_t=1），**w_max=2** 防梯度方差爆炸。
 - 〔已核-代码〕`icrl/icrl/rewards.py::_role_group_key/_role_sample_norm` 按 `(group_index, role)` 逐角色组内归一化实现 Eq.5；`generate.py:218-225` 对修订轨迹存 `critic_free_prompt_ids`、把 `exec_sample.tokens` 重绑为"critique-free 前缀+原 response"，w_t 在 slime 损失阶段重算。K=2、w_max=2、env_nums=32 在 `hydra_conf/` 确认。
 
 ## 7. 实验数据集

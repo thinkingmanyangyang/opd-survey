@@ -44,7 +44,7 @@
 ## 6. 方法详解(通俗、分步骤)
 
 1. **Adaptive Temperature Sampling**：按 token 熵实时调采样温度（高熵升温促探索、低熵降温保连贯），解采样阶段精度-探索权衡。〔code: `rollout.adaptive_temperature=True`, `temperature_tau=0.05`〕
-2. **Token-Level Group Average Advantage**：组内按 token 级估优势 A_{i,t}=(a_{i,t}−µ_glob)/σ_glob，兼顾序列长度（保留 token-mean 对长序列的好处）且对正负样本无偏。〔code: `adaptive_advantage=True`〕
+2. **Token-Level Group Average Advantage**：组内按 token 级估优势 \(A_{i,t} = (a_{i,t} - \mu_{\mathrm{glob}})/\sigma_{\mathrm{glob}}\)，兼顾序列长度（保留 token-mean 对长序列的好处）且对正负样本无偏。〔code: `adaptive_advantage=True`〕
 3. **Differential Advantage Redistribution**：用熵+重要性比调制优势——对高熵且比值极端的 token 放大优势、对低熵接近 1 的抑制，做细粒度信号归因。
 4. **Asymmetric Adaptive Clipping**：反向非对称裁剪界——低熵 token 扩左界（允许激进降噪声概率），高熵 token 扩右界（关键决策点放开探索）。〔code: `adaptive_clip=True`, `clip_alpha=1.0`, `entropy_pivot=0.8`〕
 

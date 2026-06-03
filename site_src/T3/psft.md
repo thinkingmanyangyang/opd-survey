@@ -34,13 +34,13 @@
 "SFT 之所以伤泛化、垮探索，是因为它对每个 demo token 都施加无界的最大似然推力"；若把这股推力用重要性比裁剪封顶（信任域），既保留模仿、又把更新限制在策略附近，就能在不引入显式 KL/reference 的情况下保住熵与原有能力。
 
 ## 5. 主要解决思路(一段话讲清核心)
-把 demonstration 当作 "trajectory"、advantage 设为常数正值(A=1)，用 r_t=π_θ/π_old 的重要性比 + PPO 式非对称 clip(1−ε_low, 1+ε_high) 构造信任域约束的代理目标，替代普通 SFT 的最大似然，靠 trust-region（非显式 KL）约束漂移。
+把 demonstration 当作 "trajectory"、advantage 设为常数正值(A=1)，用 \(r_t=\pi_\theta/\pi_{\mathrm{old}}\) 的重要性比 + PPO 式非对称 clip\((1-\varepsilon_{\mathrm{low}},\,1+\varepsilon_{\mathrm{high}})\) 构造信任域约束的代理目标，替代普通 SFT 的最大似然，靠 trust-region（非显式 KL）约束漂移。
 
 ## 6. 方法详解(通俗、分步骤)
 
 - 将 SFT 改写为带重要性比裁剪的代理目标；advantage 恒正(A=1)。
 - 非对称 clip：run 脚本 clip_ratio_low=0.2、clip_ratio_high=0.28（high>low，与 DAPO clip-higher 同思路，鼓励探索）；use_kl_in_reward=False、use_kl_loss=False、kl_coef=0（靠 trust-region 而非显式 KL）。〔已核 verl/recipe/psft/run_psft.sh:8-16,80（clip_ratio_c=10.0）〕
-- **adv_estimator=psft 的实现**：并非独立 `@register_adv_est` 函数，而是在 ray_trainer.py 的 `compute_advantage` 中内联分支——当 adv_estimator==PSFT 时直接令 `advantages = returns = ones_like(response_mask) * response_mask`，即每个 response token 赋恒定 advantage=1（被 response_mask 掩到回复 token）。随后 actor 用 PPO 非对称 clip surrogate 更新。〔已核 verl/verl/trainer/ppo/ray_trainer.py:274-276、core_algos.py:104 枚举 PSFT="psft"〕
+- **adv_estimator=psft 的实现**：并非独立 `@register_adv_est` 函数，而是在 ray_trainer.py 的 `compute_advantage` 中内联分支——当 adv_estimator==PSFT 时直接令 \(\mathrm{advantages}=\mathrm{returns}=\mathbf{1}(\mathrm{response\_mask})\cdot \mathrm{response\_mask}\)，即每个 response token 赋恒定 advantage=1（被 response_mask 掩到回复 token）。随后 actor 用 PPO 非对称 clip surrogate 更新。〔已核 verl/verl/trainer/ppo/ray_trainer.py:274-276、core_algos.py:104 枚举 PSFT="psft"〕
 - π_θold 动态更新（每 4/8/16 步刷新一次，过快或不更新都损害效果，论文取 update.8）；可选 warm-up SFT 先对齐 π_θold。
 - 效果：训练全程不熵坍缩，保持生成多样性。
 

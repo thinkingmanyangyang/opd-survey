@@ -30,14 +30,14 @@ OPD 在学生自身轨迹上给稠密 token 监督,是"内化 harness 行为"的
 受 Learning Using Privileged Information(LUPI)[Vapnik 2015] 启发:把特权输入 z(x) 泛化为任何只在训练可得的 oracle 信息;再用一个确定性、有状态的 harness 程序 H 主动编排 z(x) 与 x 的处理,而非被动拼接到 prompt。学生须从裸输入 x 复现 harness 诱导行为 → 自然划出"可蒸馏边界":结构性推理先验(分解/自验证)可内化,真正的实时外部访问(工具/检索内容)不可。
 
 ## 5. 主要解决思路(一段话讲清核心)
-OPHSD:训练时学生在 harness 内 rollout(增强推理流程生成轨迹),把这些 harness 辅助轨迹的终端上下文 C[H_θ(x,z(x))] 喂给同一个 frozen base 模型 p_θ̃ 作 teacher,用 **reverse-KL**(KL(p_T‖p_S),Eq.3)沿学生直接 rollout ŷ~p_θ(·|x) 训练不带 harness 的学生;C[·] 作 stop-gradient target。harness 编排由 θ 驱动(随能力演进),logit 监督锚定在 θ̃(稳定先验)。
+OPHSD:训练时学生在 harness 内 rollout(增强推理流程生成轨迹),把这些 harness 辅助轨迹的终端上下文 C[H_θ(x,z(x))] 喂给同一个 frozen base 模型 p_θ̃ 作 teacher,\(D_{\mathrm{KL}}(p_T \| p_S)\)\(\hat{y} \sim p_\theta(\cdot \mid x)\);C[·] 作 stop-gradient target。harness 编排由 θ 驱动(随能力演进),logit 监督锚定在 θ̃(稳定先验)。
 
 ## 6. 方法详解(通俗、分步骤)
 
-- **harness 形式化**(Eq.2):确定性有状态程序,最多 T 次模型调用,经状态转移 τ 与读出 π 产出最终答案,诱导条件分布 H_θ(y|x);注入 z(x) 得 H_θ(y|x,z(x))。
+- **harness 形式化**(Eq.2):确定性有状态程序,最多 T 次模型调用,经状态转移 τ 与读出 π 产出最终答案,\(H_\theta(y \mid x)\);\(H_\theta(y \mid x, z(x))\)。
 - **两类实例化**(均自 Qwen3-8B):
   ① **Draft-Verify**(在线文本分类,推理先验=case-based comparison):z(x)=在线 MemoryBank M_<x(x 之前流入的全部标注先例)。draft 步检索 top-kd=5 近邻作 in-context demo 生成草稿 ŷd;verify 步用 ŷd 再检索 k+=5 confirmers(同标签)、k−=5 challengers(异标签),组装含 x/ŷd/两检索集的 prompt 出最终答案。终端上下文 C=(x,ŷd,N+,N−)。Embedder=BAAI/bge-small-zh-v1.5;冷启动保护(bank<10 条时退化为单次前向);harness baseline 评测时 bank 仅从测试流重填(防泄漏)。
-  ② **Plan-Solve**(数学,推理先验=结构分解):z(x)=参考解 y*。planner 用 (x,y*) 蒸出策略草图 s~p_θ(·|x,y*),solver 用 (x,s) 执行完整推导 y~p_θ(·|x,s);终端上下文 C=(x,s)——学生匹配的是"已见 plan 的 solver"信号,而非 OPSD 那样直接给 y* 原文(经 planner 中介,强迫内化推导结构)。plan 温度 0.3、solve 温度 0.6;harness baseline 评测时移除 y*。
+  ② **Plan-Solve**(数学,推理先验=结构分解):z(x)=参考解 y*。\(s \sim p_\theta(\cdot \mid x, y^*)\),\(y \sim p_\theta(\cdot \mid x, s)\);终端上下文 C=(x,s)——学生匹配的是"已见 plan 的 solver"信号,而非 OPSD 那样直接给 y* 原文(经 planner 中介,强迫内化推导结构)。plan 温度 0.3、solve 温度 0.6;harness baseline 评测时移除 y*。
 
 - **超参**(均 Qwen3-8B / veRL):lr 1e-6、batch 64、max gen 8192、8×H100;GRPO group 8、KL 系数 0;OPSD/CRISP 用 reverse-KL,CRISP 每 50 步同步教师。文本分类训 300 步(每 15 步评)、数学训 150 步(每 10 步评,4 次运行平均)。
 

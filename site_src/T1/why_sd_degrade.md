@@ -28,14 +28,14 @@
 追因到 epistemic verbalization 被压制。把数学推理视为 self-Bayesian 推理：逐步在已生成 token 上更新对中间假设的信念；不确定性表达不是冗余，而是保留备选假设、支持渐进纠错的信号，过早自信会锁死错误假设无从恢复（Fig.2a）。teacher 拿到富 context（c=解）后生成低不确定性的自信轨迹，student 模仿即丢掉这些 epistemic 信号。
 
 ## 4. 主要灵感 / 核心直觉
-用条件互信息 I(y*;c|x)=H(y*|x)−H(y*|x,c) 量化 context c 对正确答案 y* 的信息量。直觉：c 越富 → teacher 轨迹越简洁自信、epistemic token 越少；这在窄覆盖任务上加速 in-domain 收敛，但在宽覆盖/OOD 上因丢失不确定性信号而退化。标准训练目标不惩罚这种"风格漂移"，故 OOD 受损是"隐性"的。
+用条件互信息 \(I(y^{*}; c \mid x) = H(y^{*} \mid x) - H(y^{*} \mid x, c)\) 量化 context c 对正确答案 y* 的信息量。直觉：c 越富 → teacher 轨迹越简洁自信、epistemic token 越少；这在窄覆盖任务上加速 in-domain 收敛，但在宽覆盖/OOD 上因丢失不确定性信号而退化。标准训练目标不惩罚这种"风格漂移"，故 OOD 受损是"隐性"的。
 
 ## 5. 主要解决思路(一段话讲清核心)
 不是提新算法，而是受控实证：固定/系统改变两个因子——(1) conditioning context 信息丰富度（用 I(y*;c|x) 形式化），(2) 任务覆盖度（训练题数 |D|）——观测 response length、score、10 个 epistemic token（wait/hmm/perhaps/maybe/actually/alternatively/seems/might/likely/check）频率随之如何变化，并对比 GRPO vs SDPO 的 in-domain 与 OOD 表现，从而定位"epistemic 压制 ↔ OOD 退化"的关联。
 
 ## 6. 方法详解(通俗、分步骤)
 
-1. **自蒸馏目标（Eq.1）**：L=Σ_t KL(πθ(·|x,y_<t) ‖ stopgrad πθ(·|x,c,y_<t))，即 **student 向 teacher 对齐的标准 KL(student‖teacher)，是前向方向的自蒸馏目标**。〔已核并保留：此前 analysis 一度写"reverse-KL"不准——论文 Eq.1 是 forward-direction KL(student‖teacher)。〕
+1. **自蒸馏目标（Eq.1）**：\(L = \sum_t \mathrm{KL}\big(\pi_\theta(\cdot \mid x, y_{<t}) \,\|\, \mathrm{stopgrad}\, \pi_\theta(\cdot \mid x, c, y_{<t})\big)\)，即 **student 向 teacher 对齐的标准 KL(student‖teacher)，是前向方向的自蒸馏目标**。〔已核并保留：此前 analysis 一度写"reverse-KL"不准——论文 Eq.1 是 forward-direction KL(student‖teacher)。〕
 2. **§3 信息丰富度受控对比**：DeepSeek-R1-Distill-Qwen-7B 在 DAPO-Math-17k 选 100 题（base 8-rollout 准确率∈[0.125,0.5]），比较 4 种 c：(1)unguided c=∅、(2)solution c=s、(3)c=s\think、(4)regeneration c=yr。MI 排序 (1)<(3)≤(4)≤(2)。**Table 1**：随 I 增大，length 与 epistemic 计数单调下降——(1) score 0.30 / len 13,054 / E 182.5；(2) 0.98 / 1,873 / 8.8；(3) 0.78 / 12,036 / 159.8；(4) 0.95 / 2,808 / 24.1。
 3. **§4 off-policy SFT 对照（Table 2）**：在 800 条正确轨迹上微调 DeepSeek-7B——D_ug（unguided，高 E、~12k tok）几乎不掉；D_sg（solution-guided，低 E、~2k tok）全面大跌（AIME24 54.79→20.21、AIME25 37.92→12.71、AMC23 89.06→57.03、MATH500 92.19→65.52）。证明"即便全是正确答案，过度压制 epistemic 也实质损害推理"。
 4. **§5 on-policy 自蒸馏**：GRPO vs SDPO，DAPO-Math-17k 上跑 ~100+ step，比较 c=s 与 c=s\think。teacher **固定为初始策略（EMA rate 0.0）**优于移动 target。DeepSeek-7B：SDPO(c=s) 使 AIME24 ~40%、AMC23 ~15% 跌；c=s\think 缓解但仍低于 base。Qwen3-8B(think on/off)、Olmo3-7B 同向。Fig.3d/4d：SDPO 比 GRPO 更激进压制 epistemic token（尤以 wait 为甚）。

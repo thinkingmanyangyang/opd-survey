@@ -37,13 +37,13 @@
 关键观察:**同任务同初始条件下,组内许多轨迹因无效动作或循环会反复遇到相同环境状态**(同一网页/房间/游戏场景)。这些共享状态天然就是"对照实验"——在同一状态下不同轨迹采取了不同动作并得到不同后续回报,于是**不用额外 rollout 就能直接比较这些动作的优劣**,做局部(step 级)信用分配。
 
 ## 5. 主要解决思路(一段话讲清核心)
-GiGPO 嵌套两级相对优势(group-in-group):宏观上,对同一任务采 N 条完整轨迹,按总回报算 episode 级相对优势 A^E(同 vanilla GRPO);微观上,回溯找出组内反复出现的环境状态(anchor state),把"在同一 anchor state 下采取的不同动作"聚成一个 step 级组,组内按各动作的**折扣回报**算 step 级相对优势 A^S;最后线性合并 A = A^E + ω·A^S(ω 直接设 1,不调参)。全程 critic-free、无额外 rollout、与原 GRPO 同显存。
+GiGPO 嵌套两级相对优势(group-in-group):宏观上,对同一任务采 N 条完整轨迹,按总回报算 episode 级相对优势 A^E(同 vanilla GRPO);微观上,回溯找出组内反复出现的环境状态(anchor state),把"在同一 anchor state 下采取的不同动作"聚成一个 step 级组,组内按各动作的**折扣回报**算 step 级相对优势 A^S;最后线性合并 \(A = A^E + \omega \cdot A^S\)(ω 直接设 1,不调参)。全程 critic-free、无额外 rollout、与原 GRPO 同显存。
 
 ## 6. 方法详解(通俗、分步骤)
 
 - **Episode 级(宏观)**:同任务同初始状态采 N 条轨迹,按总回报算 macro 相对优势 A^E,反映整条轨迹的任务完成质量。
 - **Step 级(微观)—— Anchor State Grouping(核心创新)**:回溯识别组内跨轨迹/跨时间重复出现的环境状态(anchor state);把所有"在同一 anchor state 下采取的不同动作"聚成一个 step-level group,每个唯一状态构一组。组内对动作算 micro 相对优势 A^S。为捕捉长期影响,对每步关联**折扣回报** R_t(折扣因子 γ∈(0,1]),使早期次优动作得到比后期正确动作更低的折扣回报,产生清晰的偏好排序(例:1st Item > 2nd Item > Next Page)。
-- **合并**:A = A^E + ω·A^S,ω=1(代码 `step_advantage_w` 默认 1.0,未调参)。
+- **合并**:\(A = A^E + \omega \cdot A^S\),ω=1(代码 `step_advantage_w` 默认 1.0,未调参)。
 - **变体**:GiGPO w/ std 与 w/o std(是否用标准差归一化);**similarity-based 变体**——状态难精确匹配(如 QA)时,用最长匹配子序列相似度阈值(默认 0.95)判定"是否同一状态"。
 
 ## 7. 实验数据集

@@ -50,9 +50,9 @@ BRTS = **Best-of-N Rollout Teacher Selection**：每 prompt 采 N 条 teacher �
 
 **(B) teacher-context 监督（Eq.3–5）**
 
-- 保留 student-context 损失（学生前缀上的标准 OPD，**reverse-KL**）：`L_stu-ctx = E[Σ_t D_KL(π_S(·|x,ŷ_<t) ‖ π_T(·|x,ŷ_<t))]`（Eq.3）。
-- 新增 teacher-context 损失（在选中 teacher 前缀 y'_<t 上）：`L_tea-ctx = E[Σ_t D_KL(π_T(·|x,y'_<t) ‖ π_S(·|x,y'_<t))]`（Eq.4）。**〔已核，旧分析未指出〕注意这两条 KL 方向相反**——student-context 是 reverse-KL（π_S 在前），teacher-context 是 forward 方向（π_T 在前），即把学生分布往 teacher 沿可靠路径的局部分布上拉。
-- 总损失 `L_total = L_stu-ctx + λ·L_tea-ctx`（Eq.5）。
+- 保留 student-context 损失（学生前缀上的标准 OPD，**reverse-KL**）：\(\mathcal{L}_{\text{stu-ctx}} = \mathbb{E}\!\left[\sum_t D_{\mathrm{KL}}\!\left(\pi_S(\cdot \mid x, \hat{y}_{<t}) \,\|\, \pi_T(\cdot \mid x, \hat{y}_{<t})\right)\right]\)（Eq.3）。
+- 新增 teacher-context 损失（在选中 teacher 前缀 y'_<t 上）：\(\mathcal{L}_{\text{tea-ctx}} = \mathbb{E}\!\left[\sum_t D_{\mathrm{KL}}\!\left(\pi_T(\cdot \mid x, y'_{<t}) \,\|\, \pi_S(\cdot \mid x, y'_{<t})\right)\right]\)（Eq.4）。**〔已核，旧分析未指出〕注意这两条 KL 方向相反**——student-context 是 reverse-KL（π_S 在前），teacher-context 是 forward 方向（π_T 在前），即把学生分布往 teacher 沿可靠路径的局部分布上拉。
+- 总损失 \(\mathcal{L}_{\text{total}} = \mathcal{L}_{\text{stu-ctx}} + \lambda \cdot \mathcal{L}_{\text{tea-ctx}}\)（Eq.5）。
 
 **(C) top-K 方向（§3.4）**
 

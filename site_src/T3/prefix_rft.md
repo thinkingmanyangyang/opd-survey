@@ -41,7 +41,7 @@ LLM 后训练两大范式：SFT（模仿 demonstration，简单、注入知识�
 - **前缀感知 advantage**：`compute_grpo_prefix_outcome_advantage` / `compute_dr_grpo_prefix_outcome_advantage`——prefix token 与 continuation token 分别按 prefix 分组归一化，prefix advantage 经 `/num_rollouts_per_prefix` 缩放后用 `prefix_mask` 写回。〔已核 recipe/prefix_rft/core_algos.py:162-215, 262-307〕
 - **策略损失**：on-policy 部分用 PPO dual-clip（clip_ratio_low/high，clip_ratio_c=3.0），off-policy(prefix) 部分用独立的 `cliprange_low_off/high_off` 裁剪（`enable_clip` 控制），按 prefix_mask 合并。
 - **熵约束裁剪（核心组件）**：因 π_off 可能远离当前策略、prefix token 的 π_θ 概率普遍偏低，其梯度易压制 RFT 梯度；故只对 **top-k% 高熵 prefix token** 计入梯度，其余 prefix token advantage 置零（保守 off-policy 滤波：低熵 token 要么已被匹配信号小，要么是会引发尖锐覆写的 "自信错配"）。代码以 dp_actor.py 的 entropy "reshaper"（off_adv_reshaper：entropy/entropy_low/random masking）实现。〔已核 recipe/prefix_rft/dp_actor.py:64-86〕
-- **前缀长度余弦衰减调度**：L=⌊l·|y\*|⌋，l~U(low, high)；high 为常数，low 全程从 high 余弦衰减到近零——既缓解 "只学开头 token" 的位置偏置，又内置课程学习（由 "几乎给全 demo" 过渡到 "几乎纯 RFT"，对应 SFT→RFT 配方）。代码 scheduler/global_step.py 的 `cosine_decay` controller；avg_score.py 另可按平均分调度。〔已核〕
+- **前缀长度余弦衰减调度**：\(L=\lfloor l\cdot|y^\*|\rfloor,\quad l\sim U(\mathrm{low},\mathrm{high})\)；high 为常数，low 全程从 high 余弦衰减到近零——既缓解 "只学开头 token" 的位置偏置，又内置课程学习（由 "几乎给全 demo" 过渡到 "几乎纯 RFT"，对应 SFT→RFT 配方）。代码 scheduler/global_step.py 的 `cosine_decay` controller；avg_score.py 另可按平均分调度。〔已核〕
 - **默认超参（config/prefix_rft_trainer.yaml，已核）**：clip_ratio_low=high=0.2、clip_ratio_c=3.0、entropy_coeff=0.001；yaml 中 adv_estimator=gae 为上游模板残留，prefix recipe 运行时改用 prefix-aware GRPO/Dr.GRPO。
 
 ## 7. 实验数据集

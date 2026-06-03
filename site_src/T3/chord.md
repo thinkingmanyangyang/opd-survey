@@ -1,6 +1,6 @@
 # chord — On-Policy RL Meets Off-Policy Experts: Harmonizing SFT and RL via Dynamic Weighting (CHORD)
 
-> **一句话重点 (TL;DR)**：别再把 SFT 当 RL 前面的独立阶段（那会经历"漂移—再适应—过拟合"并破坏 on-policy 探索）。CHORD 把 SFT 重构成 on-policy RL 里一个**动态加权的辅助目标**：全局系数 μ（带 warmup 的余弦衰减）控制专家信号占比从"以模仿为主"平滑过渡到"以探索为主"；token 级权重 φ(p)=p(1−p) 对那些已很可能或极不可能的专家 token 下调学习信号，缓解熵坍缩与干扰。
+> **一句话重点 (TL;DR)**：别再把 SFT 当 RL 前面的独立阶段（那会经历"漂移—再适应—过拟合"并破坏 on-policy 探索）。CHORD 把 SFT 重构成 on-policy RL 里一个**动态加权的辅助目标**：全局系数 μ（带 warmup 的余弦衰减）控制专家信号占比从"以模仿为主"平滑过渡到"以探索为主"；\(\varphi(p) = p(1-p)\) 对那些已很可能或极不可能的专家 token 下调学习信号，缓解熵坍缩与干扰。
 
 **元信息**：arXiv 2508.11408（v3，2026-03-17；ICLR 2026 会议论文）｜ 阿里巴巴集团（Wenhao Zhang、Yuexiang Xie、Yuchang Sun、Yanxi Chen、Guoyin Wang、Yaliang Li(通讯)、Bolin Ding、Jingren Zhou）｜ ICLR 2026 ｜ 主题：统一 SFT 与 RL 的 off-policy/on-policy 视角，把 SFT 重构为 RL 中动态加权的辅助目标（GFT-class 代表作）｜ 代码 https://github.com/modelscope/Trinity-RFT （示例 `examples/mix_chord/`，损失 `trinity/algorithm/policy_loss_fn/chord_policy_loss.py`；另有 ms-swift 集成）｜ 框架 Trinity-RFT（基于 veRL 后端 + Ray）
 
@@ -36,17 +36,17 @@
 ## 4. 主要灵感 / 核心直觉
 
 - SFT-then-RL 的二元开关（μ=1→0）太僵硬；改成可衰减的 μ schedule 可在过拟合前平滑退出专家影响（与 scheduled sampling 缓解 exposure bias 同理）。
-- 但全局 μ 缺乏精度：CHORD-µ 会让模型整体照搬专家的冗长风格、覆盖自身简洁性（case study 证实）。所以需要 token 级 φ：把专家信号集中在"模型还不确定"（p≈0.5）的 token 上，对已确定（p→0 或 1）的 token 几乎不学——pt(1−pt) 恰是对"生成该 token 这一二元事件"的策略不确定性度量，制造"learning sweet spot"。
+- 但全局 μ 缺乏精度：CHORD-µ 会让模型整体照搬专家的冗长风格、覆盖自身简洁性（case study 证实）。所以需要 token 级 φ：把专家信号集中在"模型还不确定"（p≈0.5）的 token 上，对已确定（p→0 或 1）的 token 几乎不学——\(p_t(1-p_t)\)"生成该 token 这一二元事件"的策略不确定性度量，制造"learning sweet spot"。
 
 ## 5. 主要解决思路（一段话讲清核心）
-CHORD = Controllable Harmonization of On- and Off-Policy RL via Dynamic Weighting。统一损失 **L = (1 − μ)·L_GRPO + μ·L_SFT**（代码 `MIXCHORDPolicyLossFn` 确认）。数据用 `expert_mask` 区分：非专家（on-policy）走 GRPO 损失（`PPOPolicyLossFn`），专家（off-policy 示范）走 SFT 损失。两层动态加权：(1) 全局 μ 随训练步用带 warmup 的余弦衰减从 mu_peak 降到 mu_valley；(2) token 级 φ(y*_t)=p_t(1−p_t)（p_t = π_θ(y*_t|x,y*<t)）这条抛物线在 p_t=0.5 取峰、p_t→0/1 衰减到 0，对已很可能或极不可能的专家 token 下调学习信号。论文给两个实例：**CHORD-µ**（只用全局 μ 调度、关闭 φ）与 **CHORD-φ**（启用 token 级 φ、μ 取较小常值）。
+CHORD = Controllable Harmonization of On- and Off-Policy RL via Dynamic Weighting。统一损失 \(L = (1 - \mu)\cdot L_{\mathrm{GRPO}} + \mu \cdot L_{\mathrm{SFT}}\)（代码 `MIXCHORDPolicyLossFn` 确认）。数据用 `expert_mask` 区分：非专家（on-policy）走 GRPO 损失（`PPOPolicyLossFn`），专家（off-policy 示范）走 SFT 损失。两层动态加权：(1) 全局 μ 随训练步用带 warmup 的余弦衰减从 mu_peak 降到 mu_valley；(2) \(\varphi(y^*_t) = p_t(1-p_t),\quad p_t = \pi_\theta(y^*_t \mid x, y^*_{<t})\)这条抛物线在 p_t=0.5 取峰、p_t→0/1 衰减到 0，对已很可能或极不可能的专家 token 下调学习信号。论文给两个实例：**CHORD-µ**（只用全局 μ 调度、关闭 φ）与 **CHORD-φ**（启用 token 级 φ、μ 取较小常值）。
 
 ## 6. 方法详解（通俗、分步骤）
 **损失实现（代码确认）**：
 
 - 全局 μ：`mu_schedule_function(step, mu_warmup_steps, mu_decay_steps, mu_peak, mu_valley)`——warmup 段线性从 0 升到 mu_peak，之后余弦衰减到 mu_valley。
-- token 级 SFT：`SFTPhiLossFn` 实现 `-logprob · φ(p).detach()`（φ=p(1−p)，token-mean 聚合，可选 cutoff_prob 截断 logprob）；另提供 `SFTISLossFn`（重要性采样，权重 p.detach()，对应论文式 4 的 IS——把分母假设为 1）与可关闭 φ 的标准 `SFTLossFn`。
-- 凸组合：`loss = (1-μ)·grpo_loss + μ·sft_loss`，且非专家/专家两部分各按 batch 内数量与 `train_batch_size_usual/expert` 归一化（`per_micro_batch_weight_*`）。
+- token 级 SFT：`SFTPhiLossFn` 实现 \(-\log p \cdot \varphi(p).\mathrm{detach}(),\ \varphi = p(1-p)\)，token-mean 聚合，可选 cutoff_prob 截断 logprob）；另提供 `SFTISLossFn`（重要性采样，权重 p.detach()，对应论文式 4 的 IS——把分母假设为 1）与可关闭 φ 的标准 `SFTLossFn`。
+- 凸组合：\(\mathrm{loss} = (1-\mu)\cdot \mathrm{grpo\_loss} + \mu \cdot \mathrm{sft\_loss}\)，且非专家/专家两部分各按 batch 内数量与 `train_batch_size_usual/expert` 归一化（`per_micro_batch_weight_*`）。
 
 **为何要 φ 而非纯 IS**：Figure 5 显示无 IS 混入 off-policy 数据→熵暴涨（established pattern 被破坏）；但 IS 又会让熵急剧坍缩（过度强化高概率 token、忽视低概率新 token，过度自信）。φ=p(1−p) 同时下调两端，兼顾"不坍缩 + 不破坏"。
 

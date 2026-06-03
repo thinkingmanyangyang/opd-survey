@@ -37,8 +37,8 @@ LLM 推理增强主流依赖 SFT，常配 rejection sampling：生成多候选 �
 
 ## 6. 方法详解(通俗、分步骤)
 
-1. **Sampling 阶段**：对每个位置比较 expert/amateur 的下一-token 分布，用 **D_KL(π_E‖π_A) > β** 做"信息性步骤筛选"(§2.3.1，代码实现为 full-vocab KL，`kl_div < beta` 时跳过)；在选中步上用 **plausibility 掩码**(只保留 π_E(a) ≥ α·max π_E 的 token)后，以**对比分数 v'_C(a)=log π_E(a)−log π_A(a)**，softmax 归一化为软标签 v_C(§2.3.2)。〔已核-代码 `LightR_sampling.py` 默认 **α=0.2、β=0.4**(L30-31)，amateur 固定为 **Qwen2.5-0.5B**(论文 L684)〕
-2. **Fine-tuning 阶段**：对选中步，Expert 最小化 **D_KL(v_C‖π_E)**(等价于以 v_C 为软目标的交叉熵，§2.3.3)，用 LoRA 微调，放大其推理强项。约 1K 问题级样本即可。
+1. **Sampling 阶段**：对每个位置比较 expert/amateur 的下一-token 分布，用 \(D_{\mathrm{KL}}(\pi_E \| \pi_A) > \beta\) 做"信息性步骤筛选"(§2.3.1，代码实现为 full-vocab KL，`kl_div < beta` 时跳过)；在选中步上用 **plausibility 掩码**(只保留 \(\pi_E(a) \ge \alpha \cdot \max \pi_E\) 的 token)后，以**对比分数 v'_C(a)=log π_E(a)−log π_A(a)**，softmax 归一化为软标签 v_C(§2.3.2)。〔已核-代码 `LightR_sampling.py` 默认 **α=0.2、β=0.4**(L30-31)，amateur 固定为 **Qwen2.5-0.5B**(论文 L684)〕
+2. **Fine-tuning 阶段**：对选中步，Expert 最小化 \(D_{\mathrm{KL}}(v_C \| \pi_E)\)(等价于以 v_C 为软目标的交叉熵，§2.3.3)，用 LoRA 微调，放大其推理强项。约 1K 问题级样本即可。
 
 ## 7. 实验数据集
 

@@ -34,7 +34,7 @@
 ICL 把示范"软化"进分布,得到一个既懂新任务、又仍贴近预训练分布的 teacher;在 student 自采样轨迹上对齐到该 teacher,既学到新技能又不偏离原能力。
 
 ## 5. 主要解决思路(一段话讲清核心)
-对每个 query x:student P=π_θ(·|x);teacher Q=π(·|x, c),c 为用固定 in-context 模板注入的专家示范(作"一个示例",避免逐字复制)。next token 从 P 采样(on-policy),最小化 student 与 teacher 的 token 级 KL。teacher 权重默认取 student 参数的 **EMA**(§3/§4.6 消融,非字面"同一当前模型")。论文形式化论证其等价于 on-policy RL,隐式 reward r(y,x,c)=logπ(y|x,c) − logπ_k(y|x)(§3.1 "Self-Distillation as Inverse RL",ICL 假设 π*_{k+1}≈π(·|x,c))。
+对每个 query x:student P=π_θ(·|x);teacher Q=π(·|x, c),c 为用固定 in-context 模板注入的专家示范(作"一个示例",避免逐字复制)。next token 从 P 采样(on-policy),最小化 student 与 teacher 的 token 级 KL。teacher 权重默认取 student 参数的 **EMA**(§3/§4.6 消融,非字面"同一当前模型")。论文形式化论证其等价于 on-policy RL,隐式 reward \(r(y, x, c) = \log \pi(y \mid x, c) - \log \pi_k(y \mid x)\)(§3.1 "Self-Distillation as Inverse RL",ICL 假设 π*_{k+1}≈π(·|x,c))。
 
 ## 6. 方法详解(通俗、分步骤)
 

@@ -38,10 +38,10 @@ RL 显著提升单轮 LLM（DeepSeek-R1，数学）。早期 web agent 靠 promp
 
 ## 6. 方法详解(通俗、分步骤)
 
-1. **POMDP 形式化**：状态=当前页 HTML 文本，动作∈预定义动作空间（Click/Type/Select/Scroll/Search/Exit…），终态二值奖励 r∈{0,1}。
-2. **BC warm-up**：在固定专家演示 D={(h_t,a_t)}（h_t=完整交互历史）上 SFT，L_BC=−E log πθ(a_t|h_t)。用公开 9,460 条轨迹。
+1. **POMDP 形式化**：状态=当前页 HTML 文本，动作∈预定义动作空间（Click/Type/Select/Scroll/Search/Exit…），\(r \in \{0, 1\}\)。
+2. **BC warm-up**：在固定专家演示 D={(h_t,a_t)}（h_t=完整交互历史）上 SFT，\(L_{\mathrm{BC}} = -\mathbb{E}\, \log \pi_\theta(a_t \mid h_t)\)。用公开 9,460 条轨迹。
 3. **动态上下文压缩**：新 observation 到来时把旧 s_i 替换成短模板 s'_i（"Simplified HTML"），保留完整动作历史，防 OOM；同步更新 loss mask 使损失只算在动作 token 上。
-4. **M-GRPO**：每任务采 {τ1..τG}，逐 token 优势 Ã_{i,j,t}=PPO-clip(重要性比·A_{i,j})，组相对优势 A_{i,j}=(r_i−mean(r))/std(r)，附 βKL 项。
+4. **M-GRPO**：每任务采 {τ1..τG}，逐 token 优势 \(\tilde{A}_{i,j,t} = \text{PPO-clip}(\text{ratio} \cdot A_{i,j})\)，组相对优势 \(A_{i,j} = (r_i - \mathrm{mean}(r)) / \mathrm{std}(r)\)，附 βKL 项。
 5. **并行轨迹 rollout**：G 个独立浏览器实例（各自 cookie/上下文），同起始页、独立交互 → 多样历史。
 6. **奖励**：直接用环境默认规则化二值奖励（String/URL Match、程序执行），**无 outcome reward model**。
 7. **三变体研究初始化策略**：R1（标准 BC→RL）、R1-Zero（无 SFT 直接起 RL）、R1-CoT（用 long-CoT BC 数据 SFT 初始化）。

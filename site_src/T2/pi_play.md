@@ -36,8 +36,8 @@
 ## 6. 方法详解(通俗、分步骤)
 
 - **Examiner**：带搜索工具与搜索引擎交互获取事实，生成三元组 (q, c, o)；目标为造出多样且有难度的题（含难度奖励，并 −β·KL 约束；难度奖励随正确预测数线性衰减）。
-- **Teacher**：理想目标 Eq.2 兼顾 "生成更准 rollout" 与 "不过度偏离 student"，但**实际实现并不直接优化该目标**，而是把 teacher 参数取为 student 的 **EMA 软更新**：ψ←(1−τ)ψ+τθ（Eq.11，soft-update 权重 **τ=0.05**，已核 Table 7），低成本提供稳定且随 student 缓慢演化的监督。
-- **Student**：在结果奖励 I(ô=o)（GRPO）与教师指导（−per-token reverse-KL D(πS_θ(·|q) ‖ stopgrad[πT_ψ(·|q,c)])）联合下学习。
+- **Teacher**：理想目标 Eq.2 兼顾 "生成更准 rollout" 与 "不过度偏离 student"，但**实际实现并不直接优化该目标**，而是把 teacher 参数取为 student 的 **EMA 软更新**：\(\psi \leftarrow (1-\tau)\psi + \tau\theta\quad(\tau=0.05)\)，已核 Table 7），低成本提供稳定且随 student 缓慢演化的监督。
+- **Student**：\(-D\big(\pi^S_\theta(\cdot \mid q) \,\big\|\, \mathrm{stopgrad}[\pi^T_\psi(\cdot \mid q, c)]\big)\)。
 - **蒸馏权重衰减调度**：用衰减的 **λ**（distillation 系数）逐步弱化教师指导——Qwen3-4B/8B 取 0.03/0.003/0.002，Qwen3-4B-Instruct 取 0.1/0.03/0.03。〔修正：原分析在 §6/§8 误用 "β" 指代蒸馏衰减系数；论文中蒸馏权重为 λ，β 是 examiner 难度奖励/KL 系数——已统一改为 λ〕
 
 ## 7. 实验数据集

@@ -40,20 +40,20 @@
 - 多采样估不确定性本身很贵（test-time O(K)），但可以把这笔账"摊销"到训练阶段：训练时算好 µ̂(x) 蒸进参数，部署时单次前向就能输出校准过的置信。
 
 ## 5. 主要解决思路（一段话讲清核心）
-CaOPD = **目标解耦 + target replacement**。对每个输入 x，先用 student 采 K 条 rollout、用 verifier 算经验成功率 µ̂(x)=ΣR/K；再做一次"目标替换"：把待蒸馏轨迹里的置信片段 c 改写成 µ̂(x)，同时把 teacher 特权上下文里那个原本≈1.0 的置信也改写成 µ̂(x)。然后照常跑原来的 per-token reverse-KL OPD loss——reasoning 段因为前缀和 teacher 内容都没变，等价于标准 OPD（能力克隆原样保留）；confidence 段则因为监督目标变成了 student-grounded 的 µ̂(x)，把熵坍缩和乐观偏置直接掐掉。reverse-KL 机制完全不动，无 reward 改造、无额外优化阶段。在 SDPO 下，µ̂(x) 直接复用基础训练循环已经生成的 rollout，几乎零额外成本。
+CaOPD = **目标解耦 + target replacement**。对每个输入 x，先用 student 采 K 条 rollout、用 verifier 算经验成功率 \(\hat{\mu}(x) = \sum R / K\)；再做一次"目标替换"：把待蒸馏轨迹里的置信片段 c 改写成 µ̂(x)，同时把 teacher 特权上下文里那个原本≈1.0 的置信也改写成 µ̂(x)。然后照常跑原来的 per-token reverse-KL OPD loss——reasoning 段因为前缀和 teacher 内容都没变，等价于标准 OPD（能力克隆原样保留）；confidence 段则因为监督目标变成了 student-grounded 的 µ̂(x)，把熵坍缩和乐观偏置直接掐掉。reverse-KL 机制完全不动，无 reward 改造、无额外优化阶段。在 SDPO 下，µ̂(x) 直接复用基础训练循环已经生成的 rollout，几乎零额外成本。
 
 ## 6. 方法详解（通俗、分步骤）
 **生成格式约定**：每条生成 y=(a, c) 切成两段——推理段 a（含最终答案）+ 置信段 c（形如 "Confidence: 0.85" 的 verbalized confidence）。val(c)∈[0,1] 是解析出的标量置信。
 
 **理论三命题（Appendix A 给全证明）**：
 
-- **命题 1（信息差 → 不可辨识）**：当 teacher 特权上下文 Z 对正确性 R 有超出 X 的信息（条件互信息 I(R;Z|X)>0）时，teacher 条件成功率 µT(X,Z) 对 X 不可测（不存在 g(X)=µT 几乎处处成立）；且在平方误差下，X-可测的最优预测恰好是 student 部署成功率 µ(X)，残差严格为正。→ 用 teacher 的笃定当置信目标，从信息论上就是错的。
-- **命题 2（特权条件 → 熵坍缩）**：当 I(A;Z|X)>0，teacher 轨迹分布的期望熵严格低于仅给 X 的条件熵；最小化对该分布的 reverse KL，会逼 student 内部 logits 人为锐化。
+- **命题 1（信息差 → 不可辨识）**：当 teacher 特权上下文 Z 对正确性 R 有超出 X 的信息（条件互信息 \(I(R; Z \mid X) > 0\)）时，teacher 条件成功率 µT(X,Z) 对 X 不可测（不存在 g(X)=µT 几乎处处成立）；且在平方误差下，X-可测的最优预测恰好是 student 部署成功率 µ(X)，残差严格为正。→ 用 teacher 的笃定当置信目标，从信息论上就是错的。
+- **命题 2（特权条件 → 熵坍缩）**：当 \(I(A; Z \mid X) > 0\)，teacher 轨迹分布的期望熵严格低于仅给 X 的条件熵；最小化对该分布的 reverse KL，会逼 student 内部 logits 人为锐化。
 - **命题 3（选择偏置 → 乐观）**：特权上下文通常取自成功/高质量样本（Dhelpful），使 teacher 期望正确率 ≥ student 边际能力，于是蒸进 student 的隐式目标是对真实部署成功率的**系统性上偏**估计。
 
 **算法（Algorithm 1）**：
 
-1. **学生 grounded 置信估计**：对 x 采 K 条 (a_k,c_k)~π_θ(·|x)，verifier 打分，µ̂(x)=1/K·Σ R(x,a_k)。（SDPO 下复用已有 rollout，只多一次轻量 verifier 评估。）
+1. **学生 grounded 置信估计**：对 x 采 K 条 (a_k,c_k)~π_θ(·|x)，verifier 打分，\(\hat{\mu}(x) = \tfrac{1}{K} \sum R(x, a_k)\)。（SDPO 下复用已有 rollout，只多一次轻量 verifier 评估。）
 2. **目标替换**：另采一条待蒸馏轨迹 y=(a,c)；(i) 把 c 换成 µ̂(x) 得 ỹ=(a, µ̂(x))；(ii) 构造特权上下文 z，把其中原≈1.0 的置信改写成 µ̂(x) 得 z̃。
 3. **蒸馏**：在修订轨迹 ỹ 上算 per-token reverse KL（式 7）：推理位置 t∈Ia 保留"能力克隆"（与标准 OPD 等价），置信位置 t∈Ic 变成"student-grounded 校准"。AdamW 更新。
 

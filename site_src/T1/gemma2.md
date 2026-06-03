@@ -34,12 +34,12 @@
 
 ## 6. 方法详解(通俗、分步骤)
 
-- **预训练知识蒸馏(§3.2)**:给定大教师,逐 token 用其概率分布 P_T(x|x_c) 作软目标,最小化 min_{P_S} Σ_x −P_T(x|x_c) log P_S(x|x_c)。2B、9B 用此蒸馏训练;27B 用标准 next-token(无更大同族教师)。
+- **预训练知识蒸馏(§3.2)**:给定大教师,逐 token 用其概率分布 \(P_T(x \mid x_c)\) 作软目标,最小化 \(\min_{P_S} \sum_x -P_T(x \mid x_c) \log P_S(x \mid x_c)\)。2B、9B 用此蒸馏训练;27B 用标准 next-token(无更大同族教师)。
 - **后训练(§4)**:
   - **SFT**:在合成+真实 prompt 上行为克隆,响应主要由更大教师合成;并**在学生自身分布上从教师蒸馏(on-policy distillation,引 GKD Agarwal 2024 / MiniLLM Gu 2024)**。
   - **RLHF**:沿用 Gemma 1.1 类似算法,但 reward model 大一个数量级,策略基于与 SFT 相同的 prompt,英文偏好数据训 reward model。
   - **模型平均(model merging/averaging)**:对各阶段后得到的模型做平均提升整体性能(WARP/WARM 思路)。
-- **架构要点**:局部滑窗注意力(窗口 4096)与全局注意力(8192)逐层交替、GQA(num_groups=2)、logit soft-capping(注意力层 50.0、最终层 30.0,经 tanh 软截断:logits←soft_cap·tanh(logits/soft_cap))、pre+post RMSNorm。
+- **架构要点**:局部滑窗注意力(窗口 4096)与全局注意力(8192)逐层交替、GQA(num_groups=2)、logit soft-capping(注意力层 50.0、最终层 30.0,经 tanh 软截断:\(\mathrm{logits} \leftarrow \mathrm{soft\_cap} \cdot \tanh(\mathrm{logits}/\mathrm{soft\_cap})\))、pre+post RMSNorm。
 - **数据**:后训练用 LMSYS-chat-1M 的 **prompt(不用其答案)**;过滤聚焦提升 helpfulness、降低 safety/hallucination 危害、去评测集污染、降 recitation 风险。
 
 ## 7. 实验数据集

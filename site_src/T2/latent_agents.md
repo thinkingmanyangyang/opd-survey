@@ -34,13 +34,13 @@ Multi-agent debate（Du et al. 2023; Liang et al. 2024）通过多模型多轮�
 辩论的增益来自中间多视角交互而非仅最终结论，所以要在完整 trace 上学结构；学会结构后，用"格式奖励衰减 + 长度上限收缩"逼模型把多视角分析从显式文本转入潜空间，直接产答案。内化后不同 agent 的"声音"应在表示空间留下线性可分的痕迹。
 
 ## 5. 主要解决思路(一段话讲清核心)
-三阶段 IMAD：(1) 用标准 multi-agent debate（n=3 agents, m=2 rounds, GPT-3.5-turbo 当 agent）在算术题上生成 944 条带结构标签的辩论 trace；(2) 在完整 trace 上做 next-token CE 学辩论格式（SFT）；(3) GRPO 内化，奖励 `r=w_fmt·R_fmt+w_clip·R(y;l)`，R_fmt 为结构标签匹配的格式奖励（权重 w_fmt 随训练 1.0→0.05 衰减），R(y;l) 为"正确答案出现在前 l token 内记 1"的长度裁剪奖励（l 随训练 2000→500 退火），两者协同迫使模型把分析压进潜空间。
+三阶段 IMAD：(1) 用标准 multi-agent debate（n=3 agents, m=2 rounds, GPT-3.5-turbo 当 agent）在算术题上生成 944 条带结构标签的辩论 trace；(2) 在完整 trace 上做 next-token CE 学辩论格式（SFT）；(3) GRPO 内化，奖励 \(r = w_{\text{fmt}} \cdot R_{\text{fmt}} + w_{\text{clip}} \cdot R(y; l)\)，R_fmt 为结构标签匹配的格式奖励（权重 w_fmt 随训练 1.0→0.05 衰减），R(y;l) 为"正确答案出现在前 l token 内记 1"的长度裁剪奖励（l 随训练 2000→500 退火），两者协同迫使模型把分析压进潜空间。
 
 ## 6. 方法详解(通俗、分步骤)
 
 1. **数据收集**：标准 debate（n=3, m=2, GPT-3.5-turbo）在 6 个两位数表达式算术题上生成 transcript；过滤无 majority consensus 的；加结构标签 `<|Agent 1|>`/`<|Round 1|>`/`<|Consensus|>`/`<|endofdebate|>`；共 **944** 条 {Question, Trace, Answer}。
 2. **Debate Structure Learning（SFT）**：在完整辩论 trace（非仅最终输出）上做自回归 CE。
-3. **RL for Internalization（GRPO）**：`r=w_fmt·R_fmt+w_clip·R(y;l)`；w_fmt 1.0→0.05 衰减、l 2000→500 退火，把多视角分析转入潜空间直接产答案。
+3. **RL for Internalization（GRPO）**：\(r = w_{\text{fmt}} \cdot R_{\text{fmt}} + w_{\text{clip}} \cdot R(y; l)\)；w_fmt 1.0→0.05 衰减、l 2000→500 退火，把多视角分析转入潜空间直接产答案。
 4. **机制分析**：用 difference-in-means 提取 agent-specific steering vector，发现内化产生线性可分的 agent 子空间；对恶意 agent 子空间做 negative steering 可在保任务性能下抑制有害行为，且内化后比直接 steer base model 更有效。
 - 两阶段均用 LoRA；GRPO 阶段从 SFT 的 LoRA checkpoint 起再叠一层 LoRA。
 

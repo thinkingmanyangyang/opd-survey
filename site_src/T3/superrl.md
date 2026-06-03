@@ -45,7 +45,7 @@ LLM 推理任务常有大量高质量离线数据（专家标注 / 蒸馏轨迹�
 论文给出两个变体（代码也提供）：
 
 - **Hybrid-Adv-Gated**（`HybridAdvGatedActor`）：有效 PG 信号→PPO，否则→SFT，同样不融合（比 SuperRLActor 少一层 reward 检查，仅判 advantage）。
-- **Hybrid-Log-Sigma**（`HybridLogSigmaActor`）：用学习到的不确定性权重软融合：`L = exp(−2·σ_pg)·L_ppo + exp(−2·σ_sft)·L_sft + (σ_pg + σ_sft)`，`log_sigma_pg/sft` 为可学习参数加入优化器（init 0 / 1）；并带 σ 随步衰减（`sigma_decay_rate=0.99`、`min_log_sigma=−2.0`）。论文指出变体虽有改进但需额外调参/开销，主推简洁的实例级回退。
+- **Hybrid-Log-Sigma**（`HybridLogSigmaActor`）：用学习到的不确定性权重软融合：\(L = \exp(-2 \cdot \sigma_{\mathrm{pg}}) \cdot L_{\mathrm{ppo}} + \exp(-2 \cdot \sigma_{\mathrm{sft}}) \cdot L_{\mathrm{sft}} + (\sigma_{\mathrm{pg}} + \sigma_{\mathrm{sft}})\)，`log_sigma_pg/sft` 为可学习参数加入优化器（init 0 / 1）；并带 σ 随步衰减（`sigma_decay_rate=0.99`、`min_log_sigma=−2.0`）。论文指出变体虽有改进但需额外调参/开销，主推简洁的实例级回退。
 
 ## 7. 实验数据集
 覆盖稠密奖励任务（GSM8K、MetaMathQA）与稀疏奖励任务（OpenR1-Math-220k、PRM12K/MixChain-Z-PRM12K），另含 LIMO、AIME24/AIME25、HiTab（层级表格 QA）。Backbone 跨三族：Qwen2.5（0.5B/1.5B/3B/7B）、LLaMA 3.x（3.2 1B/3B、3.1 8B）、DeepSeek-R1-Distilled。SFT/SFT+RL 基线用相同数据/学习率/上下文长度；actor 与 critic 默认从同一预训练 checkpoint 初始化。

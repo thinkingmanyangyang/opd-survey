@@ -1,6 +1,6 @@
 # luffy — Learning to Reason under Off-Policy Guidance (LUFFY)
 
-> **一句话重点 (TL;DR)**：把更强策略(DeepSeek-R1)的 off-policy 推理轨迹与 on-policy rollout 混进同一 GRPO group 做组内归一化(Mixed-Policy GRPO)，再用 policy shaping f(x)=x/(x+0.1) 放大低概率关键动作的梯度、抑制熵坍塌;在弱模型/难数据上突破基座上界，六数学基准均值较此前 +6.4、三 OOD +6.2。
+> **一句话重点 (TL;DR)**：把更强策略(DeepSeek-R1)的 off-policy 推理轨迹与 on-policy rollout 混进同一 GRPO group 做组内归一化(Mixed-Policy GRPO)，再用 \(f(x) = \frac{x}{x + 0.1}\) 放大低概率关键动作的梯度、抑制熵坍塌;在弱模型/难数据上突破基座上界，六数学基准均值较此前 +6.4、三 OOD +6.2。
 
 **元信息**：arXiv 2504.14945 (v5, 2025-06-22) ｜ 上海 AI 实验室、西湖大学、南京大学、香港中文大学(Yafu Li 等;Project Lead Yafu Li，实习期间完成) ｜ NeurIPS 2025(2025-09-19 接收) ｜ 主题 T3/T4 统一 SFT-RL / off-policy 指导的代表作(相关性 High;SRFT、Prefix-RFT 均建立其上、沿用 mix_src) ｜ 代码 https://github.com/ElliottYan/LUFFY(已克隆 ~36MB) ｜ 框架 veRL，rollout 用 vLLM
 
@@ -39,7 +39,7 @@ Mixed-Policy GRPO：在 GRPO 的 advantage 计算中，把 off-policy 教师轨�
 ## 6. 方法详解(通俗、分步骤)
 
 - **Mixed-Policy GRPO**：off-policy 教师 prefix 与 on-policy rollout 同 group 组内归一化。off-policy 项 IS 比率，代码 `compute_token_on_off_policy_loss`，off_ratio 仅作用于 prefix_mask;on-policy 项按 advantage 正负标准处理。
-- **Policy Shaping via Regularized Importance Sampling**：论文 Eq.6/7 显式给出 **f(x)=x/(x+γ)，γ=0.1**(代码 `off_policy_reshape="p_div_p_0.1"` → `off_ratio/(off_ratio+0.1)`，train.sh 默认即此)，作用于 off-policy IS 比率，放大"低概率但关键"动作的梯度权重(f′(x)∝1/(x+γ)²)。注：论文为计算效率取 **π_old=1**，故 off_ratio=exp(log_prob)(`mix_core_alg.py` L165/186)。〔已核-Eq.6-8 + 代码〕
+- **Policy Shaping via Regularized Importance Sampling**：论文 Eq.6/7 显式给出 \(f(x) = \frac{x}{x + \gamma},\ \gamma = 0.1\)(代码 `off_policy_reshape="p_div_p_0.1"` → `off_ratio/(off_ratio+0.1)`，train.sh 默认即此)，作用于 off-policy IS 比率，放大"低概率但关键"动作的梯度权重(\(f'(x) \propto \frac{1}{(x+\gamma)^2}\))。注：论文为计算效率取 **π_old=1**，故 off_ratio=exp(log_prob)(`mix_core_alg.py` L165/186)。〔已核-Eq.6-8 + 代码〕
 - **SFT loss 项**：代码 `compute_sft_pure_loss` 实为 **-log_prob 的 masked mean**(对 prefix 的纯 NLL，`mix_core_alg.py` L7-9)，经 `sft_loss_coef` 与 off_pg_loss、可选 KL loss 组合(`mix_actor.py`)。〔已核-代码确为纯 -log_prob〕
 - **off-policy IS 默认不裁剪**：train.sh 仅设 `use_off_policy_loss=True` 与 `off_policy_reshape="p_div_p_0.1"`，未设 off_max_clip/off_min_clip(默认 None，与论文"对 off-policy rollout 省略 clip"一致)。〔已核〕
 
@@ -59,7 +59,7 @@ Mixed-Policy GRPO：在 GRPO 的 advantage 计算中，把 off-policy 教师轨�
 "突破基座上界"由弱模型/难数据上 on-policy 失败而 LUFFY 成功直接支撑;"imitation+exploration 平衡优于纯 SFT/纯 RL"由 +6.4 数学/+6.2 OOD 的对照支撑;OOD 增益佐证非过拟合模仿。policy shaping 的抑熵坍塌作用有 Fig.2 与方差分析支撑。证据与主张吻合。
 
 ## 10. 逻辑自洽性(中性评估)
-自洽：混入同 group 归一化使 teacher 轨迹在自身失败时主导信号、成功时退居次位，机制与"动态平衡"叙事一致;f(x)=x/(x+0.1) 的 f′∝1/(x+γ)² 确实在 x→0 处放大梯度，与"保护低概率关键动作"目标一致;代码(off_ratio、SFT=-log_prob、不裁剪)与论文公式逐一对应。论文 Theorem 1 给出 importance-weighted 梯度的收敛/方差分析，理论自洽性较强。
+自洽：混入同 group 归一化使 teacher 轨迹在自身失败时主导信号、成功时退居次位，机制与"动态平衡"叙事一致;f(x)=x/(x+0.1) 的 \(f' \propto \frac{1}{(x+\gamma)^2}\) 确实在 x→0 处放大梯度，与"保护低概率关键动作"目标一致;代码(off_ratio、SFT=-log_prob、不裁剪)与论文公式逐一对应。论文 Theorem 1 给出 importance-weighted 梯度的收敛/方差分析，理论自洽性较强。
 
 ## 11. 残留问题 / 局限
 

@@ -44,10 +44,10 @@
 ## 6. 方法详解（通俗、分步骤）
 
 1. **离线噪声采集**：弱模型 πw（Qwen2.5-1.5B-Instruct）对训练集每题采 M 次（实验 M=8），过滤出 verifier 判错的轨迹，构成池 W(q)。这是一次性预处理，训练中固定、**每步零额外成本**。若某题 M 次都没产生格式良好的错误答案，则其 denoise 槽用额外的标准 main rollout 顶替。
-2. **每步采样**：每题采 N 个 main rollout（标准 on-policy，y∼πθ(·|q)）+ K 个 denoise rollout。denoise rollout 取错误轨迹 w 的前 p=max(1, ⌈ρ|w|⌉) 个 token 作前缀 w₁:ₚ，策略续写 y>p∼πθ(·|q, w₁:ₚ)。
-3. **预算折叠 (output budget & folding)**：两类 rollout 共享同一响应窗口宽度 R 以保证公平；前缀已占 p token，续写折叠进剩余预算，保留长度 L=min(T_{y>p}, R−p)，超出 R 的尾部 token 丢弃。verifier 对完整折叠响应 ỹ=(前缀, 续写) 打奖励。
+2. **每步采样**：每题采 N 个 main rollout（标准 on-policy，y∼πθ(·|q)）+ K 个 denoise rollout。\(p = \max(1, \lceil \rho |w| \rceil),\ \text{prefix } w_{1:p},\quad y_{>p} \sim \pi_\theta(\cdot \mid q, w_{1:p})\)。
+3. **预算折叠 (output budget & folding)**：两类 rollout 共享同一响应窗口宽度 R 以保证公平；前缀已占 p token，续写折叠进剩余预算，\(L = \min(T_{y_{>p}}, R - p)\)，超出 R 的尾部 token 丢弃。verifier 对完整折叠响应 ỹ=(前缀, 续写) 打奖励。
 4. **只更新 on-policy 续写**：训练只对续写部分 y_{p+1:p+L} 算梯度；off-policy 前缀被 mask，避免 PPO 对重 off-policy token 的不稳定。
-5. **token 级 GRPO**：同题 N+K 条轨迹共享同一 advantage baseline（μ_q、σ_q 在 N+K 上统计，Eq.5），用 PPO clip 代理目标（ε_low=ε_high）。联合目标 J = N/(N+K)·J_main + K/(N+K)·J_denoise（Eq.8）。
+5. **token 级 GRPO**：同题 N+K 条轨迹共享同一 advantage baseline（μ_q、σ_q 在 N+K 上统计，Eq.5），用 PPO clip 代理目标（ε_low=ε_high）。\(J = \frac{N}{N+K} J_{\mathrm{main}} + \frac{K}{N+K} J_{\mathrm{denoise}}\)。
 6. **两条设计经验**：(i) 噪声不能过强——过长错误前缀会把模型推向 overthinking（更长自纠错循环、更高不确定性）；(ii) 不要更新 off-policy 前缀——否则训练不稳，与"PPO 式目标对重 off-policy token 敏感"的近期观察一致。
 
 ## 7. 实验数据集

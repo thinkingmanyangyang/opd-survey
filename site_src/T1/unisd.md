@@ -33,15 +33,15 @@
 自蒸馏的成败取决于三件事：用什么信号（可靠性）、匹配什么表示（对齐）、每步更新多强（稳定）。这三者可由互补组件分别处理——agreement 决定当前步信任哪些信号、EMA 平滑 teacher 跨步漂移、对比学习区分有效监督与貌似合理的错误、特征匹配把表示对齐拉到输出分布之外、散度裁剪防稀有高散度 token 主导。把它们放进同一 on-policy 训练环即可受控消融"谁起作用、如何交互"。
 
 ## 5. 主要解决思路(一段话讲清核心)
-统一目标 L=E[Σ_t m_t w_t D(πθ‖π_teacher) + λ_aux L_aux]（m_t token 掩码、w_t 可靠性权重、D token 级散度）。在此框架下逐组件开关做大规模消融，再把五组件拼成整合版 UniSD\*：agreement+对比选可靠信号、特征匹配传表示、EMA+裁剪稳优化，全部在同一 on-policy loop 内。
+统一目标 \(L = \mathbb{E}\!\left[ \sum_t m_t\, w_t\, D(\pi_\theta \,\|\, \pi_{\mathrm{teacher}}) + \lambda_{\mathrm{aux}} L_{\mathrm{aux}} \right]\)（m_t token 掩码、w_t 可靠性权重、D token 级散度）。在此框架下逐组件开关做大规模消融，再把五组件拼成整合版 UniSD\*：agreement+对比选可靠信号、特征匹配传表示、EMA+裁剪稳优化，全部在同一 on-policy loop 内。
 
 ## 6. 方法详解(通俗、分步骤)
 
-- **(a) Multi-Teacher Agreement**：用多个 task-preserving 上下文视角（retrieved / random few-shot / induced 指令）的同一 teacher 重打分学生轨迹，token 级 δt=A({ℓ^k_t})、序列级 δ_seq=A({L^k}) 估不一致（A 为方差/极差等变率统计），转成可靠性权重 w_t；所有视角共享一个 teacher、批处理，不额外复制 teacher。
-- **(b) EMA Teacher**：θ̄_n=βθ̄_{n-1}+(1−β)θ_n，用 EMA teacher 替代主 teacher 做时间平滑目标，防 teacher 跨步漂移传播瞬时错误/过自信。
-- **(c) Token-Level Contrastive Learning**：margin 目标 L_aux=Σ m_t max(0, γ+d^+_t−d^-_t)，d^±_t=|ℓθ_t−ℓ^±_t| 为学生到正/负条件 teacher 信号的距离；负例 y^- 由 LLM 生成貌似合理错误、腐化推理或 WordNet/PPDB/TextAttack 词法扰动构造。
-- **(d) Feature Matching**：L_feat=Σ m_t‖f^θ_t−f^*_t‖²，实现里匹配末层隐状态。
-- **(e) Divergence Clipping**：先算加权 JSD D^(α)_t（α∈(0,1) 插值 forward/reverse KL，也支持纯 forward/reverse 端点），再 cap eD_t=min(D^(α)_t, κ)；与 agreement 权 w_t 组成 L_clip=Σ m_t w_t eD_t / Σ m_t w_t。
+- **(a) Multi-Teacher Agreement**：用多个 task-preserving 上下文视角（retrieved / random few-shot / induced 指令）的同一 teacher 重打分学生轨迹，token 级 \(\delta_t = A(\{\ell^k_t\})\)、序列级 \(\delta_{\mathrm{seq}} = A(\{L^k\})\) 估不一致（A 为方差/极差等变率统计），转成可靠性权重 w_t；所有视角共享一个 teacher、批处理，不额外复制 teacher。
+- **(b) EMA Teacher**：\(\bar{\theta}_n = \beta \bar{\theta}_{n-1} + (1 - \beta)\theta_n\)，用 EMA teacher 替代主 teacher 做时间平滑目标，防 teacher 跨步漂移传播瞬时错误/过自信。
+- **(c) Token-Level Contrastive Learning**：margin 目标 \(L_{\mathrm{aux}} = \sum m_t \max(0,\ \gamma + d^{+}_t - d^{-}_t)\)，\(d^{\pm}_t = |\ell^\theta_t - \ell^{\pm}_t|\) 为学生到正/负条件 teacher 信号的距离；负例 y^- 由 LLM 生成貌似合理错误、腐化推理或 WordNet/PPDB/TextAttack 词法扰动构造。
+- **(d) Feature Matching**：\(L_{\mathrm{feat}} = \sum m_t \|f^\theta_t - f^{*}_t\|^2\)，实现里匹配末层隐状态。
+- **(e) Divergence Clipping**：先算加权 JSD D^(α)_t（α∈(0,1) 插值 forward/reverse KL，也支持纯 forward/reverse 端点），再 \(\widetilde{D}_t = \min(D^{(\alpha)}_t,\, \kappa)\)；与 agreement 权 w_t 组成 \(L_{\mathrm{clip}} = \sum m_t w_t\, \widetilde{D}_t \,\big/\, \sum m_t w_t\)。
 - **UniSD\***：上述全开（Algorithm 1）；从监督/表示/优化三视角组合 signal selection + 表示对齐 + 时间平滑 + loss 稳定。
 
 ## 7. 实验数据集

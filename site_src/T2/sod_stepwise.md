@@ -36,9 +36,9 @@ Agentic 能力多依赖大模型，推理成本高；将其迁移到可端侧部
 ## 6. 方法详解(通俗、分步骤)
 
 - d_k：实现为该 step 内 token 的 mean(|log π_θ − log π_teacher|)，作为 teacher 监督可靠性代理。
-- 权重（Eq.7）：w_1=1；step k≥2 权重为 1..k−1 各相邻发散比 (d_u+ε)/(d_{u+1}+ε) 的**累乘**，并以 1+δ 为上界（δ=0.2，ε=1e−6）。发散单调上升 → 累乘 <1 抑制被污染信号（Appendix D.4 证加权二阶矩被压制 O((d1/dk)²)）；d 下降（重对齐）→ 蒸馏强度回升。
+- 权重（Eq.7）：w_1=1；step k≥2 权重为 1..k−1 各相邻发散比 \((d_u + \varepsilon) / (d_{u+1} + \varepsilon)\) 的**累乘**，并以 1+δ 为上界（δ=0.2，ε=1e−6）。发散单调上升 → 累乘 <1 抑制被污染信号（Appendix D.4 证加权二阶矩被压制 \(O\left((d_1/d_k)^2\right)\)）；d 下降（重对齐）→ 蒸馏强度回升。
 - 施加粒度：w_k 作用于该 step 全部 token（非逐 token 均匀施加）。
-- 联合目标：L = L_GRPO + L_OPD（OPD 系基线均用此口径）；开销可忽略（d_k/w_k 复用 OPD 前向已有的师生 logprob，仅 O(K) 标量运算）。
+- 联合目标：\(L = L_{\mathrm{GRPO}} + L_{\mathrm{OPD}}\)（OPD 系基线均用此口径）；开销可忽略（d_k/w_k 复用 OPD 前向已有的师生 logprob，仅 O(K) 标量运算）。
 
 ## 7. 实验数据集
 
@@ -68,6 +68,6 @@ Agentic 能力多依赖大模型，推理成本高；将其迁移到可端侧部
 ## 12. 开源代码与框架(链接+框架+代码可得性)
 
 - 仓库 https://github.com/YoungZ365/SOD （已克隆约 23MB）。框架：veRL[76] + Open-AgentRL[52]（`recipe/demystify/`，复用其 sandbox_fusion 工具配置）+ ReTool（`recipe/retool/`）；rollout 走 vLLM（TP=4），SandBoxFusion 作 python 解释器、最多 16 轮工具调用。
-- **〔重要更正——核心算法已开源〕** 与早前"step-wise 重加权核心损失未在仓库定位到"的判断相反：核心实现确在已发布代码中。`verl/trainer/ppo/ray_trainer.py:363 compute_stepwise_opd_weights` 完整实现 Eq.6/7——按 response_mask 提取 step 边界、`d_k = mean(|log π_θ − log π_teacher|)`、`w_1=1`、`w_k = min(∏_{u=1}^{k-1}(d_u+ε)/(d_{u+1}+ε), 1+δ)`、再 broadcast 到该 step 全部 token；由 `ray_trainer.py:878 _apply_token_kl_regularizer`（line 1622 处调用）将其乘到 OPD 优势项 `weighted_opd = opd_coef * stepwise_weights * raw_local_adv`。配置见 `verl/trainer/config/algorithm.py` 的 `TokenKLRegConfig`（stepwise_enable/epsilon/delta/opd_coef），运行脚本 `examples/SOD/run_sod.sh` 显式传入 `+algorithm.token_kl_reg.stepwise_*`。代码与论文 Eq.7 精确一致，可复现。
+- **〔重要更正——核心算法已开源〕** 与早前"step-wise 重加权核心损失未在仓库定位到"的判断相反：核心实现确在已发布代码中。`verl/trainer/ppo/ray_trainer.py:363 compute_stepwise_opd_weights` 完整实现 Eq.6/7——按 response_mask 提取 step 边界、`\(d_k = \mathrm{mean}(|\log \pi_\theta - \log \pi_{\mathrm{teacher}}|)\)`、`w_1=1`、`\(w_k = \min\left(\prod_{u=1}^{k-1} \frac{d_u + \varepsilon}{d_{u+1} + \varepsilon},\; 1 + \delta\right)\)`、再 broadcast 到该 step 全部 token；由 `ray_trainer.py:878 _apply_token_kl_regularizer`（line 1622 处调用）将其乘到 OPD 优势项 `\(\mathrm{weighted\_opd} = \mathrm{opd\_coef} \cdot \mathrm{stepwise\_weights} \cdot \mathrm{raw\_local\_adv}\)`。配置见 `verl/trainer/config/algorithm.py` 的 `TokenKLRegConfig`（stepwise_enable/epsilon/delta/opd_coef），运行脚本 `examples/SOD/run_sod.sh` 显式传入 `+algorithm.token_kl_reg.stepwise_*`。代码与论文 Eq.7 精确一致，可复现。
 - **〔次要差异〕** 配置 dataclass 默认 `stepwise_delta=0.5`，但 `run_sod.sh` 覆写为 0.2（论文值），复现须用脚本而非 dataclass 默认。
 - 训练硬件：单节点 8×H20（96GB）；0.6B/1.7B 1 epoch 约 2–3 天，4B/14B teacher 约 5–6 天；统一超参（AdamW lr=1e-6、batch 64、mini-batch 16、prompt≤2560、response≤20480、训练每 prompt 采 16、验证 32）；所有实验 5 个随机种子重复。

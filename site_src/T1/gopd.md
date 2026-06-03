@@ -34,18 +34,18 @@
 
 ## 4. 主要灵感 / 核心直觉
 
-- **关键推导（式 7）**：引入第三方 πref 后，OPD 目标 = max E[ log(π∗/πref) − D_KL(πθ‖πref) ]，恰是 KL-约束 RL（式 2）在 reward r=log(π∗/πref)、β=1 时的特例。
+- **关键推导（式 7）**：引入第三方 πref 后，OPD 目标 = \(\max \mathbb{E}[\log(\pi^* / \pi_{\mathrm{ref}}) - D_{\mathrm{KL}}(\pi_\theta \| \pi_{\mathrm{ref}})]\)，恰是 KL-约束 RL（式 2）在 reward \(r = \log(\pi^* / \pi_{\mathrm{ref}})\)、β=1 时的特例。
 - 该 token 级 reward 与 DPO 的 implicit reward 同形（式 10）；它捕捉从 ref 到 teacher 的对数概率位移，且 π∗ 与 πref 可不同规模。
 - 既然 OPD 只是 β=1 的特例，那就把 1/β 暴露成可调 λ：λ>1 等于把 reward 权重"外推"出 teacher。
 
 ## 5. 主要解决思路(一段话讲清核心)
-G-OPD 目标（式 11）：max E[ **λ**·log(π∗/πref) − D_KL(πθ‖πref) ]，其中 λ=1/β。最优解满足 logπθ = logπ∗ + (λ−1)(logπ∗ − logπref)（式 12）：λ∈(0,1) 为 **reward interpolation**（学生行为/长度介于 ref 与 teacher）；**λ>1 为 reward extrapolation（ExOPD）**，学生额外拟合 (λ−1)(logπ∗−logπref) 这一外推项，可越过 teacher。reference 的选择在 λ≠1 时影响目标：**强→弱蒸馏**里把 πref 从学生 base 换成 teacher 的 pre-RL base（**reward correction**，式 13），reward log(π∗/π^teacher_base) 才是 teacher RL 诱导的良定义 implicit reward，比 log(π∗/π^student_base) 噪声更小。
+G-OPD 目标（式 11）：\(\max \mathbb{E}[\lambda \cdot \log(\pi^* / \pi_{\mathrm{ref}}) - D_{\mathrm{KL}}(\pi_\theta \| \pi_{\mathrm{ref}})]\)，其中 λ=1/β。最优解满足 \(\log\pi_\theta = \log\pi^* + (\lambda-1)(\log\pi^* - \log\pi_{\mathrm{ref}})\)（式 12）：λ∈(0,1) 为 **reward interpolation**（学生行为/长度介于 ref 与 teacher）；**λ>1 为 reward extrapolation（ExOPD）**，学生额外拟合 \((\lambda-1)(\log\pi^* - \log\pi_{\mathrm{ref}})\) 这一外推项，可越过 teacher。reference 的选择在 λ≠1 时影响目标：**强→弱蒸馏**里把 πref 从学生 base 换成 teacher 的 pre-RL base（**reward correction**，式 13），reward log(π∗/π^teacher_base) 才是 teacher RL 诱导的良定义 implicit reward，比 log(π∗/π^student_base) 噪声更小。
 
 ## 6. 方法详解(通俗、分步骤)
 
 1. **造领域 teacher**：对同一 base（Qwen3-4B-Non-Thinking）分别在 math/code 数据上做 GRPO，得 -RL-Math / -RL-Code 专家。
 2. **跑 G-OPD**：在原 student 上扫 λ∈{0,0.25,0.5,0.75,1.0,1.25,1.5}（λ=0 即初始态，λ=1 即标准 OPD）；此设定 reference 自然固定为 student base。
-3. **梯度（式 14）**：token 级优势 A_t = (logπθ−logπ∗) + (λ−1)(logπref−logπ∗)；用 discount=0 的 next-token 近似。
+3. **梯度（式 14）**：token 级优势 \(A_t = (\log\pi_\theta - \log\pi^*) + (\lambda-1)(\log\pi_{\mathrm{ref}} - \log\pi^*)\)；用 discount=0 的 next-token 近似。
 4. **多 teacher 合并**：把 math/code 两专家用 ExOPD（固定 **λ=1.25**，不再单独调）合回原 base，得统一学生。
 5. **强→弱蒸馏**：teacher = Qwen3-30B-A3B-Instruct-2507，student = Qwen3-1.7B/4B；默认 πref=student base；若有 teacher pre-RL base 则用 reward correction 进一步提升。
 6. GRPO 与 G-OPD 都启用 token-level rollout correction 缓解训推失配；基于 veRL。〔核对：代码侧 G-OPD 经 `actor_rollout_ref.actor.policy_loss.lambda_vals`（ExOPD=1.25）在 verl(v0.6.1) `dp_actor.py` 实现，多/单 teacher 分支携带 teacher logits；脚本见 `verl/examples/g_opd/`。〕

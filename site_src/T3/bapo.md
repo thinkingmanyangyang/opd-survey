@@ -44,7 +44,7 @@ BAPO（Balanced Policy Optimization with Adaptive Clipping）在 GRPO/PPO 代理
 
 ## 6. 方法详解（通俗、分步骤）
 
-- 代理目标仍是 PPO/GRPO 的 min(r·A, clip(r,1−ε,1+ε)·A)，但裁剪界不再固定。
+- 代理目标仍是 PPO/GRPO 的 \(\min\!\left(r \cdot A,\; \mathrm{clip}(r, 1-\varepsilon, 1+\varepsilon) \cdot A\right)\)，但裁剪界不再固定。
 - **论文 Algorithm 1 的搜索顺序**：从 c_low=a−、c_high=a+ 起，while 循环内**先增 c_high**（步长 δ1，优先纳入更多低概率正 token）至 b+；不够再增 c_low（步长 δ2，过滤低概率负 token）——即"先 c_high 后 c_low"，单 while 内交替。
 - **〔code 不一致，已核〕**：开源实现 `recipe/bapo/policy_loss.py::compute_policy_loss_bapo` 顺序与论文**相反**——先 "adjust lower clip range first"（增 c_low 到 ratio_lower_max），不满足再 "increase upper bound"（增 c_high），且为**两段顺序循环**而非论文的单 while 交替。差异不改方法本质（都为满足正 token 贡献占比而扩裁剪窗），但与 Algorithm 1 表述不符，**复现以代码实际行为为准**。
 - **〔code 额外细节，已核〕**：代码对负优势样本另含 **dual-clip**（clip_ratio_c 默认 3.0），论文 Eq.8 正文未强调。

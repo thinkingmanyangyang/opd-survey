@@ -38,13 +38,13 @@ RLVR（OpenAI o1、DeepSeek-R1、Kimi 等）通过可验证奖励（数学答案
 - **去 clip**：clip 会压制高信息量、低概率事件的梯度，正是要吸收的新知识，故移除。
 
 ## 5. 主要解决思路(一段话讲清核心)
-在 RLVR 训练中同时混入内部 on-policy rollout（Do，用标准 PG）与静态外部数据（De）。对 De，用 token 级 MIS 比 r^m = 2πθ / (πω + πθold) 校正分布失配，其中未知 πω 用 Bayes 最优估计 ½πθold + ½U（U 为均匀分布，Theorem 3.2）；再乘以 focal-style 探索优势 C = (1−detach(πθ(e_t)))^γ 放大低概率正确 token 的信号。复合目标（Eq.7）= 内部利用项（标准 PG）+ 外部探索项（MIS·探索优势），且全程**不做 clip**。
+在 RLVR 训练中同时混入内部 on-policy rollout（Do，用标准 PG）与静态外部数据（De）。对 De，用 token 级 MIS 比 \(r^m = 2\pi_\theta / (\pi_\omega + \pi_{\theta_{\mathrm{old}}})\) 校正分布失配，其中未知 πω 用 Bayes 最优估计 \(\tfrac{1}{2}\pi_{\theta_{\mathrm{old}}} + \tfrac{1}{2}U\)（U 为均匀分布，Theorem 3.2）；再乘以 focal-style 探索优势 \(C = (1-\mathrm{detach}(\pi_\theta(e_t)))^{\gamma}\) 放大低概率正确 token 的信号。复合目标（Eq.7）= 内部利用项（标准 PG）+ 外部探索项（MIS·探索优势），且全程**不做 clip**。
 
 ## 6. 方法详解(通俗、分步骤)
 
-1. **MIS 比（Eq.4）**：r^m_{i,t} = 2πθ(e_{i,t}) / [πω(e_{i,t}) + πθold(e_{i,t})]。把外部 token 当作混合策略产物，分母的 πθold（被刻意保持接近 πθ）使比值有界，把"坏代理/支撑失配"的爆炸性偏差换成有界的可控失真（Remarks A.8/A.9）。
-2. **估计 πω（Theorem 3.2）**：在"具体代理 πθold"与"非信息均匀策略 U=1/V"之间按无差别原则各赋 ½ 先验，最小化 Bayes 风险得贝叶斯模型平均 π̂ω = ½πθold + ½U。
-3. **探索优势（Eq.5–6）**：A^c_{i,t} = 组内标准化优势 (R_i − mean)/std · C_{i,t}，其中 C_{i,t} = (1−detach(πθ(e_{i,t})))^γ。正确 token 概率越低权重越大；detach 阻断梯度回传以稳训练；γ 为超参。
+1. **MIS 比（Eq.4）**：\(r^m_{i,t} = 2\pi_\theta(e_{i,t}) / [\pi_\omega(e_{i,t}) + \pi_{\theta_{\mathrm{old}}}(e_{i,t})]\)。把外部 token 当作混合策略产物，分母的 πθold（被刻意保持接近 πθ）使比值有界，把"坏代理/支撑失配"的爆炸性偏差换成有界的可控失真（Remarks A.8/A.9）。
+2. **估计 πω（Theorem 3.2）**：在"具体代理 πθold"与"非信息均匀策略 U=1/V"之间按无差别原则各赋 ½ 先验，最小化 Bayes 风险得贝叶斯模型平均 \(\hat{\pi}_\omega = \tfrac{1}{2}\pi_{\theta_{\mathrm{old}}} + \tfrac{1}{2}U\)。
+3. **探索优势（Eq.5–6）**：\(A^c_{i,t} = (R_i - \mathrm{mean})/\mathrm{std}\,\cdot C_{i,t}\)，其中 \(C_{i,t} = (1-\mathrm{detach}(\pi_\theta(e_{i,t})))^{\gamma}\)。正确 token 概率越低权重越大；detach 阻断梯度回传以稳训练；γ 为超参。
 4. **复合目标（Eq.7）+ 去 clip**：内部项用标准 PG（稳定+精炼已有能力），外部项用 MIS×探索优势（驱动外部探索），移除 clip 让模型在遇到外部高价值信息时迈更大优化步。
 
 ## 7. 实验数据集
@@ -70,7 +70,7 @@ RLVR（OpenAI o1、DeepSeek-R1、Kimi 等）通过可验证奖励（数学答案
 
 ## 11. 残留问题 / 局限
 
-- πω ≈ ½πθold + ½U 的估计较粗糙；Thm 3.1 的"低方差"依赖"行为池中存在 ≈πθ 的策略"这一假设，外部数据质量差时是否仍成立缺乏针对性实证。
+- πω ≈ \(\tfrac{1}{2}\pi_{\theta_{\mathrm{old}}} + \tfrac{1}{2}U\) 的估计较粗糙；Thm 3.1 的"低方差"依赖"行为池中存在 ≈πθ 的策略"这一假设，外部数据质量差时是否仍成立缺乏针对性实证。
 - 去 clip 的稳定性完全寄托于 MIS 分母，未给出 MIS 失效时的兜底分析。
 - "泛化"证据主要在数学相邻的 OOD 推理任务（编程/科学 QA），未涉及真正异构域（对话、长文本生成等）。
 - 外部数据 De 的来源/规模/质量对结果的敏感性〔待核：附录是否给出 De 构造细节〕。

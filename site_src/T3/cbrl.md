@@ -39,7 +39,7 @@
 - 退火 = 隐式课程：早期弱→多给脚手架，后期强→撤掉，"内化而非依赖"。
 
 ## 5. 主要解决思路（一段话讲清核心）
-CBRL 三个组件：**(1) Few-Shot Example Bank ℬ**——每条含问题 q、可选推理轨迹 r、答案 a，来源可为专家示范、更强模型解或手工构造；**(2) 随机上下文注入**——每步以概率 p_i 用 Bernoulli 决定每个 prompt 是否前置 k 条示范（作为对话对），reward 只对生成响应计算；**(3) 课程退火**——p_i = p_start + (t−1)/(T−1)·(p_end − p_start)，线性从 p_start（典型 0.5~1.0）退火到 p_end（典型 0）。关键设计：只修改训练输入分布，不改 RL 目标 / 损失 / 优化过程，故与任意 policy-gradient 算法兼容（GRPO、RLOO 皆可），推理时不注入、无额外开销（Algorithm 1）。
+CBRL 三个组件：**(1) Few-Shot Example Bank ℬ**——每条含问题 q、可选推理轨迹 r、答案 a，来源可为专家示范、更强模型解或手工构造；**(2) 随机上下文注入**——每步以概率 p_i 用 Bernoulli 决定每个 prompt 是否前置 k 条示范（作为对话对），reward 只对生成响应计算；**(3) 课程退火**——\(p_i = p_{\text{start}} + \frac{t-1}{T-1} \cdot (p_{\text{end}} - p_{\text{start}})\)，线性从 p_start（典型 0.5~1.0）退火到 p_end（典型 0）。关键设计：只修改训练输入分布，不改 RL 目标 / 损失 / 优化过程，故与任意 policy-gradient 算法兼容（GRPO、RLOO 皆可），推理时不注入、无额外开销（Algorithm 1）。
 
 ## 6. 方法详解（通俗、分步骤）
 每个训练步 t：

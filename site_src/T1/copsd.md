@@ -38,7 +38,7 @@
 - 用 prompt-hacking 强制 student 和 teacher 都用目标语推理：在 `<think>` 后插入语言特定前缀（否则模型会切回英文推理）。
 
 ## 5. 主要解决思路（一段话讲清核心）
-两个 policy 来自同一 LLM p_θ。Student p_S(·|x_L) 只看低资源问题 x_L；Teacher p_T(·|x_L, x_H, y*) 额外条件英文问题 x_H 与英文参考解 y*。Student 在线生成目标语 rollout ŷ；两者在同一前缀上算逐 token 分布，最小化轨迹平均的 token-level 散度 D(p_T‖p_S)，论文实例化为 **reverse KL + full-vocabulary logit distillation**；梯度只过 student，teacher 作为固定（frozen）分布目标。本质 = OPSD 公式不变，只是把特权信息扩成"英文题+英文解"、输入换成低资源语言。
+两个 policy 来自同一 LLM p_θ。Student p_S(·|x_L) 只看低资源问题 x_L；Teacher p_T(·|x_L, x_H, y*) 额外条件英文问题 x_H 与英文参考解 y*。Student 在线生成目标语 rollout ŷ；两者在同一前缀上算逐 token 分布，\(D(p_T \| p_S)\)，论文实例化为 **reverse KL + full-vocabulary logit distillation**；梯度只过 student，teacher 作为固定（frozen）分布目标。本质 = OPSD 公式不变，只是把特权信息扩成"英文题+英文解"、输入换成低资源语言。
 
 ## 6. 方法详解（通俗、分步骤）
 1) 取英文数学题 x_H + 英文参考解 y*；2) 用 Gemini-3-Flash 把问题机翻到目标低资源语 x_L；3) student 看 x_L 在线生成目标语 rollout ŷ（max 2048 token），用 prompt-hacking 强制目标语推理；4) teacher（frozen 同模型）以英文特权上下文评估同一 ŷ；5) 逐 token reverse-KL（full-vocab）蒸馏，LoRA 更新 student。
@@ -49,7 +49,7 @@
 - **"full-vocabulary" 与发布脚本不符**：4B 脚本实际用 `--top_k 20`（只在 teacher top-20 token 上算散度并重归一化，而非论文正文所述 full-vocab），并加 `--jsd_token_clip 0.05`（逐 token 散度截断，抑制 style token 主导梯度）——与论文"full-vocabulary"表述略有出入。
 - **teacher 固定方式**：`fixed_teacher` 通过在 teacher forward 时 `disable_adapter()` 实现——即用 base 模型（无 LoRA adapter）当 teacher，梯度只过带 adapter 的 student（同一份基座权重）。4B 脚本用 `--fixed_teacher`。
 - **LoRA**：4B 脚本 `lora_r=64`、`lora_alpha=128`，目标模块 q/k/v/o/gate/up/down_proj，lr 5e-6。
-- **代码额外能力（论文未强调）**：trainer 还实现了 EMA teacher（`use_ema_teacher`，与 fixed_teacher 互斥）、`reason_first` 模式（teacher 先对英文参考解推理再评估 student），以及 thinking-machines RL 式 reverse-KL（仅在采样 token 上的 policy-gradient `advantage=(teacher_logp − student_logp).detach()`）——发布主实验用的是 JSD/KL 全分布路径 + fixed_teacher。
+- **代码额外能力（论文未强调）**：trainer 还实现了 EMA teacher（`use_ema_teacher`，与 fixed_teacher 互斥）、`reason_first` 模式（teacher 先对英文参考解推理再评估 student），以及 thinking-machines RL 式 reverse-KL（仅在采样 token 上的 \(\text{advantage} = (\text{teacher\_logp} - \text{student\_logp}).\mathrm{detach}()\)）——发布主实验用的是 JSD/KL 全分布路径 + fixed_teacher。
 
 ## 7. 实验数据集
 

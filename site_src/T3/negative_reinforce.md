@@ -31,14 +31,14 @@ RLVR 同时用正确与错误样本经 policy gradient 更新，但其精确机�
 RLVR 的二元奖励使奖励符号天然绑定到序列正确性(同一序列所有 token 同奖励，batch 均值始终落在 [−1,1]，归一化后保号)，因此可干净地按符号拆成 PSR/NSR(§C 论证这点是 RLVR 区别于带奖励模型 RL 的关键)。直觉：惩罚错误时按"其他 token 当前概率"成比例地把概率质量重分配回去，等于按模型先验做软重排，既纠错又保留探索性。
 
 ## 5. 主要解决思路(一段话讲清核心)
-将 RLVR 目标 L = L_PSR + L_NSR 形式化分解(式 2–4)：PSR 像 SFT，提升正确响应似然；NSR 像 likelihood minimization，压低错误响应概率。分别独立训练后用全 Pass@k 谱评测，发现 NSR 单独训练异常有效；再用 token 级梯度分析解释机理；最后提出 W-REINFORCE——在 REINFORCE 目标上把正奖励贡献按 λ 缩小(λ=1 即 REINFORCE，推荐 λ=0.1)，在 PSR 的高 Pass@1 与 NSR 的高多样性之间取得平衡。
+\(L = L_{\mathrm{PSR}} + L_{\mathrm{NSR}}\)(式 2–4)：PSR 像 SFT，提升正确响应似然；NSR 像 likelihood minimization，压低错误响应概率。分别独立训练后用全 Pass@k 谱评测，发现 NSR 单独训练异常有效；再用 token 级梯度分析解释机理；最后提出 W-REINFORCE——在 REINFORCE 目标上把正奖励贡献按 λ 缩小(λ=1 即 REINFORCE，推荐 λ=0.1)，在 PSR 的高 Pass@1 与 NSR 的高多样性之间取得平衡。
 
 ## 6. 方法详解(通俗、分步骤)
 
-- **分解**：L_PSR 只在 r=+1 样本上更新(增大正确似然)，L_NSR 只在 r=−1 样本上更新(减小错误似然)；二者均 on-policy(响应采自当前模型)。
-- **梯度分析(式 7/8)**：对 token logit 求导。PSR 抬高被采样(正确)token logit、压低其余 → 持续 sharpening，熵下降、过拟合。NSR 压低被采样(错误)token、按其余 token 当前概率 π_v 成比例抬高它们的 logit；且被采样 token 的负梯度被 (1−π_yt) 缩放 → 对高置信 token 更新很小，从而(1)保护高置信先验、(2)按先验做概率重分配促探索、(3)一旦不再犯错即自动停止更新(隐式正则)。
-- **与熵正则/unlikelihood 对比(§B)**：熵正则会无差别压高概率 token、抬低概率 token，可能违背先验；unlikelihood 用 −log(1−π) 惩罚，缺少 (1−π_v) 阻尼会侵蚀先验；NSR 因阻尼项更温和。
-- **W-REINFORCE(式 9)**：L = λ·L_PSR + L_NSR，λ=0.1。
+- **分解**：\(L_{\mathrm{PSR}}\)(增大正确似然)，\(L_{\mathrm{NSR}}\)(减小错误似然)；二者均 on-policy(响应采自当前模型)。
+- **梯度分析(式 7/8)**：对 token logit 求导。PSR 抬高被采样(正确)token logit、压低其余 → 持续 sharpening，熵下降、过拟合。NSR 压低被采样(错误)token、\(\pi_v\)；\((1-\pi_{y_t})\) → 对高置信 token 更新很小，从而(1)保护高置信先验、(2)按先验做概率重分配促探索、(3)一旦不再犯错即自动停止更新(隐式正则)。
+- **与熵正则/unlikelihood 对比(§B)**：熵正则会无差别压高概率 token、抬低概率 token，可能违背先验；\(-\log(1-\pi)\)，缺少 (1−π_v) 阻尼会侵蚀先验；NSR 因阻尼项更温和。
+- \(L = \lambda\cdot L_{\mathrm{PSR}} + L_{\mathrm{NSR}},\ \lambda=0.1\)
 
 ## 7. 实验数据集
 

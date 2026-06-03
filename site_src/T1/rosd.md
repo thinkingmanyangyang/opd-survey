@@ -39,8 +39,8 @@
 ## 6. 方法详解(通俗、分步骤)
 
 - **错误聚焦自反思（Error-Focused Self-Reflection）**：错误 rollout 与同组最短正确 rollout 配对（最短以减少冗余）；反思 prompt（Fig.2）要求严格输出 `<error_quote>`（从错误解中抽的精确子串）+ `<explanation>`（错因+修法+正确逻辑）。正确 rollout 只单独反思得 e（"为何有效"），不直接全解模仿。自反思器复用自教师权重。
-- **引语定位自蒸馏（Quote-Localized Self-Distillation）**：掩码 m_t = 0 (t<k) / 1 (t≥k)，k=Locate(q,y-)；目标对掩码后 token 算师生散度，π_teacher(·|x,e,y<t) 取 stopgrad。
-- **散度实现**：继承 SDPO 的 token 级 KL（Eq.3）；代码中由 `alpha` 配置——alpha=1 为 reverse KL（SDPO 默认）、alpha=0 为 forward KL、中间为 **Generalized Jensen-Shannon Divergence**（`torch.lerp(kl_student, kl_teacher, alpha)`，core_algos.py:1163）。〔修正：旧分析称"采用 JSD"——准确说 JSD 是可配置的一般情形，reverse KL 是其特例/继承自 SDPO 的基线散度。〕
+- **引语定位自蒸馏（Quote-Localized Self-Distillation）**：\(m_t = 0\ (t<k)\,/\,1\ (t\geq k),\quad k=\mathrm{Locate}(q,y^-)\)；目标对掩码后 token 算师生散度，π_teacher(·|x,e,y<t) 取 stopgrad。
+- **散度实现**：继承 SDPO 的 token 级 KL（Eq.3）；代码中由 `alpha` 配置——alpha=1 为 reverse KL（SDPO 默认）、alpha=0 为 forward KL、中间为 **Generalized Jensen-Shannon Divergence**（\(\mathrm{lerp}(\mathrm{kl\_student},\,\mathrm{kl\_teacher},\,\alpha)\)，core_algos.py:1163）。〔修正：旧分析称"采用 JSD"——准确说 JSD 是可配置的一般情形，reverse KL 是其特例/继承自 SDPO 的基线散度。〕
 - **训练设定**：标准 RLVR（无人工 golden、仅 verifier）；学生/自教师/自反思器同 base，提升源自"教师条件于特权信息"。
 
 ## 7. 实验数据集

@@ -24,16 +24,16 @@
 知识蒸馏 [Hinton 2015] 从同架构压缩工具,演化为跨规模/跨架构迁移能力的通用机制;DeepSeek-R1 把 671B MoE 教师蒸到 1.5B–70B 稠密学生使之具体化。OPD 起点:GKD [Agarwal 2024] 与并发 MiniLLM [Gu 2024] 于 2023 年中把 on-policy 蒸馏带入 LLM,两年内扩展到散度设计、reward-guided、self-play、多教师辩论、agentic 轨迹蒸馏、跨模态等 >100 篇。OPD 已进入生产线:Qwen3、DeepSeek-V4、Gemma 2、MiMo-V2-Flash 均把它作核心训练成分(DeepSeek-V4 更以纯多教师 OPD 替换混合 RL 阶段做模型整合)。既有蒸馏综述 [Xu 2024] 仍用经典压缩框架、把 off/on-policy 当可互换变体。
 
 ## 2. 现有工作存在的问题
-工业主流是 off-policy 静态模仿(学生在固定语料/教师预生成轨迹上匹配 next-token 分布,每步条件于完美教师前缀)。其结构性缺陷随任务变长、推理密集而加重:推理时学生从自身部分输出自回归生成,偏离即进入训练未覆盖状态——这对应交互式模仿学习的复合误差 O(εT²)(DAgger [Ross 2011])。文献分散在 KD/RLHF/imitation 三社区,记号、基准、失效分类各异,缺统一数学处理与白盒/黑盒/teacher-free 的系统比较。
+工业主流是 off-policy 静态模仿(学生在固定语料/教师预生成轨迹上匹配 next-token 分布,每步条件于完美教师前缀)。其结构性缺陷随任务变长、推理密集而加重:推理时学生从自身部分输出自回归生成,偏离即进入训练未覆盖状态——这对应交互式模仿学习的\(O(\varepsilon T^2)\)。文献分散在 KD/RLHF/imitation 三社区,记号、基准、失效分类各异,缺统一数学处理与白盒/黑盒/teacher-free 的系统比较。
 
 ## 3. Motivation
-为爆发式增长(>100 篇)的 OPD 文献提供统一分析框架与设计中心分类;把"从 off-policy 到 on-policy"重述为序列决策问题,证明核心 OPD 算法都是"学生采样轨迹上的 f-散度最小化"(对应 DAgger 把 O(εT²) 降到 O(εT)),从而连接 KD、RLHF、imitation learning 三条线。
+为爆发式增长(>100 篇)的 OPD 文献提供统一分析框架与设计中心分类;把"从 off-policy 到 on-policy"重述为序列决策问题,证明核心 OPD 算法都是"学生采样轨迹上的 f-散度最小化"(\(O(\varepsilon T^2) \to O(\varepsilon T)\)),从而连接 KD、RLHF、imitation learning 三条线。
 
 ## 4. 主要灵感 / 核心直觉
 统一直觉:改变"训练数据从哪来"(从静态语料转为学生自身演化策略)比改变"匹配什么"更关键。学生提议轨迹、填充部署时会访问的状态,教师在这些状态上给反馈;散度生成元 f 决定似然比的隐式加权(forward KL 覆盖模式/up-weight 学生低估处,reverse KL 寻峰/up-weight 高估处),πmix 控制 on-policy 探索程度。
 
 ## 5. 主要解决思路(一段话讲清核心)
-统一目标 L_OPD(θ)=E_{y~πmix}[Σ_t D_f(p_T(·|x,y_<t), p_θ(·|x,y_<t))](Eq.8):f-散度家族(forward/reverse KL、JSD、α-divergence)× 采样混合 πmix × 散度内参数序。把三个奠基方法映入此空间:GKD(πmix=λp_θ+(1−λ)p_data,散度无关)、MiniLLM(reverse KL + REINFORCE)、DistiLLM(skew KLD + replay buffer + 自适应调度)。再沿三设计轴展开方法,并用 §7 统一解释成功/失效。
+\(L_{\mathrm{OPD}}(\theta) = \mathbb{E}_{y \sim \pi_{\mathrm{mix}}}\left[\sum_t D_f\big(p_T(\cdot \mid x, y_{<t}),\, p_\theta(\cdot \mid x, y_{<t})\big)\right]\)(Eq.8):f-散度家族(forward/reverse KL、JSD、α-divergence)× 采样混合 πmix × 散度内参数序。把三个奠基方法映入此空间:\(\pi_{\mathrm{mix}} = \lambda p_\theta + (1-\lambda) p_{\mathrm{data}}\)、MiniLLM(reverse KL + REINFORCE)、DistiLLM(skew KLD + replay buffer + 自适应调度)。再沿三设计轴展开方法,并用 §7 统一解释成功/失效。
 
 ## 6. 方法详解(分类框架,通俗、分步骤)
 三条对应顺序设计决策的轴(Fig.1 taxonomy,每方法归一主类):
@@ -49,7 +49,7 @@
 ## 8. 实验结果与主要发现(综述的核心结论与覆盖)
 
 - **成功条件(§7.1)**[Li 2026i]:① 师生需共享兼容推理模式(top-k token 高重叠;非思考教师蒸进思考学生会因初始重叠过低而失败);② 教师须提供超出学生已有的新能力(同数据同配方训出的师生分布趋同、无可迁移信号)。OPD 收益与"可利用的师生差距"成正比,过小过大都不行。另:Kim & Lee 2026 指出 OPSD 更像**压缩**(让模型更高效表达已知解)而非**纠错**(教会解更难题),推荐 SFT→RLVR→correct-only OPSD 流水线序。
-- **失效模式(§7.2)**:flawed prefix trap(学生错误前缀使教师条件分布失准)、extrapolation cliff(λ>1 reward 外推超阈值致格式坍缩)、Rock Tokens(高频结构 token 持续高 loss 却无功能贡献,占大量梯度)、self-play saturation/Ouroboros(自蒸馏锁死自身幻觉)、precision-recall/diversity collapse(reverse KL 高 Pass@1 低 Pass@k)、calibration-capability gap(更强但更过自信)、agentic 多轮坍缩(teacher 硬拷贝重置致 KL 从 2.637 骤降 0.343、轨迹结构侵蚀、reward-hint runaway)。
+- **失效模式(§7.2)**:flawed prefix trap(学生错误前缀使教师条件分布失准)、extrapolation cliff(λ>1 reward 外推超阈值致格式坍缩)、Rock Tokens(高频结构 token 持续高 loss 却无功能贡献,占大量梯度)、self-play saturation/Ouroboros(自蒸馏锁死自身幻觉)、precision-recall/diversity collapse(reverse KL 高 Pass@1 低 Pass@k)、calibration-capability gap(更强但更过自信)、agentic 多轮坍缩(teacher 硬拷贝重置\(D_{\mathrm{KL}}:\ 2.637 \to 0.343\)、轨迹结构侵蚀、reward-hint runaway)。
 - **统一理论(§7.3)**:散度选择本质是正则化决策;OPD≈稠密 KL-约束 RL,与 DPO/偏好优化同属"由散度选择与监督密度参数化"的目标族;Stable-OPD 加 reference 散度项 + rollout 混合可破坏长度膨胀自放大环(+7.2%)。
 - **决策框架(§7.4)**:师生容量比 >10× 且推理浅时用纯 off-policy SFT;学生 >~7B / 多步推理误差复合 / off-policy loss 平台但 on-policy reward 仍升时切 OPD;否则用 hybrid(off-policy 预热 + on-policy 精修)。
 - **工业/系统(§8)**:五种部署模式(两阶段蒸馏、模型整合如 DeepSeek-V4/KAT-Coder-V2、多预算推理 ORBIT、agentic 蒸馏 TCOD/MAD-OPD/Skill-SD/OpenClaw-RL、安全闭环 Safactory);系统侧需教师 co-hosting、logit-tensor 传输(70B 教师 8×H100 约 16GB/batch)、staleness 容忍,常用 OpenRLHF/veRL/SLIME 分离 rollout/scoring/update。

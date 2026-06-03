@@ -31,16 +31,16 @@
 受人类学习启发:做错题后看正确解能 rationalize 步骤、定位自己错在哪;且"评估比生成更易"[Naor 1996, Sun 2024],推测"对给定正确答案做 rationalization"也比从零生成更易。故让模型在见到 y* 后隐式 rationalize,以此监督只见问题的弱版自己。
 
 ## 5. 主要解决思路(一段话讲清核心)
-从同一模型 p_θ 实例化两条策略:教师 p_T(·|x,y*)(条件含问题 + 参考解),学生 p_S(·|x)(仅问题)。学生采样 on-policy 轨迹 ŷ~p_S(·|x);loss 最小化沿学生轨迹的逐 token 散度 D(p_T‖p_S)(ŷ|x)= (1/|ŷ|)Σ_n D(p_T(·|x,y*,ŷ_<n)‖p_S(·|x,ŷ_<n))。梯度仅经学生 logits 回传;教师只一次前向(prefill)隐式 rationalize、不真正生成 token(prompt 中要求教师"看完参考解后用自己的方法解",见 Fig.2)。
+从同一模型 p_θ 实例化两条策略:\(p_T(\cdot \mid x, y^*)\)。\(\hat{y} \sim p_S(\cdot \mid x)\);\(D(p_T \| p_S)(\hat{y} \mid x) = \frac{1}{|\hat{y}|}\sum_n D\big(p_T(\cdot \mid x, y^*, \hat{y}_{<n}) \,\big\|\, p_S(\cdot \mid x, \hat{y}_{<n})\big)\)。梯度仅经学生 logits 回传;教师只一次前向(prefill)隐式 rationalize、不真正生成 token(prompt 中要求教师"看完参考解后用自己的方法解",见 Fig.2)。
 
 ## 6. 方法详解(通俗、分步骤)
 
 - **两条策略**:同参数 θ、不同条件上下文;教师额外看 y*。
 - **on-policy 采样**:学生生成 ŷ,两条策略在同一学生前缀上各自给 next-token 分布。
-- **训练目标(两种实例化)**:① 全词表 logit 蒸馏(如 GKD,full softmax,逐 token f-散度;效果更好但峰值显存高,因每位置存词表大小 logits);② 采样 token 的策略梯度(如 Lu & Lab 2025:把 A_n=log p_T(ŷ_n|·)−log p_S(ŷ_n|·) 当 stop-gradient 优势,做 reverse-KL 风格 policy gradient;省显存)。主实验用 ①。
+- **训练目标(两种实例化)**:① 全词表 logit 蒸馏(如 GKD,full softmax,逐 token f-散度;效果更好但峰值显存高,因每位置存词表大小 logits);② 采样 token 的策略梯度(如 Lu & Lab 2025:\(A_n = \log p_T(\hat{y}_n \mid \cdot) - \log p_S(\hat{y}_n \mid \cdot)\),做 reverse-KL 风格 policy gradient;省显存)。主实验用 ①。
 - **教师固定为初始 policy**(非在线更新的学生),作隐式正则、稳定训练。
-- **Per-Token Pointwise KL Clipping**:对每个 token×词表项的散度贡献 min(ℓ,τ) 裁剪。因风格 token('wait'/'think' 等连接词)的逐 token KL 比数学 token 高 6–15×(Table 5),不裁剪会让风格 token 主导信号、训练崩溃(Fig.4)。
-- **消融结论**:forward KL > reverse KL/JSD(Table 3,AIME25/Qwen3-1.7B:FKL 36.7→43.9@step50);TM-off 学生 + TM-on 教师在数学 token 上 KL 最大、下游最好;生成长 1024 vs 4096 无一致增益(早期 token 更关键);全词表 > 采样 token(Table 4,Qwen3-4B/2048-gen,pass@8:AIME25 84.1 vs 82.1、HMMT25 60.0 vs 57.3)。
+- **Per-Token Pointwise KL Clipping**:\(\min(\ell, \tau)\)。因风格 token('wait'/'think' 等连接词)的逐 token KL 比数学 token 高 6–15×(Table 5),不裁剪会让风格 token 主导信号、训练崩溃(Fig.4)。
+- **消融结论**:forward KL > reverse KL/JSD(Table 3,\(36.7 \to 43.9\));TM-off 学生 + TM-on 教师在数学 token 上 KL 最大、下游最好;生成长 1024 vs 4096 无一致增益(早期 token 更关键);全词表 > 采样 token(Table 4,Qwen3-4B/2048-gen,pass@8:AIME25 84.1 vs 82.1、HMMT25 60.0 vs 57.3)。
 
 ## 7. 实验数据集
 训练:OpenThoughts 数学推理子集(采 ≤30K 问题-解对,含 CoT)。评测:竞赛级数学 AIME 2024、AIME 2025、HMMT 2025。主表 Table 2 报 **Avg@12**(温度 1.0、thinking 模式、max gen 38k,按 Qwen3 博客配置);消融 Table 4 报 pass@8(数值与 Avg@12 不可直接比)。模型:Qwen3-1.7B/4B/8B(instruct)。

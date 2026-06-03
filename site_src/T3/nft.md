@@ -31,21 +31,21 @@ RLVR（PPO、GRPO、DAPO 等）以 ground-truth verifier 的二元信号驱动 L
 质疑"verification-driven 自我改进是 RL 专属"的论断：能否在纯 SL 范式内同样实现从负样本中改进？若能，则 SL 与 RL 的差距主要源于负样本利用能力，而非 RL 本身的优越性。
 
 ## 4. 主要灵感 / 核心直觉
-由 Bayes 规则，生成策略 π 可分解为正策略 π+ 与负策略 π−，并满足耦合关系 rq·π+ + (1−rq)·π− = π_old（rq 为该 prompt 的正确率）。因此只要 π 与 rq 已知，从负样本学 π− 等价于在塑造目标正策略 π+——负样本里同样蕴含可监督的信息。
+由 Bayes 规则，生成策略 π 可分解为正策略 π+ 与负策略 π−，\(r_q\cdot \pi_+ + (1-r_q)\cdot \pi_- = \pi_{\mathrm{old}}\)。因此只要 π 与 rq 已知，从负样本学 π− 等价于在塑造目标正策略 π+——负样本里同样蕴含可监督的信息。
 
 ## 5. 主要解决思路(一段话讲清核心)
-把负策略**隐式重参数化**为目标正策略：π−_θ = (π_old − rq·π+_θ)/(1−rq)。于是在负样本上做最大似然训练就直接优化了 π+_θ（Theorem 3.1：理想容量下最优解 π+_θ* = π+）。结合正样本的常规 MLE，得到统一的 token 级损失（Eq.9/10）：正样本走似然比对数，负样本走隐式负似然比，并用 straight-through max 算子裁剪保证对数参数为正、梯度可回传。全程只维护单一模型，内存开销极小。
+\(\pi_{-,\theta} = \frac{\pi_{\mathrm{old}} - r_q\cdot \pi_{+,\theta}}{1-r_q}\)。于是在负样本上做最大似然训练就直接优化了 π+_θ（Theorem 3.1：\(\pi_{+,\theta}^* = \pi_+\)）。结合正样本的常规 MLE，得到统一的 token 级损失（Eq.9/10）：正样本走似然比对数，负样本走隐式负似然比，并用 straight-through max 算子裁剪保证对数参数为正、梯度可回传。全程只维护单一模型，内存开销极小。
 
 ## 6. 方法详解(通俗、分步骤)
 在线迭代（Algorithm 1）：
 
 1. **数据收集**：当前 LLM π 对每个 prompt q 采 K 个答案，verifier 判二元正误 r₁:K，估计正确率 r̂q=mean{r₁:K} 并记录 token 级 πold 似然。
 2. **prompt 过滤**：只保留 0<rq<1 的 prompt（全对/全错无梯度信息）。
-3. **构造似然比**：正样本 Rt_θ=π+_θ/πold；负样本用隐式负似然比 Rt_θ=(1−r̂q·Rt_θ)/(1−r̂q)，再经 straight-through max 裁剪下界 ϵ。
-4. **最大似然更新**：θ ← θ + λ∇Σt log Rt_θ；prompt 加权 ω(q) 侧重难题。
+3. **构造似然比**：\(R_{t,\theta} = \pi_{+,\theta}/\pi_{\mathrm{old}}\)；\(R_{t,\theta} = \frac{1 - \hat{r}_q\cdot R_{t,\theta}}{1-\hat{r}_q}\)，再经 straight-through max 裁剪下界 ϵ。
+4. **最大似然更新**：\(\theta \leftarrow \theta + \lambda \nabla \sum_t \log R_{t,\theta}\)；prompt 加权 ω(q) 侧重难题。
 5. π ← π+_θ，进入下一轮。
 
-理论分析（Sec.4）：(a) 仅二元奖励下 GRPO 的损失梯度可改写；(b) GRPO 的 group normalization（advantage 标准化）已隐含在 NFT 损失中；(c) Theorem——令 ϵ≤1，on-policy 时 ∇L_NFT = ∇L_GRPO 完全等价；二者唯一差异在 off-policy 的梯度裁剪策略（GRPO 硬置零，NFT 软衰减）。
+理论分析（Sec.4）：(a) 仅二元奖励下 GRPO 的损失梯度可改写；(b) GRPO 的 group normalization（advantage 标准化）已隐含在 NFT 损失中；(c) Theorem——令 ϵ≤1，\(\nabla L_{\mathrm{NFT}} = \nabla L_{\mathrm{GRPO}}\)；二者唯一差异在 off-policy 的梯度裁剪策略（GRPO 硬置零，NFT 软衰减）。
 
 ## 7. 实验数据集
 

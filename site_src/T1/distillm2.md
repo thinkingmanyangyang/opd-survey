@@ -39,14 +39,14 @@
 - **线性而非 log-sigmoid 的对比**：可写成类 DPO 的线性形式，支持 token 级分解与显式加权，并通过混合分布与 p 的线性依赖正则化 q(y_s) 的过度下降，避开 DPKD 的 reward hacking。
 
 ## 5. 主要解决思路（一段话讲清核心）
-CALD loss：L = 1/(2|D|) Σ [ (1-β)·D^(α_t)_SKL(教师响应 y_t) + β·D^(α_s)_SRKL(学生响应 y_s) ]，即对教师响应用 SKL（抬高其概率）、对学生响应用 SRKL（压低其概率）。两项增强：(a) α 课程——按一致性闭式更新 α（易样本小 α、难样本大 α）；(b) SRKL 系数 β 线性递增——前期主拟合教师、后期主用 SGO 反馈减小训练-推理不匹配。数据策展上对 SKL 用纯教师生成、对 SRKL 用纯学生生成最优。
+\(L = \frac{1}{2|D|} \sum \big[ (1-\beta)\cdot D^{(\alpha_t)}_{\mathrm{SKL}}(y_t) + \beta \cdot D^{(\alpha_s)}_{\mathrm{SRKL}}(y_s) \big]\)，即对教师响应用 SKL（抬高其概率）、对学生响应用 SRKL（压低其概率）。两项增强：(a) α 课程——按一致性闭式更新 α（易样本小 α、难样本大 α）；(b) SRKL 系数 β 线性递增——前期主拟合教师、后期主用 SGO 反馈减小训练-推理不匹配。数据策展上对 SKL 用纯教师生成、对 SRKL 用纯学生生成最优。
 
 ## 6. 方法详解（通俗、分步骤）
 
 1. **对比 loss（CALD）**：对教师响应施 SKL（`tea_pos_kl`），对学生响应施 SRKL（`ref_pos_kl`），分别乘 (1-β)、β 求和。
    - 代码（`src/distillm_trainer.py` ~1141–1210，已核对）：teacher 项 mix = α₁·teacher + (1-α₁)·student → `tea_pos_kl = Σ p·(log p − log mix)`（SKL，抬高）；student 项 mix = (1-α₂)·teacher + α₂·student.detach() → `ref_pos_kl = Σ q·(log q − log mix)`（SRKL，压低，**学生分支 detach**）。
    - Remark 1 证明 CALD 可改写为类 DPO 的线性形式（增大 \tilde q(y_t)、减小 q(y_s)），但用**线性**而非 log-sigmoid，支持 token 级分解与显式加权，并借 \tilde q 与 p 的线性依赖正则化 q(y_s) 的过度下降，避免 DPKD reward hacking。
-2. **α 课程**（代码 `update_alpha`）：`anchor=(1-base_α)·(logp−logq)`，`α=clip(1 − anchor/(p̄−q̄), min=1e-2, max=base_α)`，`base_α₁=base_α₂=0.1`——易样本（p̄≈q̄）小 α、难样本大 α。
+2. **α 课程**（代码 `update_alpha`）：\(\mathrm{anchor} = (1 - \mathrm{base}_\alpha)(\log p - \log q),\quad \alpha = \mathrm{clip}\!\left(1 - \frac{\mathrm{anchor}}{\bar{p} - \bar{q}},\, 10^{-2},\, \mathrm{base}_\alpha\right)\)，`base_α₁=base_α₂=0.1`——易样本（p̄≈q̄）小 α、难样本大 α。
 3. **β 线性递增**（代码 `gradual_beta`）：`β` 随训练步从小到大（如 1.0→1.5），前期主拟合教师、后期主用 SGO 反馈减小训练-推理不匹配。
 4. **数据策展**：对 SKL 用纯教师生成、对 SRKL 用纯学生生成最优——speculative decoding/更强 LLM 的"高质量"响应反而更差，说明**教师响应的高 log-prob 比"高质量"更关键**。每个 epoch 前用 vLLM 批量采集 TGO/SGO（batch on-policy）。
 

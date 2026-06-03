@@ -1,6 +1,6 @@
 # cepo — CEPO: RLVR Self-Distillation using Contrastive Evidence Policy Optimization
 
-> **一句话重点 (TL;DR)**：GRPO 给一条轨迹里所有 token 同一个优势，浪费在 filler 上、低估决定性步。CEPO 在每个 token 问"正确答案偏好它**且**错误答案反对它吗？"——用对比比率 P⁺_T(y_t)/P⁻_T(y_t)（正确/错误答案两个 teacher，错误答案取自组内已有的 rejected rollout）在 stop-gradient 下调制 GRPO 优势幅度，符号仍由 verifier 锚定；由于学生先验 P_S 被消掉，从构造上消除了 RLSD 的 fluency confound，在决定性 token 处锐化、filler 处恰好失效。
+> **一句话重点 (TL;DR)**：GRPO 给一条轨迹里所有 token 同一个优势，浪费在 filler 上、低估决定性步。CEPO 在每个 token 问"正确答案偏好它**且**错误答案反对它吗？"——用对比比率 \(P^{+}_T(y_t) / P^{-}_T(y_t)\)（正确/错误答案两个 teacher，错误答案取自组内已有的 rejected rollout）在 stop-gradient 下调制 GRPO 优势幅度，符号仍由 verifier 锚定；由于学生先验 P_S 被消掉，从构造上消除了 RLSD 的 fluency confound，在决定性 token 处锐化、filler 处恰好失效。
 
 **元信息**：arXiv 2605.19436（v1，2026-05-19，cs.LG）｜ MBZUAI + Linköping University + Australian National University（Ahmed Heakl、Abdelrahman M. Shaker、Youssef Mohamed、Rania Elbadry、Omar Fetouh、Fahad Shahbaz Khan、Salman Khan）｜ Preprint，2026-05 ｜ 主题：RLVR self-distillation 的 token 级 credit assignment（多模态数学推理；与本项目 token 级监督/path-selection 相关，但偏 RLVR 而非纯 logit-OPD）｜ 代码 https://github.com/ahmedheakl/CEPO （已 clone，约 16MB）｜ 框架 veRL（经由 EasyR1）+ FSDP + vLLM
 
@@ -22,7 +22,7 @@
 
 - **RLVR / credit assignment**：RLVR 采样 rollout、verifier 打分、更新策略；GRPO 去掉 value 网络但赋予整条轨迹**均匀**的序列级优势。token 级方法要么靠 Monte Carlo 重模拟（VinePPO、SPO），要么训练独立的 PRM——都需昂贵重采样或辅助网络。
 - **带特权信息的 on-policy 自蒸馏**：用正确答案 r⁺ 当 teacher 产生 dense token 级信号，无需辅助网络。OPSD（Zhao 2026）最小化 P⁺_T 与 student 的 per-token KL；SDPO（Hübotter 2026）扩成 JSD + EMA teacher；HDPO 专门用于全错的 prompt。
-- **RLSD**（Yang 2026，CEPO 的直接前身）：在 stop-gradient 下只在采样 token 上算 evidence ratio P⁺_T(y_t)/P_S(y_t)，仅用于调制 GRPO 优势幅度、符号锚定 verifier——做到既用特权信息又"leakage-free"（梯度里无 vocab-wide r-条件求和）。
+- **RLSD**（Yang 2026，CEPO 的直接前身）：在 stop-gradient 下只在采样 token 上算 evidence ratio \(P^{+}_T(y_t) / P_S(y_t)\)，仅用于调制 GRPO 优势幅度、符号锚定 verifier——做到既用特权信息又"leakage-free"（梯度里无 vocab-wide r-条件求和）。
 - Table 1 用 Priv./Leak-free/Contr./No-Aux 四维定位 CEPO 是唯一四项全 ✓ 的方法。
 
 ## 2. 现有工作存在的问题
@@ -41,12 +41,12 @@
 - filler 处改进恰好消失不是缺陷而是**正确性准则**——在信息中性位置放大梯度只会引入噪声。
 
 ## 5. 主要解决思路（一段话讲清核心）
-CEPO = Contrastive Evidence Policy Optimization：定义三个共享参数 θ 但条件不同的分布——student P_S(y_t)=π_θ(y_t|x,y<t)、正确 teacher P⁺_T（条件 r⁺）、错误 teacher P⁻_T（条件 r⁻）。r⁻ 取组内最低 reward 的 rejected rollout 的最终答案（无额外采样）。对比证据 delta ∆^CE_t = sg(log P⁺_T(y_t) − log P⁻_T(y_t))；对比权重 w^CE_t = exp(sign(A)·∆^CE_t) = (P⁺_T/P⁻_T)^{sign(A)}；token 级优势 Â_t = A·[(1−λ) + λ·clip(w^CE_t, 1−ε_w, 1+ε_w)]，λ 从 λ₀ 线性退火到 0。把 Â_t 代入标准 PPO clipped surrogate 更新。G⁻=∅ 时令 P⁻_T=P_S，精确退回 RLSD。
+CEPO = Contrastive Evidence Policy Optimization：定义三个共享参数 θ 但条件不同的分布——student P_S(y_t)=π_θ(y_t|x,y<t)、正确 teacher P⁺_T（条件 r⁺）、错误 teacher P⁻_T（条件 r⁻）。r⁻ 取组内最低 reward 的 rejected rollout 的最终答案（无额外采样）。对比证据 delta \(\Delta^{\mathrm{CE}}_t = \mathrm{sg}\!\left(\log P^{+}_T(y_t) - \log P^{-}_T(y_t)\right)\)；对比权重 \(w^{\mathrm{CE}}_t = \exp(\mathrm{sign}(A) \cdot \Delta^{\mathrm{CE}}_t) = (P^{+}_T / P^{-}_T)^{\mathrm{sign}(A)}\)；token 级优势 \(\hat{A}_t = A \cdot \left[(1-\lambda) + \lambda \cdot \mathrm{clip}(w^{\mathrm{CE}}_t, 1-\varepsilon_w, 1+\varepsilon_w)\right]\)，λ 从 λ₀ 线性退火到 0。把 Â_t 代入标准 PPO clipped surrogate 更新。G⁻=∅ 时令 P⁻_T=P_S，精确退回 RLSD。
 
 ## 6. 方法详解（通俗、分步骤）
 **算法 1**：每次迭代、每个 (x,r⁺)：(1) 采 G 条 rollout，按式(1) 算组归一化序列优势 A，分成正确组 G⁺/错误组 G⁻；(2) r⁻ ← argmin_{j∈G⁻} R 的最终答案，G⁻=∅ 则 P⁻_T←P_S；(3) 对每条轨迹每个位置 t：∆_t ← sg(log P⁺_T(y_t) − log P⁻_T(y_t))，Â_t ← A·[(1−λ)+λ·clip(e^{sign(A)∆_t}, 1−ε_w, 1+ε_w)]；(4) 用 Â_t 做 PPO clipped surrogate 更新。
 
-**理论保证（Theorem 1，证明见 Appendix A）**：(i) 方向锚定 sign(Â_t)=sign(A)（特权信息不能翻转任何 token 更新方向）；(ii) leakage-free 梯度（无 vocab-wide r-条件求和，r⁺/r⁻ 只作为采样 token 处的 stop-gradient 标量进入）；(iii) RLSD 包含性（P⁻_T=P_S 时精确退回 RLSD）。
+**理论保证（Theorem 1，证明见 Appendix A）**：(i) 方向锚定 \(\mathrm{sign}(\hat{A}_t) = \mathrm{sign}(A)\)（特权信息不能翻转任何 token 更新方向）；(ii) leakage-free 梯度（无 vocab-wide r-条件求和，r⁺/r⁻ 只作为采样 token 处的 stop-gradient 标量进入）；(iii) RLSD 包含性（P⁻_T=P_S 时精确退回 RLSD）。
 **Proposition 1（区分锐度）**：正确轨迹下 w^CE_t > w^RLSD_t 当且仅当 P⁻_T(y_t) < P_S(y_t)（即错误答案相对学生先验更不喜欢该 token，恰是决定性位置）；错误轨迹对称；filler 处三者皆近 1、改进消失。
 
 **成本**：CEPO 比 RLSD 多一次 teacher forward（r⁺/r⁻ 各一次），即比 GRPO 多两次 forward；无额外采样。Geo3k 50 步 wall-clock：GRPO 5h58m、SDPO 6h14m、RLSD 6h15m、CEPO 6h34m（多约 36 分钟）。
@@ -72,7 +72,7 @@ CEPO = Contrastive Evidence Policy Optimization：定义三个共享参数 θ �
 - "CEPO > GRPO/RLSD" 由 Table 2 在两个规模、五基准上的一致增益支撑。
 - "结构安全是实践前提" 由 OPSD/SDPO 跌破 base 这一反例强支撑——这也是论文最有说服力的实证。
 - "在决定性 token 锐化、filler 处失效" 由 Prop.1 + token 热图 + delta 占比演化共同支撑，理论-实证闭环较好。
-- "对比比率 ≠ 对比 KL"：脚注证明 ∇[D_KL(P⁺‖P_S) − D_KL(P⁻‖P_S)] 会产生与 OPSD 同构的 vocab-wide leakage，凸显 CEPO 用 ratio + stop-gradient 的必要性。
+- "对比比率 ≠ 对比 KL"：脚注证明 \(\nabla\!\left[D_{\mathrm{KL}}(P^{+} \,\|\, P_S) - D_{\mathrm{KL}}(P^{-} \,\|\, P_S)\right]\) 会产生与 OPSD 同构的 vocab-wide leakage，凸显 CEPO 用 ratio + stop-gradient 的必要性。
 
 ## 10. 逻辑自洽性（中性评估）
 理论（三保证 + Prop.1）与实证（OPSD/SDPO 退化、热图、delta 演化）方向一致，自洽性强。但**增益绝对值偏小**（base→CEPO 仅 +2.2~3.7pp），且训练只跑 50 步、单一数据集（Geo3k）、小模型（2/4B）、LoRA——更像"低预算下的快速收敛优势"（Figure 1 显示 CEPO 早期更快、约 step 40 差距最大、最终部分收敛）。强主张（"结构安全是实践前提"）证据扎实，但泛化主张需更大规模验证。

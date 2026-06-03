@@ -41,9 +41,9 @@ LLM 对齐主流两条线：(1) **RLHF**——先训 response-level reward model
 关键公式（已逐行核对 `aligndistil_trainer.py`，`reward_boost_type=="aligndistil"` 分支，代码注释明确 **teacher = forward DPO 模型，reference = reverse DPO 模型**）：
 
 - **逐 token 外插权重**：`tvd = |p_tea − p_ref|.sum`（forward-DPO 与 reverse-DPO 概率分布的全变差距离 TVD），`weight = tvd·β2 + 1e-3`。白话：两个 DPO 模型在某 token 上分歧越大(TVD 大)，外插越激进。
-- **合成 teacher logits**：`final_tea_logits = weight·(teacher_logits − reference_logits) + teacher_logits`。即在 forward DPO 的基础上，再沿"forward−reverse"差分方向外推一段，让 teacher 比单纯 DPO 更"对齐"。
-- **蒸馏损失**(reverse-KL 形)：`rlhf_loss = (stu_probs·(stu_lprobs − final_tea_lprobs)).sum × beta2`，其中 `beta2 = β/weight`。
-- 对照分支：`theorem1` 用 `weight·teacher + (1−weight)·reference` 的常数线性组合；`theorem1_contrast` 用差分形式但常数权重；`*_adaptive` / `aligndistil` 则把权重换成逐 token 的 TVD 自适应——消融正是为隔离这一项。
+- **合成 teacher logits**：\(\text{final\_tea\_logits} = \text{weight} \cdot (\text{teacher\_logits} - \text{reference\_logits}) + \text{teacher\_logits}\)。即在 forward DPO 的基础上，再沿"forward−reverse"差分方向外推一段，让 teacher 比单纯 DPO 更"对齐"。
+- **蒸馏损失**(reverse-KL 形)：\(\text{rlhf\_loss} = \left(\text{stu\_probs} \cdot (\text{stu\_lprobs} - \text{final\_tea\_lprobs})\right).\text{sum} \times \beta_2\)，其中 \(\beta_2 = \beta / \text{weight}\)。
+- 对照分支：`theorem1` 用 \(\text{weight} \cdot \text{teacher} + (1 - \text{weight}) \cdot \text{reference}\) 的常数线性组合；`theorem1_contrast` 用差分形式但常数权重；`*_adaptive` / `aligndistil` 则把权重换成逐 token 的 TVD 自适应——消融正是为隔离这一项。
 
 ## 7. 实验数据集
 

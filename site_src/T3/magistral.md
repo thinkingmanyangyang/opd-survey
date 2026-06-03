@@ -35,11 +35,11 @@
 在线策略本就大幅偏离参考，维护参考模型算 KL 不值 → 直接移除 KL。Clip-Higher 给低概率 token 增长空间以抗熵坍缩、促探索。强制 (problem, thoughts, answer) 三段语言一致即可消 code-switching。系统层面：generator 是在线 RL 独有且最重的负载，异步、不打断地频繁更新 generator(NCCL GPU→GPU 广播，单次更新 <5s)可在效率与 on-policy 性间取平衡(in-flight 序列不刷新 KV-cache，靠 loss 的 off-policy 修正容忍轻微过时)。
 
 ## 5. 主要解决思路(一段话讲清核心)
-以 GRPO 为基座做多项稳定性改造(去 KL、按组总长归一 loss、advantage = r−μ 再做 minibatch 归一、Clip-Higher 调高 ε_high=0.26–0.28、过滤零优势组)，配四维奖励整形(格式/正确性/长度惩罚/语言一致)，在自研异步在线 RL 系统(trainer/generator/verifier 三类 worker)上大规模训练；数据经两阶段难度过滤取"goldilocks"难度。Magistral Medium 在 Mistral Medium 3 上纯 RL；Magistral Small 用 Medium 生成的 traces 做 SFT 冷启动后再 RL。
+以 GRPO 为基座做多项稳定性改造(去 KL、按组总长归一 loss、\(r - \mu\) 再做 minibatch 归一、Clip-Higher 调高 ε_high=0.26–0.28、过滤零优势组)，配四维奖励整形(格式/正确性/长度惩罚/语言一致)，在自研异步在线 RL 系统(trainer/generator/verifier 三类 worker)上大规模训练；数据经两阶段难度过滤取"goldilocks"难度。Magistral Medium 在 Mistral Medium 3 上纯 RL；Magistral Small 用 Medium 生成的 traces 做 SFT 冷启动后再 RL。
 
 ## 6. 方法详解(通俗、分步骤)
 
-- **算法(改造 GRPO，最终式见论文红字)**：(1) 去 KL 惩罚；(2) loss 归一——组内所有 token/生成累加后除以组内总长 Σ|o_i|，消长度偏置；(3) advantage Â=r−μ，再在 minibatch 内按序列归一 Â^norm=(Â−Â_mean)/Â_std；(4) Clip-Higher——用 clip(·,1−ε_low,1+ε_high)，调高 ε_high 给低概率 token 空间(训练中 0.26–0.28 细调稳组熵；Small RL 用 0.3)；(5) 剔除全对/全错(零优势)组(约束 ∃ r_m≠r_n)。
+- **算法(改造 GRPO，最终式见论文红字)**：(1) 去 KL 惩罚；(2) loss 归一——组内所有 token/生成累加后\(\sum |o_i|\)，消长度偏置；(3) \(\hat{A} = r - \mu\)，再在 minibatch 内按序列归一 \(\hat{A}^{\text{norm}} = \frac{\hat{A} - \hat{A}_{\text{mean}}}{\hat{A}_{\text{std}}}\)；(4) Clip-Higher——用 \(\mathrm{clip}(\cdot, 1-\varepsilon_{\text{low}}, 1+\varepsilon_{\text{high}})\)，调高 ε_high 给低概率 token 空间(训练中 0.26–0.28 细调稳组熵；Small RL 用 0.3)；(5) 剔除全对/全错(零优势)组(约束 \(\exists\, r_m \ne r_n\))。
 - **奖励整形(四维)**：格式——须恰含一对 <think></think>，数学答案放 \boxed{}、代码须带语言标注 markdown 块；不满足→reward=0 不评分，满足→0.1 进评分。正确性——数学用多 parser+SymPy 归一对比，正确 +0.9(总 1.0)；代码(C++ 用 C++20、预编译 bits/stdc++.h、10s 编译、随机 20 测试、每测 4s/300MB)全通过 +0.9。长度惩罚——软惩罚(式 1，l_max/l_cache 两阈值，最多 −0.1)。语言一致——译 10% 英文题为法/西/意/德/中/俄，用 fastText 判 (problem,thoughts,answer) 三段(去 LaTeX/代码后)是否同语言，一致 +0.1。System prompt 指定格式与语言("Be as casual and as long as you want"提熵促探索)。
 - **基础设施**：三类 worker；异步生成不打断、NCCL 广播权重；batch 按完成数(非 token 数)定义；贪心拼包减 19% padding。
 - **数据(§4)**：数学 700k→格式过滤 501k→两阶段难度过滤 38k(先 Mistral Large 2 每题采 16 解去过易/不可解，训一个 24B RL 打分模型，再用它重判全量、并剔除"多数样本一致但与 ground-truth 不符"的疑似错标)；代码多源汇集，执行所有解过滤一致性不足/修正/生成测试，按需复制 Python/C++ 两版，得 35k。

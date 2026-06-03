@@ -40,9 +40,9 @@ RLVR(可验证奖励的 RL)已成为提升 LLM 数学推理的主流。GRPO 因 
 ## 6. 主要方法
 重审并实现三类算法 + 一个新变体(advantage 估计在 `verl/trainer/ppo/core_algos.py` 中确认):
 
-1. **RAFT(拒绝采样 = 在正例上的 SFT)** —— `compute_raft_outcome_advantage`:对每条回答取 outcome reward 之和,**将 <0 的分数截断为 0**(`scores[scores<0]=0`),即只对正确/正奖励样本产生梯度。配 `policy_loss='vanilla'`(`compute_policy_loss_vanilla`),其 `pg_losses1 = -advantages · log_prob`,**无重要性采样比、无 clip**,本质是对正例的加权对数似然(SFT)。
+1. **RAFT(拒绝采样 = 在正例上的 SFT)** —— `compute_raft_outcome_advantage`:对每条回答取 outcome reward 之和,**将 <0 的分数截断为 0**(\(\mathrm{scores}[\mathrm{scores}<0]=0\)),即只对正确/正奖励样本产生梯度。配 `policy_loss='vanilla'`(`compute_policy_loss_vanilla`),其 \(\mathrm{pg\_losses1} = -\,\mathrm{advantages}\cdot\log\mathrm{prob}\),**无重要性采样比、无 clip**,本质是对正例的加权对数似然(SFT)。
 
-2. **RAFT++** —— 在 vanilla RAFT 基础上加入 **重要性采样 + clipping**(`policy_loss='plusplus'` → `compute_policy_loss`,PPO 风格 ratio = π_θ/π_θold,带 dual-clip)。损失:L_Reinforce(θ) = (1/|D|) Σ min(ratio·Â, clip(ratio)·Â)。
+2. **RAFT++** —— 在 vanilla RAFT 基础上加入 **重要性采样 + clipping**(`policy_loss='plusplus'` → `compute_policy_loss`,PPO 风格 \(\mathrm{ratio} = \pi_\theta/\pi_{\theta_{\mathrm{old}}}\),带 dual-clip)。损失:\(L_{\mathrm{Reinforce}}(\theta) = \frac{1}{|D|}\sum \min\!\big(\mathrm{ratio}\cdot\hat{A},\ \mathrm{clip}(\mathrm{ratio})\cdot\hat{A}\big)\)。
 
 3. **Vanilla Reinforce / GRPO** —— Reinforce 为去掉 critic 的 PPO 简化版;GRPO(`compute_grpo_outcome_advantage`)对每 prompt 采 n 条回答,用组内 mean/std 归一化得相对优势。
 

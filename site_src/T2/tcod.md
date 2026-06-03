@@ -38,14 +38,14 @@
 误差累积是长 horizon 的固有属性；与其一开始就让学生端到端跑完整轨迹（必然进入 teacher 支撑外），不如沿时间维度做课程——要么从轨迹早段学起逐步加深（F2B），要么让 teacher 把环境导航到接近终止状态、学生从"成功门口"接管再逐步前移（B2F）。难度 = 轨迹深度 k，可由训练步线性 pacing 自动调度，无需外部难度评估器。
 
 ## 5. 主要解决思路(一段话讲清核心)
-TCOD 用线性 pacing `k = k_start + ⌊n/η⌋`（n 当前步、N 总步、η 控制增长率）沿训练步控制轨迹深度 k，并给出两个仅需极小代码改动的变体：**F2B**（学生 rollout 至多 k 步，k 从小到大，目标只对前 k 步算 token-level KL）；**B2F**（teacher 用预采集成功轨迹 τ\* 执行前 L−k 步把环境导到中间状态、stop-gradient，学生从该状态接管后 k 步并对其算 KL，k 递增直到学生端到端）。学生执行步计算 KL 梯度，teacher 执行步停梯度。
+TCOD 用线性 pacing \(k = k_{\mathrm{start}} + \lfloor n/\eta \rfloor\)（n 当前步、N 总步、η 控制增长率）沿训练步控制轨迹深度 k，并给出两个仅需极小代码改动的变体：**F2B**（学生 rollout 至多 k 步，k 从小到大，目标只对前 k 步算 token-level KL）；**B2F**（teacher 用预采集成功轨迹 τ\* 执行前 L−k 步把环境导到中间状态、stop-gradient，学生从该状态接管后 k 步并对其算 KL，k 递增直到学生端到端）。学生执行步计算 KL 梯度，teacher 执行步停梯度。
 
 ## 6. 方法详解(通俗、分步骤)
 
-- **前置定义**：状态 ht=(o0,a0,…,o_{t-1},a_{t-1},ot) 为完整交互历史；OPD 目标 L_OPD=E_{τ~πθ} Σ_t D_KL(πϕ(at|ht)‖πθ(at|ht))（reverse-KL，teacher πϕ、student πθ）。
-- **TCOD-F2B（Algorithm 1）**：每训练步 k←min(k_start+⌊n/η⌋, T_max)；学生从 h0 起 rollout k 步；L=Σ_{t=0}^{k-1} D_KL(πϕ‖πθ)；更新 θ。先学早轮信号再端到端，防 horizon 诱发的 KL 坍塌；无需任何示范。
+- **前置定义**：状态 \(h_t = (o_0, a_0, \ldots, o_{t-1}, a_{t-1}, o_t)\) 为完整交互历史；OPD 目标 \(L_{\mathrm{OPD}} = \mathbb{E}_{\tau \sim \pi_\theta} \sum_t D_{\mathrm{KL}}\big(\pi_\phi(a_t \mid h_t) \,\|\, \pi_\theta(a_t \mid h_t)\big)\)（reverse-KL，teacher πϕ、student πθ）。
+- **TCOD-F2B（Algorithm 1）**：每训练步 \(k \leftarrow \min(k_{\mathrm{start}} + \lfloor n/\eta \rfloor,\ T_{\max})\)；学生从 h0 起 rollout k 步；\(L = \sum_{t=0}^{k-1} D_{\mathrm{KL}}(\pi_\phi \,\|\, \pi_\theta)\)；更新 θ。先学早轮信号再端到端，防 horizon 诱发的 KL 坍塌；无需任何示范。
 - **TCOD-B2F（Algorithm 2）**：预采集 teacher 成功轨迹 T\*（pass@10 采样，保留成功）；每步 teacher 执行 τ\* 的前 L−k 步（stop-gradient）把环境带到中间状态，学生从 t=L−k 接管到 L，仅对学生步算 KL；k 递增直到学生从初始状态端到端。论文用 Appendix D.5 验证：随训练步 teacher 前缀从 L−1 降到 0，测试集端到端成功率稳步上升，证明课程平滑过渡避免了 train-test 分布漂移。
-- **异步训练稳定性细节**：异步 rollout（4×H20 actor）/训练（2×H20 learner）/teacher（2×H20），lock-free ring buffer；**staleness-aware 子轨迹经验回放**——把长度 n 的轨迹拆成 n 个递归前缀子轨迹入 buffer，交互历史封装进 prompt 作结构化上下文；用 staleness filter 丢弃 n_current−n_old>Δ_max 的经验，经验上 Δ_max=2 最优。
+- **异步训练稳定性细节**：异步 rollout（4×H20 actor）/训练（2×H20 learner）/teacher（2×H20），lock-free ring buffer；**staleness-aware 子轨迹经验回放**——把长度 n 的轨迹拆成 n 个递归前缀子轨迹入 buffer，交互历史封装进 prompt 作结构化上下文；用 staleness filter 丢弃 \(n_{\mathrm{current}} - n_{\mathrm{old}} > \Delta_{\max}\) 的经验，经验上 Δ_max=2 最优。
 
 ## 7. 实验数据集
 三个多轮 agent benchmark（Table 1）：**ALFWorld**（具身，max 30 turns，含 seen/unseen/hard split）、**WebShop**（电商，max 15 turns，需 ~1TB 内存）、**ScienceWorld**（科学推理，max 30 turns，需 Java/jar）。Hard split = 121 个 teacher 在 train split 上 pass@10 仍失败的任务。师生对：ALFWorld 主实验 student=Qwen2.5-{3,7}B、teacher=GRPO 训练的 Qwen2.5-7B（域内 SR 85.71）；跨 benchmark student=Qwen3-{1.7,4}B、teacher=Qwen3-30B-A3B-Instruct（通用、域内偏弱）。8× H20(96GB)。

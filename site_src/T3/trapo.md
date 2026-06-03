@@ -30,15 +30,15 @@
 把 SFT 与 RL 在**每个训练实例内细粒度交织**：只对专家轨迹前缀做 SFT，其后目标策略自行 rollout 补全做 RL，既吸收专家蒸馏收益、又不损探索与预训练知识。需解决两挑战：(1) 如何有效内化前缀知识（学习目标）；(2) 如何为每 prompt 选最优前缀长度（引导选择）。
 
 ## 4. 主要灵感 / 核心直觉
-GMM pilot 实验揭示 SFT 的 distribution-blending：标准 SFT 梯度里 token 权重 1/p_θ(yn|·) 在专家 token 落在远离当前策略模式时会爆炸，先把策略推进"空洞区"再慢慢修正。在交织设定下任何分到空洞区的概率质量都会立即产出退化 rollout。直觉：建立一个"信赖域"，区域内信任标准 SFT 梯度、激进模仿；区域外用常数权重 1/α 抑制梯度，只追专家主模式——即把 mode-covering 转成 mode-seeking。另一直觉（Fig.2 pilot）：越长的专家前缀稳步提升准确率并激发 backtracking / backward chaining 等高级推理行为，故"按需给最小前缀"是合理脚手架。
+GMM pilot 实验揭示 SFT 的 distribution-blending：标准 SFT 梯度里 \(1 / p_\theta\)(yn|·) 在专家 token 落在远离当前策略模式时会爆炸，先把策略推进"空洞区"再慢慢修正。在交织设定下任何分到空洞区的概率质量都会立即产出退化 rollout。直觉：建立一个"信赖域"，区域内信任标准 SFT 梯度、激进模仿；区域外用常数权重 1/α 抑制梯度，只追专家主模式——即把 mode-covering 转成 mode-seeking。另一直觉（Fig.2 pilot）：越长的专家前缀稳步提升准确率并激发 backtracking / backward chaining 等高级推理行为，故"按需给最小前缀"是合理脚手架。
 
 ## 5. 主要解决思路(一段话讲清核心)
 对每 prompt：先无引导自探索 rollout→若回报不足则按递增阈值注入越来越长的专家前缀→目标策略补全→对补全部分用标准 GRPO、对专家前缀部分用 TrSFT loss，全轨迹联合优化。TrSFT 把 SFT 梯度权重从 1/p_θ 改为 1/max(p_θ,α)（α 信赖域边界）；micro-group 采样按前面微组的平均回报与阈值决定本微组的前缀长度比。
 
 ## 6. 方法详解(通俗、分步骤)
 
-- **Trust-Region SFT (TrSFT)**：标准 SFT 梯度 ∇L_SFT 含权重 1/p_θ(yn|·)；TrSFT 改为 1/max(p_θ(yn|·), α)（α∈[0,1]）。p_θ≥α 时用标准 SFT 激进模仿；p_θ<α 时用常数 1/α 抑制梯度。**Prop.1**（已核对论文 §A.2 KKT 推导）：其最优解 p\*_T(c)=p_E(c)/λ（若 p_E(c)>αλ）否则 0，其中 λ=Σ_{c∈S(λ)}p_E(c)——即**剪掉专家低概率区、对主模式重标定，把目标从 forward-KL 的 mode-covering 转向 reverse-KL 的 mode-seeking**，给 RL 稳定起点。
-- **Micro-group Sampling（自适应前缀选择）**：每 prompt 顺序建 N 个微组，各组由 (前缀长度比 L_i、回报阈值 t_i、采样预算 n_i) 决定。先做无引导自探索（L_1=0、t_1=−1 保证恒触发）；若前面微组平均回报 < t_i，则给长度比 L_i 的专家前缀再采 n_i 个补全；0=L_1<L_2<…<L_N=1（L_N=1 可给完整专家路径）。"仅在需要时给最小引导"。
+- **Trust-Region SFT (TrSFT)**：标准 SFT 梯度 ∇L_SFT 含权重 1/p_θ(yn|·)；TrSFT \(1 / \max(p_\theta(y_n \mid \cdot),\, \alpha)\)（α∈[0,1]）。p_θ≥α 时用标准 SFT 激进模仿；p_θ<α 时用常数 1/α 抑制梯度。**Prop.1**（已核对论文 §A.2 KKT 推导）：其最优解 \(p^{*}_T(c) = p_E(c) / \lambda\)（若 p_E(c)>αλ）否则 0，其中 \(\lambda = \sum_{c \in S(\lambda)} p_E(c)\)——即**剪掉专家低概率区、对主模式重标定，把目标从 forward-KL 的 mode-covering 转向 reverse-KL 的 mode-seeking**，给 RL 稳定起点。
+- **Micro-group Sampling（自适应前缀选择）**：每 prompt 顺序建 N 个微组，各组由 (前缀长度比 L_i、回报阈值 t_i、采样预算 n_i) 决定。先做无引导自探索（L_1=0、t_1=−1 保证恒触发）；若前面微组平均回报 < t_i，则给长度比 L_i 的专家前缀再采 n_i 个补全；\(0 = L_1 < L_2 < \ldots < L_N = 1\)（L_N=1 可给完整专家路径）。"仅在需要时给最小引导"。
 - **联合更新**：补全用标准 GRPO 目标、专家前缀用 TrSFT loss，全轨迹统一优化（完整流程 Appendix B Algorithm 1）。
 
 ## 7. 实验数据集
@@ -67,7 +67,7 @@ GMM pilot 实验揭示 SFT 的 distribution-blending：标准 SFT 梯度里 toke
 
 ## 11. 残留问题 / 局限
 
-- **代码核对（已读 trapo_src 核心）：仓库存在专用 `luffy/verl/verl/trapo_src/` 目录，但其 SFT-前缀 loss 由 `mix_core_alg.py::compute_sft_pure_loss` 实现，即 `sft_losses = -log_prob`（标准 NLL/forward-KL SFT），再以 `sft_loss_coef` 加权与 GRPO 相加（`mix_actor.py` L118-148 `use_sft_multitask_loss` 分支）；另有 LUFFY 式 off-policy 重要性比 `off_ratio = exp(log_prob)/(target_probs)`（`use_off_policy_loss` 分支）。未在已读文件中找到 TrSFT 的 `1/max(p_θ,α)` 信赖域裁剪的独立实现；前缀窗口提供 random/linear/fix 三种（`mix_vllm_rollout.py`），但按累计回报递增前缀的 micro-group 阈值 t_i 逻辑未见清晰落地。结论：仓库偏向 LUFFY 基座 + 标准 SFT 加权，TRAPO 的**签名 TrSFT 与完整 micro-group 阈值机制在所见已提交代码中缺失/不完整**（可能在未读分支或脚本参数中）。〔TrSFT/micro-group-t_i 的确切代码落点待核〕**
+- **代码核对（已读 trapo_src 核心）：仓库存在专用 `luffy/verl/verl/trapo_src/` 目录，但其 SFT-前缀 loss 由 `mix_core_alg.py::compute_sft_pure_loss` 实现，即 \(\text{sft\_losses} = -\log\text{\_prob}\)（标准 NLL/forward-KL SFT），再以 `sft_loss_coef` 加权与 GRPO 相加（`mix_actor.py` L118-148 `use_sft_multitask_loss` 分支）；另有 LUFFY 式 off-policy 重要性比 \(\text{off\_ratio} = \exp(\text{log\_prob}) / \text{target\_probs}\)（`use_off_policy_loss` 分支）。未在已读文件中找到 TrSFT 的 `1/max(p_θ,α)` 信赖域裁剪的独立实现；前缀窗口提供 random/linear/fix 三种（`mix_vllm_rollout.py`），但按累计回报递增前缀的 micro-group 阈值 t_i 逻辑未见清晰落地。结论：仓库偏向 LUFFY 基座 + 标准 SFT 加权，TRAPO 的**签名 TrSFT 与完整 micro-group 阈值机制在所见已提交代码中缺失/不完整**（可能在未读分支或脚本参数中）。〔TrSFT/micro-group-t_i 的确切代码落点待核〕**
 - 仅在数学推理（+少量通用 QA）验证；训练数据全来自 DeepSeek-R1 蒸馏轨迹，多样性受限。
 - α、各微组 (L_i,t_i,n_i) 为手调超参（默认 α=0.1，组大小 8 划 4 微组 {4,2,1,1}，L=(0,0.2,0.5,1.0)，t=(−1,0.5,0.7,0.9)）。
 

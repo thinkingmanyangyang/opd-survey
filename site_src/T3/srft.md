@@ -37,7 +37,7 @@ SFT 与 RL 的结合是后训练的核心问题。传统做法两阶段串行（
 ## 6. 方法详解(通俗、分步骤)
 **SRFT（Supervised Reinforcement Fine-Tuning）**：
 
-- 论文（Sec.4）两个熵感知权重解析式：SFT 权重 `w_SFT = 0.5·stop_grad(exp(−H(π_θ)))`（论文叙述：熵高时减弱模仿、熵低时加强）；RL 正样本目标权重 `w_RL = 0.1·stop_grad(exp(H(π_θ)))`（熵高时维持探索）。
+- 论文（Sec.4）两个熵感知权重解析式：SFT 权重 `\(w_{\mathrm{SFT}} = 0.5 \cdot \mathrm{stop\_grad}\!\left(\exp(-H(\pi_\theta))\right)\)`（论文叙述：熵高时减弱模仿、熵低时加强）；RL 正样本目标权重 `\(w_{\mathrm{RL}} = 0.1 \cdot \mathrm{stop\_grad}\!\left(\exp(H(\pi_\theta))\right)\)`（熵高时维持探索）。
 - 代码层面（`mix_src/mix_core_alg.py` 的 `compute_token_on_off_policy_loss`）：
   - 正 advantage 项乘 `pos_entropy_exp_coeff = 0.1 * (entropy).exp().detach()`（L134，与论文 w_RL 一致 ✓）。
   - `entropy_exp_coeff = entropy.exp().detach()`（L162），`sft_loss = -entropy_exp_coeff * log_prob`（L163）；再在 `mix_actor.py` 中以 `policy_loss = policy_loss - sft_loss·sft_loss_coef`、训练脚本 `sft_loss_coef=-0.5`（train.sh L63）合成，即等效 `+0.5·exp(H)·(−log_prob)`。

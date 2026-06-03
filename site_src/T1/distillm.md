@@ -43,12 +43,12 @@
 ## 6. 方法详解（通俗、分步骤）
 
 1. **Skew KLD（SKL / SRKL）**：
-   - 前向 D^(α)_SKL(p,q)=KL(p, αp+(1-α)q)；反向 D^(α)_SRKL(p,q)=KL(q, (1-α)p+αq)。
+   - \(D^{(\alpha)}_{\mathrm{SKL}}(p,q) = \mathrm{KL}(p,\, \alpha p + (1-\alpha) q);\quad D^{(\alpha)}_{\mathrm{SRKL}}(p,q) = \mathrm{KL}(q,\, (1-\alpha) p + \alpha q)\)。
    - 代码（`distillm/losses.py` 第 66–95 行，已核对）：`skewed_forward_kl` 用 `mixed = lam*teacher + (1-lam)*student`、`skewed_reverse_kl` 用 `mixed = (1-lam)*teacher + lam*student`，默认 `lam=0.1`。
    - 性质（Thm.1）：更大 α 降低经验估计的 L2 范数误差；权衡后最优 α≈0.1，优于 KLD/RKLD/JSD。
 2. **自适应 off-policy 方法**：
    - **Adaptive SGO Scheduler**：SGO 使用概率 φ 从低（实验初始 φ=0）起，依验证 loss 自适应增大（验证 loss 上升则增 φ）。
-   - **Off-policy + replay buffer**：`distillm/buffer.py` 用 `deque(maxlen=capacity)` 存 SGO（实验 capacity≈1000），按线性递减 replay ratio λ_R=φ(1-t/T) 控制生成频率——早期多用当前 SGO 降 bias，后期多复用 buffer 提效率。
+   - **Off-policy + replay buffer**：`distillm/buffer.py` 用 `deque(maxlen=capacity)` 存 SGO（实验 capacity≈1000），按\(\lambda_R = \varphi(1 - t/T)\) 控制生成频率——早期多用当前 SGO 降 bias，后期多复用 buffer 提效率。
 3. **协同**：SKL 快速收敛使 off-policy 在低 bias 下生效；默认配置 = SRKL + off-policy + α=0.1。
 
 ## 7. 实验数据集

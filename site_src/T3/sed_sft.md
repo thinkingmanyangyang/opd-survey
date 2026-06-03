@@ -38,9 +38,9 @@
 
 ## 6. 方法详解(通俗、分步骤)
 
-- **Top-k 掩码 Mt**：P_Top-k(t)=Σ_{j∈Kt} π(y_j|·)（前 k 个最高概率之和），Mt=1[P_Top-k(t)<τ]。阈值 τ 取该批训练样本累积概率集合 P={P_Top-k(t)} 的 (1−r) 分位数（r 为掩码比例）。
-- **多样性鼓励函数** L_DE(p)=(p−1/2)²（受 CHORD 启发的二次惩罚，p=π(y*t|·) 为 ground-truth token 概率），p=0.5 处最小、p=1 或 0 处最大，把概率往 0.5 推。
-- **总损失** L = Σ_t [ −log π(y*t|·) + λ·Mt·L_DE(π(y*t|·)) ]，论文所有实验 λ=1。
+- **Top-k 掩码 Mt**：\(P_{\text{Top-}k}(t) = \sum_{j \in K_t} \pi(y_j \mid \cdot)\)（前 k 个最高概率之和），\(M_t = \mathbb{1}[P_{\text{Top-}k}(t) < \tau]\)。阈值 τ 取该批训练样本累积概率集合 P={P_Top-k(t)} 的 (1−r) 分位数（r 为掩码比例）。
+- **多样性鼓励函数** \(L_{\mathrm{DE}}(p) = \left(p - \tfrac{1}{2}\right)^2\)（受 CHORD 启发的二次惩罚，p=π(y*t|·) 为 ground-truth token 概率），p=0.5 处最小、p=1 或 0 处最大，把概率往 0.5 推。
+- **总损失** \(L = \sum_t \left[ -\log \pi(y^{*}_t \mid \cdot) + \lambda \cdot M_t \cdot L_{\mathrm{DE}}(\pi(y^{*}_t \mid \cdot)) \right]\)，论文所有实验 λ=1。
 - 超参：k=2 或 3；r>0.5 时稳定优于 CE，最佳 r=0.7（敏感性见 Table 3：r=0.2 时 34.18 反低于 CE 35.65，r=0.7/k=2 最高 37.71）。计算开销相对 CE 几乎可忽略。
 
 ## 7. 实验数据集

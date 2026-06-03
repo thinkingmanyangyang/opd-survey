@@ -22,24 +22,24 @@
 KD 分两类：black-box(仅教师生成文本可见，近期在 LLM API 蒸馏小模型上很流行)与 white-box(教师输出分布/隐状态可见)。white-box KD 此前主要用于 <1B 的语言理解/分类模型(模仿 logits/隐状态/注意力)；文本生成的标准 KD 是近似最小化 forward KLD(word-level 用教师每步输出作监督，sequence-level/SeqKD 直接训练在教师生成文本上)。分布散度度量(forward KLD、TVD、最优传输、reverse KLD)对文本生成训练影响显著，已有并行工作探索。
 
 ## 2. 现有工作存在的问题
-随着开源 LLM 兴起，white-box KD 价值上升，但面向生成式 LLM 的 white-box KD 尚未充分探索。标准 KD 本质最小化 forward KLD(KL[p‖q_θ])，迫使学生覆盖教师所有模式。对开放式文本生成，教师分布 p 的模式数远超低容量学生 q_θ 所能表达；最小化 forward KLD 会让学生把概率质量放到 p 的零概率/空白区(zero-forcing 的反面，overestimate void regions)，自由生成时产出低质量、不可能的样本。
+随着开源 LLM 兴起，white-box KD 价值上升，但面向生成式 LLM 的 white-box KD 尚未充分探索。标准 KD 本质最小化 \(\mathrm{KL}[p \| q_\theta]\)，迫使学生覆盖教师所有模式。对开放式文本生成，教师分布 p 的模式数远超低容量学生 q_θ 所能表达；最小化 forward KLD 会让学生把概率质量放到 p 的零概率/空白区(zero-forcing 的反面，overestimate void regions)，自由生成时产出低质量、不可能的样本。
 
 ## 3. Motivation
-改用 reverse KLD(KL[q_θ‖p])做蒸馏目标，让学生 mode-seeking——聚焦教师主要模式、对空白区赋低概率，避免学习长尾变体，更适合需要真实性/可靠性的生成场景；并推导其策略梯度形式做 on-policy 优化，使学生在自身能力内生成"教师偏好"的样本，而非死记教师的全部采样。
+改用 \(\mathrm{KL}[q_\theta \| p]\)做蒸馏目标，让学生 mode-seeking——聚焦教师主要模式、对空白区赋低概率，避免学习长尾变体，更适合需要真实性/可靠性的生成场景；并推导其策略梯度形式做 on-policy 优化，使学生在自身能力内生成"教师偏好"的样本，而非死记教师的全部采样。
 
 ## 4. 主要灵感 / 核心直觉
-计算机视觉与 RL 中 reverse KLD 的 mode-seeking 性质(toy 高斯混合实验，图 2)；可用策略梯度定理把 min KL[q_θ‖p] 转成 on-policy 优化(R_t = 累计 log p/q 作每步生成质量奖励)。另有逆强化学习(IRL)视角的等价理解(附录 A.1)。On-policy 采样天然缓解 teacher-forcing 带来的 exposure bias。
+计算机视觉与 RL 中 reverse KLD 的 mode-seeking 性质(toy 高斯混合实验，图 2)；可用策略梯度定理把 \(\min \mathrm{KL}[q_\theta \| p]\) 转成 on-policy 优化(R_t = 累计 log p/q 作每步生成质量奖励)。另有逆强化学习(IRL)视角的等价理解(附录 A.1)。On-policy 采样天然缓解 teacher-forcing 带来的 exposure bias。
 
 ## 5. 主要解决思路(一段话讲清核心)
-目标 min_θ KL[q_θ‖p]，用 Policy Gradient Theorem 推梯度(式 2，∇L = −E[Σ(R_t−1)∇log q_θ])；因策略梯度高方差、reward hacking、偏好短句，引入三项稳定化：单步分解(把单步 r_t 从 R_t 分离、直接对词表求和算 E[r_t] 降方差)、教师混合采样(ep=α·p+(1−α)·q_θ，α=0.2，抑制退化句、缓解 reward hacking，并用重要性采样修正、近似为单步 importance weight 降方差)、长度归一(对 R_{t+1} 归一消除短句偏好)。最终梯度含 PPO 式 clipping，并叠加 D_PT 上的语言建模 loss 保基准能力；整体流程类 RLHF：先 SFT 初始化，再 on-policy 训练。
+目标 \(\min_\theta \mathrm{KL}[q_\theta \| p]\)，用 Policy Gradient Theorem 推梯度(式 2，\(\nabla L = -\mathbb{E}\left[ \sum (R_t - 1) \nabla \log q_\theta \right]\))；因策略梯度高方差、reward hacking、偏好短句，引入三项稳定化：单步分解(把单步 r_t 从 R_t 分离、直接对词表求和算 E[r_t] 降方差)、教师混合采样(\(e_p = \alpha \cdot p + (1-\alpha) \cdot q_\theta,\ \alpha = 0.2\)，抑制退化句、缓解 reward hacking，并用重要性采样修正、近似为单步 importance weight 降方差)、长度归一(对 R_{t+1} 归一消除短句偏好)。最终梯度含 PPO 式 clipping，并叠加 D_PT 上的语言建模 loss 保基准能力；整体流程类 RLHF：先 SFT 初始化，再 on-policy 训练。
 
 ## 6. 方法详解(通俗、分步骤)
 
 1. **初始化**：在任务数据 D(Dolly)上 SFT 学生，取最低验证 loss 的 checkpoint。
 2. **采样**：从混合分布 ep=α·p+(1−α)·q_θ 采 response(α=0.2)，抑制退化。
-3. **算梯度**：(∇L)_Single 直接对整个词表求和算单步质量(降方差)；(∇L)_Long^Norm 用长度归一的 R_{t+1} 加 importance weight w_t≈q_θ/ep(近似单步以避免连乘方差累积)与 clip(式 7、算法 1)。
-4. **保基准能力**：加 ∇L_PT = −∇log q_θ(d)(d 采自预训练语料 D_PT)。
-5. **更新**：θ ← θ − η·[(∇L)_Single + (∇L)_Long^Norm + ∇L_PT]，按验证集 Rouge-L 选 checkpoint。
+3. **算梯度**：(∇L)_Single 直接对整个词表求和算单步质量(降方差)；(∇L)_Long^Norm 用长度归一的 R_{t+1} 加 importance weight \(w_t \approx q_\theta / e_p\)(近似单步以避免连乘方差累积)与 clip(式 7、算法 1)。
+4. **保基准能力**：加 \(\nabla L_{\text{PT}} = -\nabla \log q_\theta(d)\)(d 采自预训练语料 D_PT)。
+5. **更新**：\(\theta \leftarrow \theta - \eta \cdot \left[ (\nabla L)_{\text{Single}} + (\nabla L)_{\text{Long}}^{\text{Norm}} + \nabla L_{\text{PT}} \right]\)，按验证集 Rouge-L 选 checkpoint。
 
 ## 7. 实验数据集
 

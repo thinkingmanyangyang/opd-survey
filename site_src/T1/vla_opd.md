@@ -24,7 +24,7 @@ VLA 后训练当前两大范式：(1) 离线 SFT / 行为克隆（O'Neill 2024, 
 ## 2. 现有工作存在的问题
 
 - 离线 SFT 是 off-policy：在专家状态训练却在 student 诱导状态评测，复合误差（exposure bias）使其无法从自致偏离状态恢复；且对 static、disjoint 数据集做激进参数更新 → 灾难性遗忘。
-- 稀疏奖励在线 RL（GRPO）：机器人任务通常只有终态二值信号 R(τ)∈{0,1}，信用分配困难、方差高、样本效率极低。
+- 稀疏奖励在线 RL（GRPO）：机器人任务通常只有\(R(\tau) \in \{0, 1\}\)，信用分配困难、方差高、样本效率极低。
 - 简单把 SFT 改 on-policy（如 DAgger）用次优对齐目标：Forward-KL（soft 标签）mode-covering，在 teacher 高熵的 OOD 状态会模仿其犹豫 → 熵爆炸；Hard-CE（argmax 标签）丢弃 dark knowledge，在多模决策边界刚性追 argmax → 过早熵坍缩、丧失探索多样性。
 
 ## 3. Motivation
@@ -34,14 +34,14 @@ VLA 后训练当前两大范式：(1) 离线 SFT / 行为克隆（O'Neill 2024, 
 核心直觉是"散度方向决定 OOD 状态下的熵动力学"。teacher 在 OOD 状态往往呈现平坦高熵分布（epistemic uncertainty）；Forward-KL 在 teacher 样本上估梯度强制覆盖全支撑 → 继承高熵；reverse-KL 的 zero-forcing 让 student 只需对齐 teacher 的主模、忽略长尾，从而"果断但仍可探索"。把 reverse-KL 写成 token-level 内在奖励后即可挂进 group-based policy gradient。
 
 ## 5. 主要解决思路(一段话讲清核心)
-三阶段闭环（Algorithm 1）：student πθ 在环境 on-policy rollout G 条轨迹（主动暴露 OOD 失败状态）→ 对 student 访问过的每个状态查询冻结 teacher πtea 的 action logits（不在环境执行）→ 用 token-level 负 reverse-KL 作内在奖励 r_t = −(log πθ(a_t|s_t) − log πtea(a_t|s_t))（对 student log-prob 项 stop_gradient），等价于在 student-visited states 上最小化对 teacher 的 reverse-KL；用 group 平均的 policy gradient 降方差。
+三阶段闭环（Algorithm 1）：student πθ 在环境 on-policy rollout G 条轨迹（主动暴露 OOD 失败状态）→ 对 student 访问过的每个状态查询冻结 teacher πtea 的 action logits（不在环境执行）→ 用 token-level 负 reverse-KL 作内在奖励 \(r_t = -\big(\log \pi_\theta(a_t \mid s_t) - \log \pi_{\mathrm{tea}}(a_t \mid s_t)\big)\)（对 student log-prob 项 stop_gradient），等价于在 student-visited states 上最小化对 teacher 的 reverse-KL；用 group 平均的 policy gradient 降方差。
 
 ## 6. 方法详解(通俗、分步骤)
 
 1. **初始化**：student 由极少演示 SFT 得到（LIBERO 1-traj、RoboTwin2.0 1000-traj），是脆弱下界；teacher 为 RL 训得的鲁棒专家（SimpleVLA-RL），全程冻结。
 2. **Phase 1 学生采样（探索）**：πθ 在环境中跑 G 条轨迹，频繁进入 OOD 失败态 serr，把"未知"区显式纳入训练分布。
-3. **Phase 2 教师标注（纠正）**：对每个被访问状态 st，查询 teacher 得 qt(a)=πtea(a|st) 作 dense 引导，注入恢复先验；teacher 只打标不执行。
-4. **Phase 3 模式寻优（更新）**：token-level 奖励 r^OPD_t = −log(πθ/πtea)（式 6，stop_gradient 作用于 student log-prob），等价最小化 reverse-KL（式 5）。梯度按 group 平均（式 7）；**与标准 GRPO 不同，不做 outcome reward 归一化，直接用 raw reverse-KL reward 作优势**。
+3. **Phase 2 教师标注（纠正）**：对每个被访问状态 st，查询 teacher 得 \(q_t(a) = \pi_{\mathrm{tea}}(a \mid s_t)\) 作 dense 引导，注入恢复先验；teacher 只打标不执行。
+4. **Phase 3 模式寻优（更新）**：token-level 奖励 \(r^{\mathrm{OPD}}_t = -\log(\pi_\theta / \pi_{\mathrm{tea}})\)（式 6，stop_gradient 作用于 student log-prob），等价最小化 reverse-KL（式 5）。梯度按 group 平均（式 7）；**与标准 GRPO 不同，不做 outcome reward 归一化，直接用 raw reverse-KL reward 作优势**。
 5. **理论对比**：Forward-KL=mode-covering→熵爆炸；Hard-CE=丢 dark knowledge→熵坍缩；reverse-KL=zero-forcing bounded mode-seeking→健康熵。
 6. **两个变体**：Ours(Distill) 仅蒸馏；Ours(Distill+GRPO) 蒸馏热启后再 GRPO 微调。主实验 batch=64、G=8（沿用 SimpleVLA-RL）；消融固定 batch=32。
 

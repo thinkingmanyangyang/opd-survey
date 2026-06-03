@@ -19,7 +19,7 @@
 *Figure 2. Performance-efficiency trade-offs of on-policy SFT and baseline methods under varying generation token budgets.*
 
 ## 1. 相关工作与进展
-LRM 多用 RL（GRPO 系）训练并产生很长 CoT，带来显著推理开销。为缓解，"高效推理"方向涌现大量工作，在奖励中叠加长度惩罚/简洁性奖励（ThinkPrune、O1-Pruner、L1、LASER 等），且 RLen 与权重 γ(o|q) 的设计日趋复杂（按正确性/难度条件激活、用组内 mean/median/max 长度统计）。这些方法可统一写为 REff = RAcc + γ(o|q)·RLen。
+LRM 多用 RL（GRPO 系）训练并产生很长 CoT，带来显著推理开销。为缓解，"高效推理"方向涌现大量工作，在奖励中叠加长度惩罚/简洁性奖励（ThinkPrune、O1-Pruner、L1、LASER 等），且 RLen 与权重 γ(o|q) 的设计日趋复杂（按正确性/难度条件激活、用组内 mean/median/max 长度统计）。\(R_{\mathrm{Eff}} = R_{\mathrm{Acc}} + \gamma(o \mid q)\cdot R_{\mathrm{Len}}\)
 
 ## 2. 现有工作存在的问题
 
@@ -31,7 +31,7 @@ LRM 多用 RL（GRPO 系）训练并产生很长 CoT，带来显著推理开销�
 重新审视：把 GRPO 等复杂目标直接套用于高效推理是否合理？作者通过原理分析指出该范式存在两处根本性错配（KL 冗余、组内归一化失配），并据此推导出能否用更简单、有原理依据的方案达到同样甚至更好的 Pareto 前沿。
 
 ## 4. 主要灵感 / 核心直觉
-高效推理有两条与 RLHF 不同的关键性质：正确性与长度都**直接可验证**（无需学习奖励模型），且本质是**多奖励**问题。基于此：(1) KL 正则在 RLHF 中用于防止 reward over-optimization，但此处奖励可靠、无分布漂移之忧，故冗余；(2) 组内奖励归一化在多奖励下会放大无信息样本的梯度、并混淆不同奖励组成（举例：奖励向量 (0,1)/(0,0) 与 (1,1)/(0,0) 归一化后得到相同 advantage），引入歧义。去掉这两项 + 采用最简截断奖励（超长响应给零奖励），策略梯度目标即退化为 reward-free 的最大似然 SFT。
+高效推理有两条与 RLHF 不同的关键性质：正确性与长度都**直接可验证**（无需学习奖励模型），且本质是**多奖励**问题。基于此：(1) KL 正则在 RLHF 中用于防止 reward over-optimization，但此处奖励可靠、无分布漂移之忧，故冗余；(2) 组内奖励归一化在多奖励下会放大无信息样本的梯度、并混淆不同奖励组成（\((0,1)/(0,0)\)），引入歧义。去掉这两项 + 采用最简截断奖励（超长响应给零奖励），策略梯度目标即退化为 reward-free 的最大似然 SFT。
 
 ## 5. 主要解决思路(一段话讲清核心)
 在带长度相关奖励 γ(o|q) 的 RL 目标下，移除 KL 正则、移除组内归一化、把长度惩罚简化为"截断"（超过固定长度的响应奖励为零），原始策略梯度目标就**等价于在自生成数据上做监督微调**，而该数据天然按"正确性 + 简洁性"过滤（正确且未被截断者得正奖励）。由此得极简 recipe——on-policy SFT：用当前策略自采样、过滤、对保留轨迹做交叉熵，无需 PPO/GRPO 机制与奖励塑形。
@@ -40,7 +40,7 @@ LRM 多用 RL（GRPO 系）训练并产生很长 CoT，带来显著推理开销�
 
 1. **Rollout**：用当前策略对每个 prompt 采 N=32 条回答（温度 1.0）。
 2. **评分与过滤**：reward_fn(verifier) 判正误；截断式奖励使超长响应得零奖励。代码 `_data_filter` 按 uid 分组，**丢弃错误回答、保留全部正确回答（score>0）**；query 全错则整条丢弃；保留数对 dp_size 取整。注意"简洁性过滤"在 as-shipped 仓库中**并非由 `_data_filter` 显式按长度筛选**（length 字段被提取但代码注释明确"not used"），而是通过截断奖励——超 `max_response_length` 的响应被截断/得零奖励从而落入"错误"被丢弃——间接实现〔原 〔待核〕 已解决〕。
-3. **训练**：把 verl PPO actor 的 PG 损失替换为交叉熵——`cross_entropy_loss = agg_loss(loss_mat=-log_prob, loss_mask=response_mask, loss_agg_mode="token-mean")`，即对 response token 的 NLL，无 advantage、无 clip、`use_kl_loss=False`。
+3. **训练**：把 verl PPO actor 的 PG 损失替换为交叉熵——\(\mathrm{cross\_entropy\_loss} = \mathrm{agg\_loss}(\mathrm{loss\_mat}=-\log p,\ \mathrm{loss\_mask}=\mathrm{response\_mask},\ \mathrm{loss\_agg\_mode}=\text{token-mean})\)，即对 response token 的 NLL，无 advantage、无 clip、`use_kl_loss=False`。
 4. **同分布训练–评测**：训练与评测用相同 prompt 模板，避免分布漂移混淆增益归因。
 5. 实践指南：rollout 温度、每输入 rollout 数、length bias correction、最大输出长度等，附机制解释以稳定优化。
 

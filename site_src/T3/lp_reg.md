@@ -31,13 +31,13 @@ RLVR 推动 LLM 复杂推理，但训练常在性能平台期崩溃，伴随策�
 关键统计观察：在低概率区间内，有意义的探索 token 的平均概率**一贯高于**无关噪声 token(例：spark "Wait" p=0.03 vs noise "cost" 更低)。这一可分性使得"先用概率阈值滤掉噪声、再保护剩余低概率 token"成为可行——区分 spark 与 noise 而非无差别提熵。
 
 ## 5. 主要解决思路(一段话讲清核心)
-构造一个"去噪代理分布 π_proxy"：丢弃概率低于阈值的 token(presumed noise)、把质量重归一化到剩余 token 上，从而放大 reasoning sparks 的相对概率;再在 GRPO 目标上加一个前向 KL 正则项 D_KL(π_proxy‖π_θ)，仅对"低概率 ∩ 非噪声 ∩ 负优势"的 token 触发，定向阻止这些 spark 被消除，又不强制策略完全匹配 proxy。
+构造一个"去噪代理分布 π_proxy"：丢弃概率低于阈值的 token(presumed noise)、把质量重归一化到剩余 token 上，从而放大 reasoning sparks 的相对概率;再在 GRPO 目标上加一个前向 KL 正则项 \(D_{\mathrm{KL}}(\pi_{\text{proxy}} \| \pi_\theta)\)，仅对"低概率 ∩ 非噪声 ∩ 负优势"的 token 触发，定向阻止这些 spark 被消除，又不强制策略完全匹配 proxy。
 
 ## 6. 方法详解(通俗、分步骤)
 Low-probability Regularization(Lp-Reg)，集成进 GRPO：
 
-- **代理分布 π_proxy**：(1)过滤噪声——丢弃概率 < 阈值 τ 的 token(τ 可用固定值如 0.02，或 **min-p**：τ=κ·max π，主实验用 min-p、κ=0.02，自适应分布锐度);(2)概率重归一化——把丢弃 token 的质量重分配到剩余 token，得放大 spark 相对概率的"去噪"参考分布。
-- **目标函数**：第一项为 GRPO 策略梯度，但**去掉裁剪下界**(避免裁掉低概率探索动作)、加一个大上界 U(数值稳定);第二项为 Lp-Reg 惩罚——仅对**同时满足三条件**的 token 触发：①π_θ 低于批内最低 ρ 分位阈值 δ_B^ρ(低概率)、②在 π_proxy 中概率>0(非噪声)、③优势 A<0(负样本)，施加**前向 KL** D_KL(π_proxy‖π_θ)。前向 KL 在 π_θ→0 而 proxy 非零时给大惩罚，定向防 token 被消除，又不强制完全匹配 proxy。〔实现以 Lp-Reg-dev 为准〕
+- **代理分布 π_proxy**：(1)过滤噪声——丢弃概率 < 阈值 τ 的 token(τ 可用固定值如 0.02，或 **min-p**：\(\tau = \kappa \cdot \max \pi\)，主实验用 min-p、κ=0.02，自适应分布锐度);(2)概率重归一化——把丢弃 token 的质量重分配到剩余 token，得放大 spark 相对概率的"去噪"参考分布。
+- **目标函数**：第一项为 GRPO 策略梯度，但**去掉裁剪下界**(避免裁掉低概率探索动作)、加一个大上界 U(数值稳定);第二项为 Lp-Reg 惩罚——仅对**同时满足三条件**的 token 触发：①π_θ 低于批内最低 ρ 分位阈值 δ_B^ρ(低概率)、②在 π_proxy 中概率>0(非噪声)、③优势 A<0(负样本)，施加**前向 KL** \(D_{\mathrm{KL}}(\pi_{\text{proxy}} \| \pi_\theta)\)。前向 KL 在 π_θ→0 而 proxy 非零时给大惩罚，定向防 token 被消除，又不强制完全匹配 proxy。〔实现以 Lp-Reg-dev 为准〕
 
 ## 7. 实验数据集
 

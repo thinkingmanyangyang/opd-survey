@@ -38,9 +38,9 @@ ASFT = **DFT 概率重加权 + KL 锚定**。在 DFT 的 token 级重加权交�
 ## 6. 方法详解(通俗、分步骤;关键公式用白话解释,必要时给伪代码)
 代码(`train_v2.py`, `mode="asft"`)逐行核对(已确认与论文一致)：
 
-- **DFT 重加权**：`weights = softmax(logits).gather(label).detach()`；`dft_losses = token_losses · weights`。白话：模型对正确 token 当前预测概率越高，这个 token 的 loss 权重越大——把学习集中到"模型已经有点会、再推一把就稳"的 token 上。
-- **KL 锚定**：`kl_div = KL( log_softmax(π_θ) ‖ softmax(ref) )`(per-token，对 vocab 求和)；ref 为 base/原模型(`disable_adapter()` 取 reference，或单独加载 `original_model` 并冻结)。
-- **最终损失**：`weighted_losses = dft_losses + kl_weight · kl_div`，再按 valid_mask(非 -100 的回复 token)归一。
+- **DFT 重加权**：\(\text{weights} = \mathrm{softmax}(\text{logits}).\text{gather}(\text{label}).\text{detach}()\)；\(\text{dft\_losses} = \text{token\_losses} \cdot \text{weights}\)。白话：模型对正确 token 当前预测概率越高，这个 token 的 loss 权重越大——把学习集中到"模型已经有点会、再推一把就稳"的 token 上。
+- **KL 锚定**：\(\text{kl\_div} = \mathrm{KL}\!\left(\log\mathrm{softmax}(\pi_\theta) \,\|\, \mathrm{softmax}(\text{ref})\right)\)(per-token，对 vocab 求和)；ref 为 base/原模型(`disable_adapter()` 取 reference，或单独加载 `original_model` 并冻结)。
+- **最终损失**：\(\text{weighted\_losses} = \text{dft\_losses} + \text{kl\_weight} \cdot \text{kl\_div}\)，再按 valid_mask(非 -100 的回复 token)归一。
 - **kl_weight**：代码默认 **0.1**(train_v2.py / .sh)，但 README 与示例命令在**混合精度(bf16/fp16)下推荐 0.03**——过大会放大精度噪声致失稳。
 - 代码同时实现 `sft / dft / sft+kl / asft` 四种 mode，便于消融对照。
 - **理论**：在 RWR 框架下证明 DFT 给出比 SFT 严格更紧的 RL 下界(论文 _txt 确认 "provably tighter bound than SFT")，KL 锚定控制方差/漂移。

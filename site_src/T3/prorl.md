@@ -37,13 +37,13 @@ o1、DeepSeek-R1 等推理模型通过 test-time scaling（长 CoT、探索/验�
 以 GRPO 为基座（去 critic、组内标准化优势），叠加 DAPO 的解耦 clip + 动态采样、KL 正则、以及**周期性把参考策略硬重置为近期在线快照**，从而维持熵、防偏离、避免 KL 项随训练主导损失而停滞，支撑 "prolonged" 训练。
 
 ## 6. 方法详解(通俗、分步骤)
-基座 **GRPO**：A(τ)=(R−mean)/std。叠加：
+基座 **GRPO**：\(A(\tau)=(R-\mathrm{mean})/\mathrm{std}\)。叠加：
 
 1. **DAPO 两组件**：
    - **Decoupled Clip（clip-higher）**：把 PPO 上下 clip 界拆成独立 ε_low/ε_high，调高 ε_high 提升低概率 token、鼓励探索、保留熵、减少过早 mode collapse。
    - **Dynamic Sampling**：过滤一贯全对(acc=1)/全错(acc=0) 的 prompt，聚焦中等难度、维持学习信号。
 2. **KL 正则 + 参考策略重置（关键创新）**：
-   - L = L_GRPO − β·D_KL(πθ‖π_ref)，维持熵并防偏离稳定参考、抑制对 spurious reward 过拟合。
+   - \(L = L_{\mathrm{GRPO}} - \beta\cdot D_{\mathrm{KL}}(\pi_\theta\|\pi_{\mathrm{ref}})\)，维持熵并防偏离稳定参考、抑制对 spurious reward 过拟合。
    - 反 "去 KL" 主流观点：因本工作从已能产生连贯 CoT 的良好起点（DeepSeek-R1-Distill-Qwen-1.5B）出发，保留 KL 有益于稳定与持续熵。
    - **Reference Policy Reset**：训练推进后 KL 项渐主导、更新变小；故周期性把 π_ref **硬重置**为近期在线快照并重置优化器状态，在保留 KL 收益的同时持续提升、避免过早收敛。
 

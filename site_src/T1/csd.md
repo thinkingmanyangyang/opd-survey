@@ -33,7 +33,7 @@
 score matching 在能量模型中可绕开 sum-to-one 归一化约束。把它的离散版本（concrete score，刻画"换到另一 token"的相对概率变化）搬到 LLM 蒸馏上：只要 student/teacher 在**所有词表对**上的相对 logit 差对齐即可——这天然对 logit 常数平移不变，从而比 DLD 多出一整族等价解。
 
 ## 5. 主要解决思路(一段话讲清核心)
-定义 concrete score sθ(y)=[qθ(x)/qθ(y)]_{x∈V}，把蒸馏目标设为匹配 student 与 teacher 的 concrete score。为适配 LLM，做两处工程处理：(a) 概率比 qθ(x)/qθ(yt) 易发散导致训练不稳，改用其 **log 变换**形式；(b) 朴素双重词表求和是 O(|V|²)，在可分权重假设下降到 O(|V|)。最终目标归约为"匹配所有词表对上的相对 logit 差，权重可调"，并可在同一框架内实例化 mode-seeking 与 mode-covering 两类行为。
+\(s_\theta(y) = [q_\theta(x)/q_\theta(y)]_{x \in V}\)，把蒸馏目标设为匹配 student 与 teacher 的 concrete score。为适配 LLM，做两处工程处理：(a) \(q_\theta(x)/q_\theta(y_t)\)导致训练不稳，改用其 **log 变换**形式；(b) 朴素双重词表求和是 O(|V|²)，在可分权重假设下降到 O(|V|)。最终目标归约为"匹配所有词表对上的相对 logit 差，权重可调"，并可在同一框架内实例化 mode-seeking 与 mode-covering 两类行为。
 
 ## 6. 方法详解(通俗、分步骤)
 
@@ -41,8 +41,8 @@ score matching 在能量模型中可绕开 sum-to-one 归一化约束。把它�
 2. **log 变换稳定训练**：直接用概率比会发散，改对齐 log 形式（论文 §"adopt the logarithm"），得到 CSD 目标 L_CSD。
 3. **理论保证**：
    - **Proposition 1（一致性）**：模型容量趋于无穷时，匹配 log-concrete-score 可使 student 收敛到 teacher。
-   - **Theorem 2（解集超集）**：Θ*_CSD ⊋ Θ*_DLD——DLD 能达到的解 CSD 都能达到，且 CSD 因对 logit 常数平移不变而拥有更多解。
-   - **Theorem 3（高效梯度）**：在权重可分假设 w(yt,x)=w1(yt)·w2(x) 下，梯度可在 **O(|V|)** 线性时间算出（Algorithm 1）。
+   - \(\Theta^*_{\mathrm{CSD}} \supsetneq \Theta^*_{\mathrm{DLD}}\)——DLD 能达到的解 CSD 都能达到，且 CSD 因对 logit 常数平移不变而拥有更多解。
+   - **Theorem 3（高效梯度）**：在权重可分假设 \(w(y_t, x) = w_1(y_t) \cdot w_2(x)\) 下，梯度可在 **O(|V|)** 线性时间算出（Algorithm 1）。
 4. **更一般权重的退路**：若不接受可分假设，可用 **Monte Carlo 估计**梯度（不需独立性假设，但方差更大、收敛略慢）。
 5. **即插使用**：把 CSD(S,S) 与 DLD(S) 损失叠加进 ImitKD/GKD/DistiLLM——这三者的差异在于训练数据来源（ImitKD 纯 student on-policy、GKD 混合、DistiLLM 按验证损失自适应选择）。
 

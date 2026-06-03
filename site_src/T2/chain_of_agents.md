@@ -35,7 +35,7 @@
 
 ## 4. 主要灵感 / 核心直觉
 
-- 既然 MAS 优于 ReAct，就把 MAS 的"动态角色编排"能力蒸进一个模型，用 system prompt 定义多个 agent、由 Thinking Agent 通过状态转移 S_t = f_θ(S_{t-1}, ϕ_{t-1}, o_{t-1}) 动态激活角色 ϕ_t。
+- 既然 MAS 优于 ReAct，就把 MAS 的"动态角色编排"能力蒸进一个模型，用 system prompt 定义多个 agent、由 Thinking Agent 通过状态转移 \(S_t = f_\theta(S_{t-1}, \phi_{t-1}, o_{t-1})\) 动态激活角色 ϕ_t。
 - 蒸馏层级是 **agent-level / sequence-level**（学 MAS 的序列决策模式），而非 word-level 分布——这是它与 token 级 KD/OPD 的本质区别。
 
 ## 5. 主要解决思路（一段话讲清核心）
@@ -44,7 +44,7 @@
 ## 6. 方法详解（通俗、分步骤）
 **CoA 范式**：role-playing agents（Thinking 编排、Plan 分解、Reflection 自评、Verification 校验）+ tool agents（Search、Crawl、Code Generate）；单次解码过程内由 Thinking Agent 动态编排，保持上下文连续、省去 MAS 的 agent 间通信开销。
 **阶段 I 数据生成与四阶段渐进质量过滤**：① 复杂度（<5 agent-tool 交互剔除）② 质量（剔错答/冗余/脏数据）③ reflection enrichment（缺反思的下采样）④ error-correction 上采样（search/QA 中带 `<double_check>` agent 纠错的轨迹）。轨迹格式带 observation masking（O 不计入 loss）。
-**阶段 II Agentic RL**：tool-aware rollout + DAPO；reward 用 outcome-driven 二元信号（web agent 用 LLM judge M_j 二元判断、免格式奖励；code agent reward = score_answer · score_format）；RL 数据选难题（rq≤0.3）。
+**阶段 II Agentic RL**：tool-aware rollout + DAPO；reward 用 outcome-driven 二元信号（web agent 用 LLM judge M_j 二元判断、免格式奖励；\(\text{reward} = \text{score}_{\mathrm{answer}} \cdot \text{score}_{\mathrm{format}}\)）；RL 数据选难题（rq≤0.3）。
 **backbone**：Qwen2.5-3B/7B/32B-Instruct。整体是组合既有组件（OAgents 蒸馏 + LLaMA-Factory + veRL/DAPO）的工程 recipe，方法学创新点有限。
 
 ## 7. 实验数据集

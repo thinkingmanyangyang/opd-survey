@@ -34,9 +34,9 @@ SFT 中"数据质量 > 数量"已成共识；即便做过样本级过滤，高�
 
 ## 6. 方法详解(通俗、分步骤)
 
-- **Self-modulated（自调制）选择**：**Retrospective Excess Loss (REL)** = L_θhis(x_i) − L_θ(x_i) = log[P_θ / P_θhis]（论文式(3)），即当前模型相对历史模型的 loss 下降（与 Rho-1 的 Excess Loss"学未来 loss"相对，REL"学历史 loss"）。历史模型可由 EMA 自适应更新（式(4)：θ_his = α·θ_his + (1−α)·θ，可选），比固定 reference 提供更稳长程指引。
+- **Self-modulated（自调制）选择**：**Retrospective Excess Loss (REL)** = \(L_{\theta_{\mathrm{his}}}(x_i) - L_\theta(x_i) = \log\!\left[ P_\theta / P_{\theta_{\mathrm{his}}} \right]\)（论文式(3)），即当前模型相对历史模型的 loss 下降（与 Rho-1 的 Excess Loss"学未来 loss"相对，REL"学历史 loss"）。历史模型可由 EMA 自适应更新（式(4)：\(\theta_{\mathrm{his}} = \alpha \cdot \theta_{\mathrm{his}} + (1 - \alpha) \cdot \theta\)，可选），比固定 reference 提供更稳长程指引。
 - **Semantic-aware（语义感知）选择**：基于注意力的 token 重要性。利用 SFT 中所有 response token 都关注固定长度 prompt 这点，计算每个 response token 对 prompt token 的注意力之和（多头平均）作为相关性代理；用深层（deeper layer）注意力效果更好；用 hook 重算目标层注意力以兼容 FlashAttention。
-- **融合**：REL 在样本内 min-max 归一到 [0,1]，注意力分天然 ∈[0,1]；最终 `Score = γ·Norm(REL) + (1−γ)·AttnScore`（默认 γ=0.5）。代码 `scripts/finetune.py`：`diff_norm = (diff-diff.min())/(diff.max()-diff.min()+1e-8)`、`combined = ratio·diff_norm + (1−ratio)·resp2prompt_scores`（与论文 Score 一致 ✓，`ratio`=γ）。按固定比例 ρ（默认 0.6）选 top-ρ token 计 loss，其余 mask（`data_prop`=ρ）。
+- **融合**：REL 在样本内 min-max 归一到 [0,1]，注意力分天然 ∈[0,1]；最终 \(\text{Score} = \gamma \cdot \mathrm{Norm}(\text{REL}) + (1 - \gamma) \cdot \text{AttnScore}\)（默认 γ=0.5）。代码 `scripts/finetune.py`：\(\text{diff\_norm} = \frac{\text{diff} - \text{diff.min}()}{\text{diff.max}() - \text{diff.min}() + 10^{-8}}\)、\(\text{combined} = \text{ratio} \cdot \text{diff\_norm} + (1 - \text{ratio}) \cdot \text{resp2prompt\_scores}\)（与论文 Score 一致 ✓，`ratio`=γ）。按固定比例 ρ（默认 0.6）选 top-ρ token 计 loss，其余 mask（`data_prop`=ρ）。
 
 ## 7. 实验数据集
 数据池：从 5 个常用 SFT 集（Flan v2、OpenAssistant、Stanford Alpaca、Dolly、WizardLM，共 300k）采 50k（DS²-50k）；reference 基线在 DS² 样本级筛出的 10k 高质子集上训。评测 10 个通用基准：TriviaQA、TruthfulQA、MMLU、ARC-C/E、TyDiQA、Winogrande、HellaSwag、LogiQA、AGIEval。基座：LLaMA-3.2-3B、LLaMA-3.1-8B、Qwen-2.5-7B、Qwen-2.5-14B（3B~14B）。

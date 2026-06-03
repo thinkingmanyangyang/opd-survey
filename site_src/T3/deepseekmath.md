@@ -42,13 +42,13 @@ RL 已被证明能在 SFT 之后进一步提升 LLM 数学推理。该阶段广�
 
 - **从 PPO 到 GRPO**：PPO 目标（式1）逐 token 用重要性比 πθ/πθold 加 clip，优势 A_t 由 GAE + 价值函数 V_ψ 估计，并在奖励里加逐 token KL（式2）。
 - **GRPO 目标（式3）**：对每问题 q 采一组 {o_1,…,o_G}：
-  J_GRPO = E[ (1/G)Σ_i (1/|o_i|)Σ_t { min( (πθ/πθold)·Â_{i,t}, clip(πθ/πθold,1−ε,1+ε)·Â_{i,t} ) − β·D_KL(πθ‖π_ref) } ]
+  \(J_{\mathrm{GRPO}} = \mathbb{E}\!\left[ \frac{1}{G}\sum_i \frac{1}{|o_i|}\sum_t \left\{ \min\!\left( \frac{\pi_\theta}{\pi_{\theta_{\mathrm{old}}}}\hat{A}_{i,t},\ \mathrm{clip}\!\left(\frac{\pi_\theta}{\pi_{\theta_{\mathrm{old}}}}, 1-\varepsilon, 1+\varepsilon\right)\hat{A}_{i,t} \right) - \beta\, D_{\mathrm{KL}}(\pi_\theta \| \pi_{\mathrm{ref}}) \right\} \right]\)
 
   - **去掉价值模型**，用组内相对奖励估计优势 Â_{i,t}。
-  - KL 正则**直接加在损失里**，用无偏估计器（式4，Schulman 2020）：D_KL = π_ref/πθ − log(π_ref/πθ) − 1，保证非负，避免复杂化优势计算。
+  - KL 正则**直接加在损失里**，用无偏估计器（式4，Schulman 2020）：\(D_{\mathrm{KL}} = \pi_{\mathrm{ref}}/\pi_\theta - \log(\pi_{\mathrm{ref}}/\pi_\theta) - 1\)，保证非负，避免复杂化优势计算。
 - **两种优势估计**：
-  - **结果监督（§4.1.2）**：奖励模型对每个完整输出打分得 {r_i}，组内标准化 r̃_i=(r_i−mean)/std，输出内所有 token 优势 Â_{i,t}=r̃_i。
-  - **过程监督（§4.1.3）**：过程奖励模型对每个推理步末 token 打分，组内标准化后，每 token 优势为其后续各步标准化奖励之和 Â_{i,t}=Σ_{index(j)≥t} r̃_i^{index(j)}。
+  - **结果监督（§4.1.2）**：奖励模型对每个完整输出打分得 {r_i}，\(\tilde{r}_i = (r_i - \mathrm{mean})/\mathrm{std},\quad \hat{A}_{i,t} = \tilde{r}_i\)。
+  - **过程监督（§4.1.3）**：过程奖励模型对每个推理步末 token 打分，组内标准化后，\(\hat{A}_{i,t} = \sum_{\mathrm{index}(j) \ge t} \tilde{r}_i^{\,\mathrm{index}(j)}\)。
 - **迭代 RL（§4.1.4 / Algorithm 1）**：随训练推进旧奖励模型不足以监督新策略，故用策略采样结果构造奖励模型新训练集，用回放机制（含 10% 历史数据）持续训练奖励模型；同时把参考模型设为当前策略，用新奖励模型继续训练策略。
 - **统一范式（§5.2.1）**：把 SFT/RFT/DPO/PPO/GRPO 统一写成同一梯度形式，差异在于 (1) 数据来源（在线采样 vs 离线）、(2) 奖励函数（Rule vs Model）、(3) **梯度系数 GC**（由数据 + 奖励信号决定每个样本/token 的梯度权重）。
 

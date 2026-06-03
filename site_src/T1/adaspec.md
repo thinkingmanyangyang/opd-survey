@@ -40,11 +40,11 @@
 
 **Step 2 — 选择性 draft 蒸馏**：对每个 token w，
 
-- 算 draft 的损失 `L_draft(w)=KL(target‖draft)`、参考模型的损失 `L_ref(w)=KL(target‖ref)`；
-- 算损失差 `ΔL(w)=L_draft(w) − L_ref(w)`。白话：ΔL 大 = "draft 现在比已学好的参考差得多" = 这个 token **还有很大可学空间**；ΔL 小 = draft 已接近参考能达到的极限，再练也榨不出多少。
+- 算 draft 的损失 \(\mathcal{L}_{\text{draft}}(w) = \mathrm{KL}(\text{target} \,\|\, \text{draft})\)、参考模型的损失 \(\mathcal{L}_{\text{ref}}(w) = \mathrm{KL}(\text{target} \,\|\, \text{ref})\)；
+- 算损失差 \(\Delta\mathcal{L}(w) = \mathcal{L}_{\text{draft}}(w) - \mathcal{L}_{\text{ref}}(w)\)。白话：ΔL 大 = "draft 现在比已学好的参考差得多" = 这个 token **还有很大可学空间**；ΔL 小 = draft 已接近参考能达到的极限，再练也榨不出多少。
 - 选 ΔL 最大的 top-k% token 组成子集 S（默认 **k=0.4**），draft **仅对 S 内 token** 求蒸馏损失。
 
-**工程实现**（据论文 Appendix A.4 Listing 2，约 100 行，override `transformers.Trainer.compute_loss`；**仓库内无可运行代码**）：对每 token 用 `KLDivLoss(reduction='none')`，以 target softmax 为 P，分别算 `actual=KL(P‖draft)`、`ref=KL(P‖ref)`，按 `delta=actual−ref` 取掩码 `delta >= torch.quantile(delta, 1−k)`，只对 masked token 求和(除以 num_items_in_batch)或求均值。可与 EAGLE 叠加。
+**工程实现**（据论文 Appendix A.4 Listing 2，约 100 行，override `transformers.Trainer.compute_loss`；**仓库内无可运行代码**）：对每 token 用 `KLDivLoss(reduction='none')`，以 target softmax 为 P，分别算 `actual=KL(P‖draft)`、`ref=KL(P‖ref)`，按 `delta=actual−ref` 取掩码 \(\delta \geq \mathrm{quantile}(\delta,\, 1-k)\)，只对 masked token 求和(除以 num_items_in_batch)或求均值。可与 EAGLE 叠加。
 
 ## 7. 实验数据集
 

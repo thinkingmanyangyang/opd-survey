@@ -34,7 +34,7 @@
 PPO 的 IS 权重本是为 off-policy 修正，裁掉 token 更新会连带丢掉该 token 的梯度贡献；改为**只裁 IS 权重、保留 log π 梯度项**即可既稳训练又不丢任何 token(尤其长响应中的低概率反思 token)。训练-推理概率本应相同，偏差源于 LM head 高幅激活 → 提升其精度到 FP32 即可对齐。
 
 ## 5. 主要解决思路(一段话讲清核心)
-从带 offline 修正的 REINFORCE 目标出发，CISPO(Clipped IS-weight Policy Optimization)沿用 GRPO 的组相对 advantage 与 token-level loss，但对 IS 权重 r̂_{i,t}=clip(r_{i,t},1−ε^IS_low,1+ε^IS_high) 做裁剪(实验中不设下界、只调 ε^IS_high)，无 KL 项；梯度因权重裁剪略有偏差但保留全部 token 梯度。再给统一公式(引入 token-wise mask M_{i,t}，可表示 PPO 信任域隐式 mask 等不同裁剪策略)。配合连续预训练(7.5T)、SFT cold-start、curriculum RL(先规则可验证、渐混入模型奖励通用任务)，并解决混合架构特有工程问题(FP32 LM head、AdamW 超参、重复检测早停)。
+从带 offline 修正的 REINFORCE 目标出发，CISPO(Clipped IS-weight Policy Optimization)沿用 GRPO 的组相对 advantage 与 token-level loss，但对 IS 权重 \(\hat{r}_{i,t} = \mathrm{clip}(r_{i,t}, 1-\varepsilon^{\text{IS}}_{\text{low}}, 1+\varepsilon^{\text{IS}}_{\text{high}})\) 做裁剪(实验中不设下界、只调 ε^IS_high)，无 KL 项；梯度因权重裁剪略有偏差但保留全部 token 梯度。再给统一公式(引入 token-wise mask M_{i,t}，可表示 PPO 信任域隐式 mask 等不同裁剪策略)。配合连续预训练(7.5T)、SFT cold-start、curriculum RL(先规则可验证、渐混入模型奖励通用任务)，并解决混合架构特有工程问题(FP32 LM head、AdamW 超参、重复检测早停)。
 
 ## 6. 方法详解(通俗、分步骤)
 

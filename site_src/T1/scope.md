@@ -31,12 +31,12 @@ On-policy RL(DeepSeek-R1/GRPO/DAPO 范式)已成 LLM 推理对齐主流,但稀�
 信号质量可由 PPL 探针预测:teacher PPL 衡量"teacher 在此轨迹上是否可信",student PPL 衡量"该样本是否处于 student 能力边界"。把"按正确性分路 + 按 PPL 自适应加权"组合成单一目标。
 
 ## 5. 主要解决思路(一段话讲清核心)
-双路自适应框架 DPAW:按正确性把 on-policy rollout 路由到两条互补监督路径——**Student Path(正确轨迹 Ω_c)** 做 student-PPL 加权 MLE 自强化,**Teacher Path(错误轨迹 Ω_w)** 做 teacher-PPL 加权 KL 蒸馏;两路均在同 prompt 轨迹组内做 perplexity 归一化(group-level softmax),以应对 prompt 间难度方差。总目标 L_SCOPE = Σ_{i∈Ω_c} w_i^stu·L_MLE + Σ_{i∈Ω_w} w_i^tea·L_OPD。
+双路自适应框架 DPAW:按正确性把 on-policy rollout 路由到两条互补监督路径——**Student Path(正确轨迹 Ω_c)** 做 student-PPL 加权 MLE 自强化,**Teacher Path(错误轨迹 Ω_w)** 做 teacher-PPL 加权 KL 蒸馏;两路均在同 prompt 轨迹组内做 perplexity 归一化(group-level softmax),以应对 prompt 间难度方差。总目标 \(L_{\mathrm{SCOPE}} = \sum_{i \in \Omega_c} w_i^{\mathrm{stu}} \cdot L_{\mathrm{MLE}} + \sum_{i \in \Omega_w} w_i^{\mathrm{tea}} \cdot L_{\mathrm{OPD}}\)。
 
 ## 6. 方法详解(通俗、分步骤)
 
-- **Student Path(Eq.4)**:w_i^stu = softmax_{j∈Ω_c}(−1/(τ|y_i|)·logπ_S(y_i|x)) = PPL_S(y_i|x)^{1/τ} 归一化 ⇒ **student PPL 越高权重越高**,放大能力边界非常规有效路径。
-- **Teacher Path(Eq.5)**:w_i^tea = softmax_{j∈Ω_w}(+1/(τ|y_i|)·logπ_T(y_i|x)) = PPL_T(y_i|x)^{−1/τ} 归一化 ⇒ **teacher PPL 越高权重越低**,过滤 teacher 不可信(高 PPL)的错误轨迹噪声。
+- **Student Path(Eq.4)**:\(w_i^{\mathrm{stu}} = \mathrm{softmax}_{j \in \Omega_c}\left(-\frac{1}{\tau |y_i|} \cdot \log \pi_S(y_i \mid x)\right) = \mathrm{PPL}_S(y_i \mid x)^{1/\tau}\) 归一化 ⇒ **student PPL 越高权重越高**,放大能力边界非常规有效路径。
+- **Teacher Path(Eq.5)**:\(w_i^{\mathrm{tea}} = \mathrm{softmax}_{j \in \Omega_w}\left(+\frac{1}{\tau |y_i|} \cdot \log \pi_T(y_i \mid x)\right) = \mathrm{PPL}_T(y_i \mid x)^{-1/\tau}\) 归一化 ⇒ **teacher PPL 越高权重越低**,过滤 teacher 不可信(高 PPL)的错误轨迹噪声。
 - **组内归一化**:同一 prompt 的正确组、错误组分别做 softmax,权重乘以组大小(均值≈1),自适应校准。
 - **流程**:① `pip install -r requirements.txt` + `pip install -e .`(装 verl);② `bash deploy_vllm.sh` 部署 teacher(默认 Skywork-OR1-7B,served_model_name/api-key 须与 `verl/utils/api_interface.py` 一致,支持多节点 IP_POOL);③ 在 `run_experiment_distill_1_5b.sh` 设 TEACHER_MODEL_NAME、IP_POOL、POLICY_MODEL_PATH;④ 训练。双路开关在 `verl/trainer/ppo/ray_trainer.py:_compute_scope_dual_path_weights`:USE_SCOPE_DUAL_PATH_WEIGHTING=True、SCOPE_TAU=1、SCOPE_USE_SEQ_WEIGHTS=True、USE_STUDENT/TEACHER_PATH_WEIGHTS=True。
 

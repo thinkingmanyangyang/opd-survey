@@ -45,11 +45,11 @@
 ## 6. 方法详解(通俗、分步骤)
 **EAFT 损失(论文 Eq.2)**：
 
-L_EAFT(θ) = − Σ_{t=1}^{T} H̃_t · log P_θ(y_t | x, y_{<t})
+\(\mathcal{L}_{\mathrm{EAFT}}(\theta) = -\sum_{t=1}^{T} \tilde{H}_t \cdot \log P_\theta(y_t \mid x, y_{<t})\)
 
 其中前一项 H̃_t 是"自适应门控信号"，后一项是标准监督项。门控信号(Eq.3)用 **Top-K 熵**近似全词表熵以省算力：
 
-H̃_t = H_top-K_t / ln(K) ≈ H_top-20_t / 3.0  (K=20，ln(20)≈3.0 为 K 个结果的最大熵，归一化到 [0,1])
+\(\tilde{H}_t = H^{\text{top-}K}_t / \ln(K) \approx H^{\text{top-}20}_t / 3.0\)  (K=20，ln(20)≈3.0 为 K 个结果的最大熵，归一化到 [0,1])
 
 H_top-K_t 是在该 token 的 Top-20 概率分布上算的熵。自调节机制(论文原文)：
 

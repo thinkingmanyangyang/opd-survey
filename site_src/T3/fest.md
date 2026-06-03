@@ -37,12 +37,12 @@
 三个必要要素：(i) **监督信号**(外部知识，RLVR 的二值奖励之外的唯一来源)、(ii) **on-policy 信号**(让模型拿自己的 rollout 与示范对比，缓解 exposure bias、起对抗训练作用、扩大极少题目的学习面)、(iii) **decaying weight**(随训练推进降低对少量数据的权重，防过拟合)。关键观察：**semi-online DPO** 的梯度恰好天然分解出这三项。
 
 ## 5. 主要解决思路(一段话讲清核心)
-总损失 L = c·L_E + L_I：在大规模"答案-only"数据 D_I 上跑标准 GRPO(L_I，省 KL 与 std)；在 128 条 few-shot D_E 上跑 **semi-online DPO**(L_E)——把 SFT 示范当 preferred 样本 y+、把 agent 当前 rollout 当 non-preferred y−。该 DPO 损失对参数求梯度后正好得到"监督项 − on-policy 项"再乘以一个 σ(β(r−−r+)) 的自带衰减权重，三要素一次满足。
+总损失 \(\mathcal{L} = c \cdot \mathcal{L}_E + \mathcal{L}_I\)：在大规模"答案-only"数据 D_I 上跑标准 GRPO(L_I，省 KL 与 std)；在 128 条 few-shot D_E 上跑 **semi-online DPO**(L_E)——把 SFT 示范当 preferred 样本 y+、把 agent 当前 rollout 当 non-preferred y−。该 DPO 损失对参数求梯度后正好得到"监督项 − on-policy 项"再乘以一个 \(\sigma(\beta(r^- - r^+))\) 的自带衰减权重，三要素一次满足。
 
 ## 6. 方法详解(通俗、分步骤)
 **(a) L_I(答案-only 数据)**：标准 GRPO，按组内相对奖励算 advantage，沿用 HPT/Dr.GRPO 省去 KL 与 std。
 
-**(b) L_E(few-shot semi-online DPO)**：L_E = −E[ log σ(β·r+ − β·r−) ]，r+=log(π_θ(y+)/π_ref(y+))、r−=log(π_θ(y−)/π_ref(y−))，y+ 为示范、y− 为 rollout。其梯度(Eq.4)= −β·E[ σ(β(r−−r+))·(∇log π(y+) − ∇log π(y−)) ]，三项依次对应监督学习、on-policy、衰减权重。
+**(b) L_E(few-shot semi-online DPO)**：\(\mathcal{L}_E = -\mathbb{E}[\log \sigma(\beta \cdot r^+ - \beta \cdot r^-)]\)，\(r^+ = \log(\pi_\theta(y^+)/\pi_{\mathrm{ref}}(y^+))\)、\(r^- = \log(\pi_\theta(y^-)/\pi_{\mathrm{ref}}(y^-))\)，y+ 为示范、y− 为 rollout。其梯度(Eq.4)\(= -\beta \cdot \mathbb{E}[\sigma(\beta(r^- - r^+)) \cdot (\nabla\log\pi(y^+) - \nabla\log\pi(y^-))]\)，三项依次对应监督学习、on-policy、衰减权重。
 
 **(c) 自适应 β(Eq.5)**：按题目可解性分三档——一组全错用 β1、RLVR-可解但本条错用 β2、本条正确用 β3，细粒度控制不同来源数据的学习强度。β 取 **0.001–0.1**(远小于标准 DPO 的 0.1–0.2，因长链推理序列长、log-ratio 差异大)。
 

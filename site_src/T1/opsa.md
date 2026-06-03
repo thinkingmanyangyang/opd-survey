@@ -31,13 +31,13 @@
 安全本质是"在模型自身生成轨迹上的局部纠正",而非整序列均匀模仿;且基座 LLM 已有部分潜在拒答能力,安全更多是"激活潜在安全推理"而非教新能力。on-policy 逐 token KL 天然把更新集中到 teacher 与 student 发散的少数关键 token。
 
 ## 5. 主要解决思路(一段话讲清核心)
-单一目标、type-conditional teacher:对 benign prompt x_b 给指令 I_b("此 prompt 安全,正常帮助、勿拒答")防过度拒答;对 harmful prompt x_h 给 I_h("此 prompt 有害,只能拒答")。student(trainable)在线 rollout,teacher(frozen 同模型 p_θ0 + 对应特权上下文 c*)沿 rollout 给逐 token D_KL(p_T‖p_S)(L_OPSA,Eq.2)。学生训练/推理都不带 c*,使安全行为内化进参数。
+单一目标、type-conditional teacher:对 benign prompt x_b 给指令 I_b("此 prompt 安全,正常帮助、勿拒答")防过度拒答;对 harmful prompt x_h 给 I_h("此 prompt 有害,只能拒答")。student(trainable)在线 rollout,\(D_{\mathrm{KL}}(p_T \| p_S)\)。学生训练/推理都不带 c*,使安全行为内化进参数。
 
 ## 6. 方法详解(通俗、分步骤)
 
-- **散度**:用 forward+reverse KL 的对称混合(α=0.5),沿用 nemo-rl on-policy 蒸馏的默认(注:非纯 forward KL)。
-- **TFR 选上下文**:直接估 Δsafety(Eq.3)不实际(依赖采样轨迹),改用 teacher flip rate(Eq.4)——frozen teacher 在加 c* 后把贪婪解从 unsafe 翻成 safe 的比例;选 c*=argmax TFR(Eq.5)。候选池 C=K=30 个 refusal-steering 上下文,由 GPT-5.5 沿五轴(strength/length/framing/specificity/style)生成。
-- **验证 TFR 有效**:跨 3 模型、3 上下文(flip rate 9%→78%),训练后 harmfulness 随 TFR 单调下降(Spearman ρ=−1.00 within model,Fig.3),且不伴随过度拒答上升。
+- **散度**:\(\alpha=0.5\),沿用 nemo-rl on-policy 蒸馏的默认(注:非纯 forward KL)。
+- **TFR 选上下文**:直接估 Δsafety(Eq.3)不实际(依赖采样轨迹),改用 teacher flip rate(Eq.4)——frozen teacher 在加 c* 后把贪婪解从 unsafe 翻成 safe 的比例;\(c^* = \arg\max \mathrm{TFR}\)。候选池 C=K=30 个 refusal-steering 上下文,由 GPT-5.5 沿五轴(strength/length/framing/specificity/style)生成。
+- **验证 TFR 有效**:跨 3 模型、3 上下文(flip rate 9%→78%),\(\rho = -1.00\),且不伴随过度拒答上升。
 - 训练只用 prompt + 类型标签(无需预生成响应),按 ThinkSafe 设置:AdamW、lr 1e-5、cosine+10% warmup、batch 64、3 epochs、全参数 FT;≤1.7B 用 2×A100,8B 用 4×A100(FSDP)。
 - 公式与 OPSD/COPSD 同构,创新在"按 prompt 类型条件化 + TFR 选上下文",属增量贡献。
 

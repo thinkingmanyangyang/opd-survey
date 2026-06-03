@@ -35,11 +35,11 @@ LLM 靠长 CoT 解决复杂推理。已有纠错分两类：(1) post-hoc 迭代�
 
 ## 6. 方法详解(通俗、分步骤)
 
-- **Stage 1 动态不确定性监测**：每步算 next-token 分布熵 H_t；维护大小 N 的滑窗，算均值 μ、标准差 σ；当 H_t > μ + k·σ 时触发反思（动态阈值适配不同模型的熵分布，避免固定阈值失效；代码另含 `minimal_threshold` 下限）。
-- **Stage 2 自反思优化**：触发时暂停解码，优化瞬态向量 δ∈R^d（初始化 0），加到投影头前 hidden state：logits' = W(h_{t−1}+δ)。混合损失 L = (1−λ)·L_CE + λ·L_AEM：
+- **Stage 1 动态不确定性监测**：每步算 next-token 分布熵 H_t；维护大小 N 的滑窗，算均值 μ、标准差 σ；\(H_t > \mu + k \cdot \sigma\)（动态阈值适配不同模型的熵分布，避免固定阈值失效；代码另含 `minimal_threshold` 下限）。
+- **Stage 2 自反思优化**：触发时暂停解码，优化瞬态向量 δ∈R^d（初始化 0），加到投影头前 hidden state：\(\mathrm{logits}' = W(h_{t-1} + \delta)\)。混合损失 \(L = (1 - \lambda) \cdot L_{\mathrm{CE}} + \lambda \cdot L_{\mathrm{AEM}}\)：
   - **L_CE（回溯上下文损失）**：对已生成前缀施加同一 δ，惩罚破坏既有上下文预测的修正（保真度）；
   - **L_AEM（前瞻熵最小化）**：最小化当前步 next-token 分布熵（让决策更果断）。
-  内层优化几步得 δ*，生成 y_t 后丢弃（每次干预局部化）。Theorem 1：该混合损失等价于"min L_AEM s.t. L_CE ≤ ε"约束优化的 Lagrangian，λ 隐式决定保真容忍 ε。
+  内层优化几步得 δ*，生成 y_t 后丢弃（每次干预局部化）。Theorem 1：该混合损失等价于"\(\min L_{\mathrm{AEM}} \ \text{s.t.}\ L_{\mathrm{CE}} \leq \varepsilon\)"约束优化的 Lagrangian，λ 隐式决定保真容忍 ε。
 
 ## 7. 实验数据集
 数学推理：AIME2024、AIME2025、HMMT2025、AMC；通用推理：GPQA；代码：EvalPlus；效率分析在 MATH500。基座：Qwen2.5-Math-7B、DeepSeek-R1-Distill-Qwen-7B、DeepSeek-R1-Distill-Llama-8B、Qwen3-32B（覆盖两架构族、7B~32B、distill/SFT/RL 多种后训练）。
@@ -68,4 +68,4 @@ LLM 靠长 CoT 解决复杂推理。已有纠错分两类：(1) post-hoc 迭代�
 
 - https://github.com/2020-qqtcg/SRGen （已克隆 ~18MB，含 `SRGen/` 框架与 aime/gsm8k/math/gpqa evaluator、`analysis/`、`scripts/`、OpenAI 兼容 `srgen_server.py`，代码完整可跑）。
 - 框架：基于 HuggingFace Transformers 的即插即用推理框架（任意 HF 模型可用）；含 vLLM/OpenAI 兼容 server；evaluator 覆盖 AIME/GSM8K/MATH/GPQA。硬件 NVIDIA A800-80G。
-- 关键实现：`SRGen/tnot_decorator.py`（熵滑窗阈值 `mean_history + K·std_history`、触发逻辑）、`SRGen/base_evaluator.py`（argparse 超参，默认 N=20/K=2/lr=0.1，推荐用论文 N=25/K=4/lr=0.01）。
+- 关键实现：`SRGen/tnot_decorator.py`（熵滑窗阈值 \(\text{mean\_history} + K \cdot \text{std\_history}\)、触发逻辑）、`SRGen/base_evaluator.py`（argparse 超参，默认 N=20/K=2/lr=0.1，推荐用论文 N=25/K=4/lr=0.01）。
