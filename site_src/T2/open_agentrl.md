@@ -33,6 +33,7 @@ RLVR 提升 LLM 推理;但长轨迹下二元 outcome 奖励监督不足。step-w
 RLAnything 三组件闭环 forge(Algorithm 1):策略用 integrated feedback 训练;奖励模型把策略轨迹当训练环境、经 consistency feedback 联合优化;环境据策略 rollout 准确率(落在阈值 α_low=0.2 / α_high=0.8 外时)调难度。三者互为反馈、迭代。
 
 ## 6. 方法详解(通俗、分步骤)
+
 1. **策略(Integration Feedback,Eq.1)**:对第 i 步 τ_i,奖励模型独立查询 m 次得 S_τi,j∈{−1,1};step reward R_τi = O_τ + (λ/m)Σ_j S_τi,j(默认 λ=1),融合 outcome 与 step-wise;在同一步 index 上跨轨迹标准化得优势,训策略。
 2. **奖励模型(Consistency Feedback,Eq.2)**:第 j 次评估的监督信号 RS_τi,j = R_τi · S_τi,j(R_τi 反映该步整体质量,与单次评估的一致性即监督);跨 j 标准化得优势,训奖励模型的评估推理 r_τi,j。Section 2.3 证此目标提升奖励模型预测未来 outcome 的精度。
 3. **环境(Critic Feedback,Eq./§2.4)**:把奖励模型对失败步(S_τi,j=−1)的评估摘要喂给一个 LM(Qwen3-4B 做任务改写),据 acc 提议更难/更易任务 q',并质量门控(变难仅当 α_low<acc(q')<acc(q);变易仅当 acc(q)<acc(q')<α_high)后替换。

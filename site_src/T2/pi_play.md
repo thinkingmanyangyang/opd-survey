@@ -34,6 +34,7 @@
 三角色（examiner / teacher / student，均由同一 base LLM 初始化、均为带搜索工具的搜索 agent）交替优化：examiner 造出 (q,c,o)，teacher 条件于特权上下文 c、student 仅见 q；student 在结果奖励 + teacher 的逐 token reverse-KL 蒸馏联合作用下学习，形成 data-free 协同自演化闭环。
 
 ## 6. 方法详解(通俗、分步骤)
+
 - **Examiner**：带搜索工具与搜索引擎交互获取事实，生成三元组 (q, c, o)；目标为造出多样且有难度的题（含难度奖励，并 −β·KL 约束；难度奖励随正确预测数线性衰减）。
 - **Teacher**：理想目标 Eq.2 兼顾 "生成更准 rollout" 与 "不过度偏离 student"，但**实际实现并不直接优化该目标**，而是把 teacher 参数取为 student 的 **EMA 软更新**：ψ←(1−τ)ψ+τθ（Eq.11，soft-update 权重 **τ=0.05**，已核 Table 7），低成本提供稳定且随 student 缓慢演化的监督。
 - **Student**：在结果奖励 I(ô=o)（GRPO）与教师指导（−per-token reverse-KL D(πS_θ(·|q) ‖ stopgrad[πT_ψ(·|q,c)])）联合下学习。
@@ -41,11 +42,13 @@
 
 ## 7. 实验数据集
 论文为 data-free 自演化，**不依赖任何外部训练数据**（无人工 demo/问题/答案）。〔已核 PDF §3.1〕
+
 - 基座：Qwen3-4B、Qwen3-4B-Instruct、Qwen3-8B。
 - 评测：3 个 one-hop/General QA（NQ、TriviaQA、PopQA）+ 4 个 multi-hop QA（HotpotQA、2WikiMQA、MuSiQue、Bamboogle）；统一 exact-match，检索器 E5-base，语料英文 Wikipedia dump。
 - 基线：training-free（ReAct）、监督 RL（Search-R1、ToolForge）、自博弈（Dr.Zero、SQLM*）。
 
 ## 8. 实验结果与主要发现
+
 - 流程（Algorithm 1）：每轮先训 examiner 50 步 → 生成学生训练数据 → 训 student 50 步（GRPO + teacher reverse-KL），每个 student step 后 teacher 做 EMA 软更新；共 3 轮 = **150 步**（远少于 Search-R1 等基线）。examiner 默认造 1/2/3/4-hop 比例 4:3:2:1。
 - 主结论：data-free 的 π-Play 超过全监督搜索 agent——平均较 Search-R1 **+6.3% / +4.2% / +15.4%**（Qwen3-4B / 4B-Instruct / 8B）；演化效率较传统自博弈提升 **2–3×**（首轮即可媲美 Dr.Zero 三轮收敛值）。〔已核行 838、43/251、1057-1058〕
 - 消融：QCP 优于其他特权信息形式（含 ground-truth）；衰减 λ 调度优于固定 λ。
@@ -57,12 +60,14 @@
 内在逻辑自洽：把被忽视的造题副产物变成监督信号是清晰且新颖的因果链。但需注意 teacher 实际只是 student 的 EMA，"教师" 的额外能力完全来自条件于 c 的特权上下文而非独立训练，这与 §2.4 "理想 teacher 目标" 之间存在 "理想 vs 实现" 落差，论文已坦承。
 
 ## 11. 残留问题 / 局限
+
 - **代码未发布**：框架/实现细节（搜索工具栈、reverse-KL 具体实现、examiner 难度奖励工程）无法核验，复现性受限。〔待核：完整训练代码待官方释出〕
 - 评测局限于英文 Wikipedia QA（one/multi-hop）+ exact-match，未覆盖更开放的搜索任务；检索器/语料固定。
 - "2–3× 效率" 的对比依赖与 Dr.Zero 等的同设定可比性。
 - EMA teacher 是否在更大规模/更长训练下仍稳定优于直接优化 Eq.2，未做对照。
 
 ## 12. 开源代码与框架(链接+框架+代码可得性)
+
 - 仓库：https://github.com/zhyaoch/pi-play（本地已克隆约 1.5MB，**仅含 README 与 images/，代码尚未发布**；TODO：paper 已发布、code 未发布）。
 - 框架：论文未在正文绑定特定开源训练框架；student 用 GRPO，teacher 为 EMA 软更新，三角色交替优化。〔待核：框架实现细节待 code 发布确认〕
 - 代码可得性：paper-only（"coming soon"）。

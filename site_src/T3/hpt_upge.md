@@ -39,12 +39,14 @@
 〔已核-代码〕工程实现 `select_on_off_ada_balance` 按每 prompt 正确 rollout 数 `on_solve_num`：`≤switch_gate`(默认0)→移除 on-policy、注入示范走 SFT；`switch_gate<…≤switch_gate_off`→过渡；更高→纯 on-policy RL。actor 端（`mix_actor.py`）对 off-policy 部分用 `compute_sft_pure_loss`，以 `sft_loss_coef`（默认1.0，Qwen2.5-Math-1.5B 用0.3）与 pg_loss 相加：`loss=sft_loss·sft_loss_coef+pg_loss`。仓库另含 `off_policy`/`off_sft`/`switch_off_sft`/`srft`(`sft_coef=0.5·exp(-H_coef)`) 等变体。仓库 `adv_estimator` 默认写 `grpo`，与正文 Dr. GRPO 通过 `loss_remove_token_mean`/`loss_remove_clip` 旋钮区分。
 
 ## 7. 实验数据集
+
 - 训练：遵循 LUFFY，使用 OpenR1-Math 数据（脚本默认 `openr1.parquet`）；Qwen2.5-Math-7B 需 rope_theta 重设 40000、max_position_embeddings 设 16384。
 - Backbone：Qwen 与 LLaMA 多规模（主结果 Qwen2.5-Math-7B，另含较小/较弱模型）。
 - 评测：In-Distribution（AIME24/AIME25/AMC/MATH-500/Minerva/Olympiad）+ Out-of-Distribution（ARC-c、GPQA）。
 - 基线：SFT、GRPO、SFT→GRPO、LUFFY、SRFT 等。
 
 ## 8. 实验结果与主要发现
+
 - HPT 在 Qwen2.5-Math-7B 上超过 SFT→GRPO 与 LUFFY，相对最强基线在整体上提升约 **7 个点**（论文摘要 "a 7-point gain over our strongest baseline"）。
 - gate 消融（Qwen2.5-Math-7B）：γ=0 → 平均 **41.9**，优于 γ=1/8 的 38.7 与 γ=2/8 的 39.0——即 Qwen 上"仅在全错时才转 SFT"最优。
 - 在较小/较弱模型上也有显著提升。
@@ -56,12 +58,14 @@
 理论与算法衔接自洽，代码与 Algorithm 1 一致（二值开关 + sft_loss_coef 加权）。需注意：论文正文 HPT 是二值开关而非连续混合，"hybrid"更多体现在实例级在两种信号间切换，而非单样本上加权融合；UPGE 四组件框架与既有统一视角工作（如本批 hpd 的 reweighted log-likelihood）思路相近，新颖性主要在四组件的明确分解 + 基于准确率的自适应 gate。
 
 ## 11. 残留问题 / 局限
+
 - gate γ 需按模型族手调（Qwen 0、LLaMA 2/8），`sft_loss_coef` 亦随模型变（1.0 vs 0.3），自适应性仍含人工先验。
 - n=8 rollout 估准确率带来额外采样开销；γ 离散且粒度粗（0/1/8/2/8）。
 - 主结果集中在数学推理 + Qwen2.5-Math-7B，跨域泛化以 ARC-c/GPQA 两个 OOD 点为主。
 - arXiv 预印本（2025-09），未见正式接收。
 
 ## 12. 开源代码与框架(链接+框架+代码可得性)
+
 - 链接：https://github.com/TsinghuaC3I/Unify-Post-Training （约 11MB）。核心在 `hpt/verl/verl/mix_src/`（`mix_actor.py`、`mix_core_alg.py`、`mix_trainer.py`），训练入口 `verl.mix_src.main_mix_ppo`。
 - 框架：veRL + LUFFY mix_src 扩展，FSDP + vLLM rollout，prefix_mask 区分 on/off-policy。
 - 复现：提供 `train.sh`、`train_luffy.sh`、`train_srft.sh`、`train_llama.sh` 及数据准备脚本 `data/prepare_train_sft_rl.py`、`hpt/scripts/data/prepare_openr1_data*.py`。代码可得、可对照。

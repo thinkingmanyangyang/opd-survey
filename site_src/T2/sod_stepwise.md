@@ -34,17 +34,20 @@ Agentic 能力多依赖大模型，推理成本高；将其迁移到可端侧部
 定义 step-level divergence score d_k 作为 teacher 监督可靠性的可观测代理；据相邻 step 发散比累乘得到每步权重 w_k（上界 1+δ）；把 w_k 作用于该 step 内所有 token 的蒸馏损失，从而在高发散区衰减、在良好对齐区保留 dense 指导。整体目标为 GRPO + 加权 OPD 的联合损失。
 
 ## 6. 方法详解(通俗、分步骤)
+
 - d_k：实现为该 step 内 token 的 mean(|log π_θ − log π_teacher|)，作为 teacher 监督可靠性代理。
 - 权重（Eq.7）：w_1=1；step k≥2 权重为 1..k−1 各相邻发散比 (d_u+ε)/(d_{u+1}+ε) 的**累乘**，并以 1+δ 为上界（δ=0.2，ε=1e−6）。发散单调上升 → 累乘 <1 抑制被污染信号（Appendix D.4 证加权二阶矩被压制 O((d1/dk)²)）；d 下降（重对齐）→ 蒸馏强度回升。
 - 施加粒度：w_k 作用于该 step 全部 token（非逐 token 均匀施加）。
 - 联合目标：L = L_GRPO + L_OPD（OPD 系基线均用此口径）；开销可忽略（d_k/w_k 复用 OPD 前向已有的师生 logprob，仅 O(K) 标量运算）。
 
 ## 7. 实验数据集
+
 - 训练数据（沿用 Yu et al.[52]）：3k 高质量多轮推理 SFT 语料（s1-1k 1k + LeetCode 1k + ReTool 1k，后两者经 ReasonFlux-PRM 打分各取 top-1k）+ ~30k RL 数据（DAPO-Math 17k + Skywork-OR1 Math 4902 / Code 3586 + MegaScience 3k）。SFT 轨迹由 Qwen3-Coder-30B-A3B 在 SandBoxFusion 环境内端到端交互生成。
 - 评测（均报 average@32，百分比；temp=1.0、top_p=0.6、每题 32 采样）：Math=AIME 2024/2025、Science=GPQA-Diamond、Code=LiveCodeBench（v6 近期窗）。
 - 模型：teacher 为 Qwen3-4B 经 GRPO 在 RL 数据上进一步优化（默认 4B teacher）；student 为 Qwen3-0.6B 与 Qwen3-1.7B。
 
 ## 8. 实验结果与主要发现
+
 - 主结果：SOD 在两个 student 上对第二好基线（OPD）相对平均提升 0.6B +20.86%、1.7B +18.50%；四任务均最高分。0.6B student 在 AIME 2025 达 26.13%（average@32），据称为首个达到该水平的 sub-billion 模型。
 - 基线含 SFT、GRPO 及多种蒸馏方法（共 6 个，Appendix B.3）；SFT/GRPO 单独均显著弱于蒸馏系。
 - 开销（Table 4）：d_k/w_k 仅 O(K) 标量运算，显存差 <0.5GB；0.6B 上 SOD 反而比 OPD 快 3.5%（1052.3s vs 1090.5s，因自适应重加权抑制了错误学习、失败重试更少），1.7B +4.9% 开销（1105.4s vs 1053.6s）。
@@ -57,11 +60,13 @@ Agentic 能力多依赖大模型，推理成本高；将其迁移到可端侧部
 方法-动机-理论-实验四者自洽：动机（工具错误触发加速漂移）→ 代理 d_k（师生 logprob 差）→ 比值累乘权重（Eq.7）→ 方差压制证明（D.4）→ 代理单调一致性证明（D.5）→ 消融。一个口径需注意：主卖点是"对最强基线 OPD 的相对平均提升"（百分比口径），绝对点数提升（如 0.6B 整体由约 21→24+ 区间）规模较小，相对数放大了观感。
 
 ## 11. 残留问题 / 局限
+
 - 模型/工具单一：仅 Qwen3 单一模型族、python 解释器（SandBoxFusion）单一工具环境验证；作者亦将 web/API 等其他 agent 设置与其他模型族列为局限。
 - 相对增益口径：+20.86%/+18.50% 为对 OPD 的相对百分比而非绝对点数，需结合绝对值理解。
 - d_k 代理依赖师生 logprob 差，teacher 自身在 OOD 状态的 logprob 可靠性边界未充分刻画（高熵区 logprob 噪声大可能反噬 d_k 估计）。
 
 ## 12. 开源代码与框架(链接+框架+代码可得性)
+
 - 仓库 https://github.com/YoungZ365/SOD （已克隆约 23MB）。框架：veRL[76] + Open-AgentRL[52]（`recipe/demystify/`，复用其 sandbox_fusion 工具配置）+ ReTool（`recipe/retool/`）；rollout 走 vLLM（TP=4），SandBoxFusion 作 python 解释器、最多 16 轮工具调用。
 - **〔重要更正——核心算法已开源〕** 与早前"step-wise 重加权核心损失未在仓库定位到"的判断相反：核心实现确在已发布代码中。`verl/trainer/ppo/ray_trainer.py:363 compute_stepwise_opd_weights` 完整实现 Eq.6/7——按 response_mask 提取 step 边界、`d_k = mean(|log π_θ − log π_teacher|)`、`w_1=1`、`w_k = min(∏_{u=1}^{k-1}(d_u+ε)/(d_{u+1}+ε), 1+δ)`、再 broadcast 到该 step 全部 token；由 `ray_trainer.py:878 _apply_token_kl_regularizer`（line 1622 处调用）将其乘到 OPD 优势项 `weighted_opd = opd_coef * stepwise_weights * raw_local_adv`。配置见 `verl/trainer/config/algorithm.py` 的 `TokenKLRegConfig`（stepwise_enable/epsilon/delta/opd_coef），运行脚本 `examples/SOD/run_sod.sh` 显式传入 `+algorithm.token_kl_reg.stepwise_*`。代码与论文 Eq.7 精确一致，可复现。
 - **〔次要差异〕** 配置 dataclass 默认 `stepwise_delta=0.5`，但 `run_sod.sh` 覆写为 0.2（论文值），复现须用脚本而非 dataclass 默认。

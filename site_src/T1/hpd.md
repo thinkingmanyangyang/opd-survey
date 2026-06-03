@@ -34,6 +34,7 @@
 对每个 offline expert token 算 `k1=qθ(a*|s)·(log p(a*|s)−log qθ(a*|s))`：k1>0（student 低估 expert）触发 forward-KL 式增强、k1≤0（高估）取负值抑制；同时让学生在 offline 前缀下采一个替代 token、对其算 k'1，仅当 k'1<0（高估非 expert token）才以负权重抑制；当 k1>0 且 k'1<0 同时成立则把 expert 权重加倍，将从被抑制 token 释放的概率质量定向回流给 expert token。整套在保留 one-hot 效率的同时混合 FKL/RKL，且无额外超参。
 
 ## 6. 方法详解(通俗、分步骤)
+
 - **expert 权重 w\*（Eq.12/14）**：`k1>0` → `p(a*|s)+k1`（forward-KL）；`k1≤0` → 取 `k1`（负，抑制）。
 - **sampled token 权重 wₜ（Eq.13）**：学生在 offline 前缀下采 `aₜ≠a*`，算 `k'1`；仅 `k'1<0` 保留为负权重，`k'1≥0` 置 0。
 - **reinforce 加倍（Eq.14）**：`k1>0 且 k'1<0` → expert 权重升为 `2p(a*|s)+k1`，把释放的概率质量重分配回 expert token。
@@ -41,11 +42,13 @@
 - 〔已核-代码〕`LlamaFactory/src/llamafactory/train/hpd.py::compute_hpd_loss` 与 Eq.11-15/Algorithm 1 逐式吻合：`k1_gt_raw=(teacher_nll−student_nll)·exp(student_nll)`、`mask3=mask1&mask2` 时 `adv1+=exp(teacher_nll)` 实现加倍；loss=`−student_nll·adv1 − adv2·sampled_student_nll·(labels≠sampled)`。论文消融明确 "HPD introduces no additional hyperparameters"（已核-PDF）。
 
 ## 7. 实验数据集
+
 - **训练（蒸馏源）**：数学长 CoT 用 **OpenR1-Math-8192**（已核-PDF）；个性化/对话用 Ultrafeedback prompt；代码用 WizardCoder prompt。
 - **评测**：数学 AIME24/AIME25/AMC/MATH/OlympiadBench/GPQA(OOD)；对话 AlpacaEval2(LC/WR)、Arena-Hard、MT-Bench；代码 HumanEval/MBPP（EvalPlus pass@1）。
 - **模型/规模**：student=Qwen2.5(1.5B/3B, teacher 7B) 与 LLaMA3(1B/3B, teacher 8B)；代码 Qwen2.5-Coder(7B→1.5B)、DeepSeek-Coder(6.7B→1.3B)。teacher **非现成 instruct，而是先在 offline 数据 SFT 再用 GRPO 精调**（PSFT+RL，论文 §7 明确 "select Qwen2.5-7B-Base model as the teacher … SFT all the base models then …"）。
 
 ## 8. 实验结果与主要发现
+
 - 数学（off-policy, avg.）：Qwen2.5-3B 28.25→**39.83**（+41%）、LLaMA3-3B 19.43→**34.56**（+77.9%），均显著超 SFT/SeqKD/RKLD/JSD。
 - on-policy：HPD 单独即超 "SFT→OPD" 两阶段；HPD 作 OPD 初始化（HPD+OPD）再获最高分（Qwen2.5-1.5B **30.24→33.41**）。
 - 另演示 HPD+DPO、迭代自蒸馏。
@@ -57,11 +60,13 @@
 代码与公式逐式吻合，消融自洽。但"reweighted log-likelihood 统一"基本是对既有 GKD/DistiLLM 系工作的重述式归纳，真正新颖性在 K1-based 混合与质量重分配规则；"无额外超参"成立，但 teacher 经 SFT+GRPO 加工，增益与 teacher 质量耦合，统一框架的解释力被这一工程依赖部分稀释。
 
 ## 11. 残留问题 / 局限
+
 - "approximate on-policy" 实为在 **offline ground-truth 前缀**下让学生采单个替代 token（非从学生 rollout 采整条轨迹），严格说是 off-policy 框架内的单步偏离纠正，称谓略宽松。
 - 数学实验 student 仅 1B–3B、teacher 仅 7B/8B，长链推理增益是否随规模保持未充分验证。
 - teacher 本身经 SFT+GRPO，蒸馏增益与 teacher 质量耦合。
 - Preprint（2026-04），README 称 ICML 2026 但论文正文无此字样、未见正式接收证据，〔待核〕。
 
 ## 12. 开源代码与框架(链接+框架+代码可得性)
+
 - 链接：https://github.com/zwhong714/Hybrid-Policy-Distillation （已 clone，约 40MB）。含 `LlamaFactory/`（SFT 式蒸馏 + HPD loss）、`verl/`（RL 式后训练）、`evaluation/`；提供 Qwen2.5-1.5B（从 Qwen2.5-7B-PSFT-RL teacher 蒸出，README 命名为 Qwen2.5-7B-Thinking）checkpoint。
 - 框架：双后端 LlamaFactory（SFT 路径，全参/LoRA）+ veRL（RL 路径）。代码可得、核心 loss 可逐式对照。

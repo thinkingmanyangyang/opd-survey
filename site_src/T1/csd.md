@@ -22,6 +22,7 @@
 知识蒸馏（KD）让小 student 继承大 teacher，以降低推理成本。主流 KD 在每个 token 上做 softmax 概率匹配——最常见是前向/反向 KL，以及各类 f-散度与平滑变体。近期 on-policy KD（ImitKD、GKD、DistiLLM）改进的是"用谁生成的数据训练"（student on-policy / 混合 / 自适应选择），而 CSD 改进的是与之正交的"散度目标本身"。CSD 借鉴能量模型中的 score matching（Hyvärinen 2005）与离散变量的 concrete score（Meng et al. 2022），把后者适配到自回归 LLM 蒸馏。
 
 ## 2. 现有工作存在的问题
+
 - **softmax 平滑抹掉 logit 级知识**：当 teacher 的 logit 差异很大时（如 [−1,−4,4] vs [1,−9,6]），经 softmax 后两者概率几乎一致、梯度近乎相同，淹没了 teacher logit 里编码的细粒度知识。在大词表下概率分布极度稀疏——论文统计 GPT-2-1.5B 上仅 **0.0023%** 的 token 概率大于 0.01。
 - **Direct Logit Distillation (DLD) 解集受限**：DLD 直接对齐 logit、绕过 softmax，但其最优解**不允许 logit 的常数平移不变性**（而 softmax 推理下 logits 整体加常数等价）。这严重收窄解集，在 teacher/student 容量差异大时尤甚。
 
@@ -35,6 +36,7 @@ score matching 在能量模型中可绕开 sum-to-one 归一化约束。把它�
 定义 concrete score sθ(y)=[qθ(x)/qθ(y)]_{x∈V}，把蒸馏目标设为匹配 student 与 teacher 的 concrete score。为适配 LLM，做两处工程处理：(a) 概率比 qθ(x)/qθ(yt) 易发散导致训练不稳，改用其 **log 变换**形式；(b) 朴素双重词表求和是 O(|V|²)，在可分权重假设下降到 O(|V|)。最终目标归约为"匹配所有词表对上的相对 logit 差，权重可调"，并可在同一框架内实例化 mode-seeking 与 mode-covering 两类行为。
 
 ## 6. 方法详解(通俗、分步骤)
+
 1. **构造 concrete score**：对每个位置，用 student logits 算出"当前 token 换成词表中任一其它 token"的相对概率比，对 teacher 同理。
 2. **log 变换稳定训练**：直接用概率比会发散，改对齐 log 形式（论文 §"adopt the logarithm"），得到 CSD 目标 L_CSD。
 3. **理论保证**：
@@ -45,11 +47,13 @@ score matching 在能量模型中可绕开 sum-to-one 归一化约束。把它�
 5. **即插使用**：把 CSD(S,S) 与 DLD(S) 损失叠加进 ImitKD/GKD/DistiLLM——这三者的差异在于训练数据来源（ImitKD 纯 student on-policy、GKD 混合、DistiLLM 按验证损失自适应选择）。
 
 ## 7. 实验数据集
+
 - 蒸馏数据：databricks-dolly-15k（沿用 DistiLLM 设置）；评测集 Dolly Eval、Self-Instruct 等。
 - 任务：task-agnostic 指令跟随、task-specific（摘要/数学/翻译）、通用 chat 蒸馏。
 - backbone/teacher：GPT-2(0.1B/0.3B/1.5B)、OpenLLaMA-7B、Gemma-7B-IT、Qwen2.5-7B-IT、**Gemma2-9B-IT**（最大 teacher 9B）。
 
 ## 8. 实验结果与主要发现
+
 - 先在 dolly 上微调 teacher，再蒸馏 student；ROUGE-L 跨 5 个随机种子取平均，并用 Self-BLEU 衡量多样性。
 - 基线覆盖 KL/RKL、各类 f-散度、DLD（及 DLD-mean 中心化变体）、ImitKD、GKD、DistiLLM。
 - 结论：CSD 一致优于近期概率匹配目标与 DLD，并位于"多样性–保真"前沿；与 on-policy 技术（ImitKD/GKD/DistiLLM）结合时呈互补增益。
@@ -61,6 +65,7 @@ score matching 在能量模型中可绕开 sum-to-one 归一化约束。把它�
 内在逻辑自洽：从"softmax 抹平 logit 差 + DLD 解集受限"两个具体缺陷出发，给出兼顾两者的目标并配理论。但需注意 Thm.3 的 O(|V|) 依赖**权重可分假设**，更一般情形退回方差更大的 Monte Carlo——即"高效"与"通用"二者不可兼得，这一权衡论文有交代。
 
 ## 11. 残留问题 / 局限
+
 - 假设 teacher 与 student **共享词表/tokenizer**，跨族蒸馏不适用。
 - O(|V|) 仅在可分权重下成立；一般权重需 Monte Carlo（方差更大）。
 - 评测以 ROUGE-L/Self-BLEU 等**代理指标**为主，模型规模偏中小（最大 9B teacher），未在大规模推理任务上验证。
@@ -68,5 +73,6 @@ score matching 在能量模型中可绕开 sum-to-one 归一化约束。把它�
 - 〔待核：GitHub 代码尚未填充，复现性无法独立验证〕
 
 ## 12. 开源代码与框架(链接+框架+代码可得性)
+
 - 仓库：https://github.com/aailab-kaist/CSD （已 clone，~83KB；**当前仅 README 占位**"Official repo for CSD (ICLR 26)"，无训练代码）。RepoExists=YES 但内容近乎空。
 - 框架：非独立训练框架，而是一个可替换 KL 的 **logit-level 蒸馏目标**，设计为嵌入现有 KD 流程（ImitKD/GKD/DistiLLM）。

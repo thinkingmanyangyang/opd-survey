@@ -34,12 +34,14 @@ LLM agent 经 ReAct 式"推理-动作-观测"迭代 + 外部工具(代码解释�
 SCoRe(Student-Centered one-step Reinforcement)三阶段:先用少量 teacher 轨迹冷启动 BC;再让学生独立解题、teacher 只纠最早错误、学生从纠正前缀续写(必要时重复),保留"最小干预"纠正轨迹;最后做短 horizon RL——**从已验证前缀(最早错误前)起 rollout**(缩短 horizon、降梯度方差)并用 **key-step 稠密奖励**。
 
 ## 6. 方法详解(通俗、分步骤)
+
 1. **Cold-Start BC**:在少量高质量 teacher 轨迹上 SFT,bootstrap 基础推理-动作技能。
 2. **Mentored Problem-Solving (MPS) + SCoRe-SFT**:学生独立做新任务 → teacher 检查并纠正**最早错误** → 学生从纠正后前缀续写;若再错则重复。最终任务成功隐式验证修正正确性。纠正轨迹用于 SFT。
 3. **SCoRe-RL** 两创新:(a) 从已验证前缀起 rollout 而非任务开头;(b) **key-step 稠密奖励**:最终答案正确 reward=**1**;关键步等于 teacher 修正 reward=**0.5**;关键步等于初始错误 reward=**0**;都不等价 reward=**0.1**(GRPO 式按组算 advantage)。RL 奖励正误由**轻量验证器 Qwen2.5-7B-Instruct**判语义一致性(注:与评测时用的 72B judge 不同,见 §7)。
 
 ## 7. 实验数据集
 12 个 benchmark 三类(论文 §4.1 / Table 1–2):
+
 - **数学(4)**:AIME2024、AIME2025、MATH500、OlympiadMath;
 - **事实/多跳 QA(4)**:HotpotQA、2WikiMultihopQA、Musique、Bamboogle(开放域 QA 用 token-level F1);
 - **agentic 深度搜索(4)**:GAIA、WebWalker、HLE、xBench(WebThinker text-only split)。
@@ -47,6 +49,7 @@ SCoRe(Student-Centered one-step Reinforcement)三阶段:先用少量 teacher 轨
 - **student**:Table 1(math+factual)= Qwen2.5-7B / Qwen2.5-3B / Llama3.1-8B;Table 2(deep-search)= **Qwen3-8B-Instruct**。评测集组织参考 ARPO,GRPO/ARPO 数值多取自 ARPO 原文。
 
 ## 8. 实验结果与主要发现
+
 - **math+factual(Table 1,8 项 Avg)**:Qwen2.5-7B SCoRe-RL = **50.8**(BC=42.5、GRPO=48.4、ARPO=49.3),仅比 72B teacher(51.7)低 **0.9**;较 BC **+8.3**(50.8−42.5,已核)。Qwen2.5-3B SCoRe-RL=46.7(较 BC +8.4);Llama3.1-8B=47.5(较 BC +10.2)。
 - **deep-search(Table 2,Qwen3-8B)**:SCoRe-RL Avg = **30.5**,+7.7 over BC、+8.3 over GRPO、超 TIR-Qwen2.5-72B +3.2,部分子项超 teacher;GAIA-Avg 从 27.2 升。
 - **消融(Table 3)**:去短 horizon rollout / 去 key-step reward 均掉点,二者齐备最优。Figure 3:hard data 上 SCoRe-RL>SCoRe-SFT。
@@ -59,6 +62,7 @@ SCoRe(Student-Centered one-step Reinforcement)三阶段:先用少量 teacher 轨
 整体自洽,但有一处**论文内部数值不一致(本轮发现)**:正文 §5 prose 写 7B "+6.3 over GRPO",但 Table 1 GRPO=48.4、SCoRe-RL=50.8,实差仅 **+2.4**,prose 的 +6.3 与自身表格矛盾(上一轮分析直接抄了 prose 的 +6.3,本轮按表格更正为 +2.4)。其余如 +8.3 over BC、deep-search +8.3 over GRPO 与表格自洽。另外:"最终任务成功隐式验证 teacher 修正正确性"是弱验证——任务成功不等于每步修正都正确,可能引入噪声标签;论文未量化误纠率。
 
 ## 11. 残留问题 / 局限
+
 - teacher 需 Qwen2.5-72B 级模型生成纠正,蒸馏成本不低;真"小成本"仅指部署期 student。
 - RL 奖励验证器(7B)与评测 judge(72B)不同,存在 reward hacking / 训练-评测口径不一致的潜在风险,论文未交叉验证。
 - "最早错误"的定位依赖 teacher 判断,错判会污染 SFT/RL 数据;无误纠率量化。
@@ -66,6 +70,7 @@ SCoRe(Student-Centered one-step Reinforcement)三阶段:先用少量 teacher 轨
 - 〔待核〕RL 完整超参在附录 B。
 
 ## 12. 开源代码与框架(链接+框架+代码可得性)
+
 - 仓库:https://github.com/modelscope/easydistill(SCoRe 在 `projects/SCoRe/{MPS, SFT, RL, inference}`;整库 clone ~221MB)。
 - 框架(组合工具链,非单一):
   - Cold-start BC / SCoRe-SFT 用 **LLaMA-Factory**(`llamafactory-cli train/api`,README 明列 `pip install llamafactory langgraph`)+ **LangGraph**(agent 轨迹生成,`MPS/graph/{graph.py, graph_repair.py}`)。

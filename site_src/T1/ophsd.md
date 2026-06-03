@@ -33,16 +33,19 @@ OPD 在学生自身轨迹上给稠密 token 监督,是"内化 harness 行为"的
 OPHSD:训练时学生在 harness 内 rollout(增强推理流程生成轨迹),把这些 harness 辅助轨迹的终端上下文 C[H_θ(x,z(x))] 喂给同一个 frozen base 模型 p_θ̃ 作 teacher,用 **reverse-KL**(KL(p_T‖p_S),Eq.3)沿学生直接 rollout ŷ~p_θ(·|x) 训练不带 harness 的学生;C[·] 作 stop-gradient target。harness 编排由 θ 驱动(随能力演进),logit 监督锚定在 θ̃(稳定先验)。
 
 ## 6. 方法详解(通俗、分步骤)
+
 - **harness 形式化**(Eq.2):确定性有状态程序,最多 T 次模型调用,经状态转移 τ 与读出 π 产出最终答案,诱导条件分布 H_θ(y|x);注入 z(x) 得 H_θ(y|x,z(x))。
 - **两类实例化**(均自 Qwen3-8B):
   ① **Draft-Verify**(在线文本分类,推理先验=case-based comparison):z(x)=在线 MemoryBank M_<x(x 之前流入的全部标注先例)。draft 步检索 top-kd=5 近邻作 in-context demo 生成草稿 ŷd;verify 步用 ŷd 再检索 k+=5 confirmers(同标签)、k−=5 challengers(异标签),组装含 x/ŷd/两检索集的 prompt 出最终答案。终端上下文 C=(x,ŷd,N+,N−)。Embedder=BAAI/bge-small-zh-v1.5;冷启动保护(bank<10 条时退化为单次前向);harness baseline 评测时 bank 仅从测试流重填(防泄漏)。
   ② **Plan-Solve**(数学,推理先验=结构分解):z(x)=参考解 y*。planner 用 (x,y*) 蒸出策略草图 s~p_θ(·|x,y*),solver 用 (x,s) 执行完整推导 y~p_θ(·|x,s);终端上下文 C=(x,s)——学生匹配的是"已见 plan 的 solver"信号,而非 OPSD 那样直接给 y* 原文(经 planner 中介,强迫内化推导结构)。plan 温度 0.3、solve 温度 0.6;harness baseline 评测时移除 y*。
+
 - **超参**(均 Qwen3-8B / veRL):lr 1e-6、batch 64、max gen 8192、8×H100;GRPO group 8、KL 系数 0;OPSD/CRISP 用 reverse-KL,CRISP 每 50 步同步教师。文本分类训 300 步(每 15 步评)、数学训 150 步(每 10 步评,4 次运行平均)。
 
 ## 7. 实验数据集
 全部 Qwen3-8B。文本分类两路独立训练(各采 10k,严格防污染):①法条罪名预测 CAIL-2018 训练→LawBench 评测(215 类,报 F1);②化学反应预测 USPTO-50k 训练→USPTO test 评测(10 类,报 acc)。数学:DeepMath 采 10k→AIME24/AIME25/OlympiadBench(取 10% 数据)/HMMT25 评测,报 pass@8(4 次平均)。基线:GRPO、OPSD、CRISP(仅数学)。
 
 ## 8. 实验结果与主要发现
+
 - **文本分类**(Table 2):base→harness→GRPO→OPSD→OPHSD。LawBench F1:55.29→60.22→62.44→64.25→**69.51**;USPTO acc:30.07→79.02→90.01→88.01→**90.81**。OPHSD 双双最高,超 GRPO 7.07/0.80、超 OPSD 5.26/2.80。内化后 OPHSD+Harness 反降(LawBench −1.10、USPTO −7.19)。
 - **数学**(Table 5,pass@8):OPHSD avg **69.50**(AIME24 79.17、AIME25 61.67、OlympiadBench 83.82、HMMT25 53.33),超 OPSD 2.82、GRPO 2.93、CRISP 10.75;HMMT25 较 OPSD **+10.83**、较 GRPO **+8.33**。base+harness 较纯 base 平均 +17.83(Table 3)。OPSD 早期与 OPHSD 相当但随后因生成长度坍缩(40 步后)而退化(Fig.5)。
 - **内化分析**:文本侧 cite-rate(GPT-4o 判 CoT 是否自发引用先例)OPHSD 训练首阶段即 ≥75%、末期 ≥90%,GRPO/OPSD 始终 <10%(Table 4)——学到的是"案例比较"推理形状而非记忆 bank 内容。数学侧按"base vs harness 能力差"分组(Fig.4):harness 才能解的子集相对提升 +84.62%,原本两边都不解的额外解出 +12.54%,且不损原有能力。优势集中在最难分层(Fig.6:Math hard +22.9、LawBench hard +33.8、USPTO hard +90.4)。

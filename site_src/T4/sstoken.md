@@ -33,6 +33,7 @@ SFT 中"数据质量 > 数量"已成共识；即便做过样本级过滤，高�
 对每个 response token，算"REL（相对历史模型的 loss 下降）"与"对 prompt 的注意力分"，归一化后线性融合为 Score，按固定比例 ρ 选 top-ρ token 计 loss、其余 mask，做带 mask 的 SFT。
 
 ## 6. 方法详解(通俗、分步骤)
+
 - **Self-modulated（自调制）选择**：**Retrospective Excess Loss (REL)** = L_θhis(x_i) − L_θ(x_i) = log[P_θ / P_θhis]（论文式(3)），即当前模型相对历史模型的 loss 下降（与 Rho-1 的 Excess Loss"学未来 loss"相对，REL"学历史 loss"）。历史模型可由 EMA 自适应更新（式(4)：θ_his = α·θ_his + (1−α)·θ，可选），比固定 reference 提供更稳长程指引。
 - **Semantic-aware（语义感知）选择**：基于注意力的 token 重要性。利用 SFT 中所有 response token 都关注固定长度 prompt 这点，计算每个 response token 对 prompt token 的注意力之和（多头平均）作为相关性代理；用深层（deeper layer）注意力效果更好；用 hook 重算目标层注意力以兼容 FlashAttention。
 - **融合**：REL 在样本内 min-max 归一到 [0,1]，注意力分天然 ∈[0,1]；最终 `Score = γ·Norm(REL) + (1−γ)·AttnScore`（默认 γ=0.5）。代码 `scripts/finetune.py`：`diff_norm = (diff-diff.min())/(diff.max()-diff.min()+1e-8)`、`combined = ratio·diff_norm + (1−ratio)·resp2prompt_scores`（与论文 Score 一致 ✓，`ratio`=γ）。按固定比例 ρ（默认 0.6）选 top-ρ token 计 loss，其余 mask（`data_prop`=ρ）。
@@ -41,6 +42,7 @@ SFT 中"数据质量 > 数量"已成共识；即便做过样本级过滤，高�
 数据池：从 5 个常用 SFT 集（Flan v2、OpenAssistant、Stanford Alpaca、Dolly、WizardLM，共 300k）采 50k（DS²-50k）；reference 基线在 DS² 样本级筛出的 10k 高质子集上训。评测 10 个通用基准：TriviaQA、TruthfulQA、MMLU、ARC-C/E、TyDiQA、Winogrande、HellaSwag、LogiQA、AGIEval。基座：LLaMA-3.2-3B、LLaMA-3.1-8B、Qwen-2.5-7B、Qwen-2.5-14B（3B~14B）。
 
 ## 8. 实验结果与主要发现
+
 - 四基座上 ssToken 平均分均最优，相对 full-data 提升 4.3% / 3.4% / 1.3% / 2.1%（3B/8B/7B/14B），相对 prior token 选择方法最高 +2.8%。
 - TyDiQA、TriviaQA、AGIEval 等需指令遵循的 QA 任务增益最明显（归功于注意力分量）；MMLU/ARC 等知识密集任务 token 选择基本无提升。
 - Rho-1/TokenCleaning 在 Qwen 系上仅与 full-data 持平甚至更差，而 ssToken 跨族稳定。
@@ -52,6 +54,7 @@ SFT 中"数据质量 > 数量"已成共识；即便做过样本级过滤，高�
 方法自洽：REL 与注意力分两正交信号 + 融合 + top-ρ mask。代码与论文 Score 公式、ρ=0.6 一致。注意：〔原稿"14B 用 0.8"为误读，论文中 ρ=0.8 是对照方法（Random/RHO-1/TokenCleaning）达各自峰值的比例（Appendix），非 ssToken 在 14B 的设定；已核实更正——论文明确 ρ=0.6 一般有效，同基座下各方法用相同 ρ 比较。〕
 
 ## 11. 残留问题 / 局限
+
 - 增量温和：主体仍是 Rho-1 式"top-ρ token + loss mask"范式，创新在"REL 替换 reference"与"注意力语义分"两个工程性改进。
 - "无 reference"非完全免费：训练早期 history=current 使 REL 近似随机；EMA 历史模型需维护额外参数副本（显存/状态成本未充分量化）。
 - 注意力分仅取"response→prompt"总注意力，长 prompt / 多轮场景有效性未验证；层选择（deeper better）依赖经验消融。
@@ -59,6 +62,7 @@ SFT 中"数据质量 > 数量"已成共识；即便做过样本级过滤，高�
 - 增益不均衡：Qwen-7B 相对 full-data 仅 +1.3%，部分单项（如 TruthfulQA）反低于 BASE/FULL。
 
 ## 12. 开源代码与框架(链接+框架+代码可得性)
+
 - https://github.com/jianke0604/ssToken （已克隆 ~2.8MB，含 `scripts/` 下 `calculate_token_loss.py`、`finetune_with_hook.py`、`generate_token_label.py`、`finetune.py`，及 bash_src、fsdp_configs、eval；代码完整可跑）。
 - 框架：自写训练脚本（finetune_trainer.py / finetune_with_hook.py），用 FSDP 配置、支持 LoRA；注意力重算用 hook 兼容 FlashAttention；评测用 EleutherAI lm-evaluation-harness。
 - 流程：算 token loss / REL（calculate_token_loss.py）+ 注意力分（finetune_with_hook.py 重算目标层）→ 融合打分选 top-ρ → 带 mask 的 SFT。默认 γ=0.5（run.sh/finetune.sh `ratio`）、ρ=0.6（eval_tydiqa.sh `data_prop`）；同基座下所有方法用相同 ρ。

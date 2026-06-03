@@ -36,6 +36,7 @@ RLVR 是提升 LLM 推理能力的主流范式，但训练中策略熵常崩溃�
 
 ## 6. 主要方法
 核心实证发现：
+
 - 熵与响应多样性强正相关；训练中 in-domain prompt 熵下降快于 out-of-domain；prompt 熵与准确率仅弱相关。
 - 性能可在熵不被牺牲的情况下持续提升（自适应熵正则把熵维持在训练前水平时，AIME24 准确率反而更高）。
 - 熵与性能相关性高度依赖任务与指标（如仅用数学数据训练时，LiveCodeBench 的 Avg@64 与熵强负相关，其他基准弱相关）。
@@ -45,6 +46,7 @@ RLVR 是提升 LLM 推理能力的主流范式，但训练中策略熵常崩溃�
 方法 Positive-Advantage Reweighting（Pos-Adv-Reweight）：用超参 λ 动态调节正优势 token 的损失权重，三个变体——(a) Stage-based：前半段 λ=0（只用非正优势 token），后半段 λ 从 0 线性升到 1；(b) Epoch-wise：λ 按 epoch 线性 (e−1)/(E−1)；(c) Entropy-guided：当熵>阈值 δ 时 λ+Δ（抑熵）、否则 λ−Δ（增熵），把熵稳在 δ 附近（δ=0.2、Δ=0.05、λ0=0）。
 
 ## 7. 实验数据集
+
 - 训练：DAPO-Math-17K，Qwen2.5-Math-7B + GRPO。
 - in-domain 评测：AIME24/25、MATH500、AMC2023、Minerva Math；out-of-domain：LiveCodeBench（代码）、IF-Eval（指令遵循）。指标 Avg@64 / Pass@64。
 

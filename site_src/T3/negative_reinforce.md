@@ -34,17 +34,20 @@ RLVR 的二元奖励使奖励符号天然绑定到序列正确性(同一序列�
 将 RLVR 目标 L = L_PSR + L_NSR 形式化分解(式 2–4)：PSR 像 SFT，提升正确响应似然；NSR 像 likelihood minimization，压低错误响应概率。分别独立训练后用全 Pass@k 谱评测，发现 NSR 单独训练异常有效；再用 token 级梯度分析解释机理；最后提出 W-REINFORCE——在 REINFORCE 目标上把正奖励贡献按 λ 缩小(λ=1 即 REINFORCE，推荐 λ=0.1)，在 PSR 的高 Pass@1 与 NSR 的高多样性之间取得平衡。
 
 ## 6. 方法详解(通俗、分步骤)
+
 - **分解**：L_PSR 只在 r=+1 样本上更新(增大正确似然)，L_NSR 只在 r=−1 样本上更新(减小错误似然)；二者均 on-policy(响应采自当前模型)。
 - **梯度分析(式 7/8)**：对 token logit 求导。PSR 抬高被采样(正确)token logit、压低其余 → 持续 sharpening，熵下降、过拟合。NSR 压低被采样(错误)token、按其余 token 当前概率 π_v 成比例抬高它们的 logit；且被采样 token 的负梯度被 (1−π_yt) 缩放 → 对高置信 token 更新很小，从而(1)保护高置信先验、(2)按先验做概率重分配促探索、(3)一旦不再犯错即自动停止更新(隐式正则)。
 - **与熵正则/unlikelihood 对比(§B)**：熵正则会无差别压高概率 token、抬低概率 token，可能违背先验；unlikelihood 用 −log(1−π) 惩罚，缺少 (1−π_v) 阻尼会侵蚀先验；NSR 因阻尼项更温和。
 - **W-REINFORCE(式 9)**：L = λ·L_PSR + L_NSR，λ=0.1。
 
 ## 7. 实验数据集
+
 - **训练**：MATH(7,500 题)。
 - **评测**：MATH、AIME 2025、AMC23 的测试集，报告完整 Pass@k 谱(用 [5] 的无偏估计量)。Qwen2.5-Math-7B/Llama 采 256 样本(temp 0.6, top-p 0.95)，Qwen3-4B 采 64 样本(temp 0.7, top-p 0.8, top-k 20)。
 - **模型**：Qwen2.5-Math-7B、Qwen3-4B(非思考模式训练/推理)、Llama-3.1-8B-Instruct。
 
 ## 8. 实验结果与主要发现
+
 - **NSR 单独训练出人意料地有效**：全 Pass@k 谱一致优于 base；在 Qwen2.5-Math-7B 上 k=256 处超过 PPO/GRPO/PSR。表 1(MATH)：base Pass@1=63.2，NSR=75.7，PPO=76.6，GRPO=76.3；但 k=256 处 NSR=96.9(=base)、PPO=96.3、GRPO=95.5。AIME2025 k=256：NSR=53.3 vs PPO 43.3/GRPO 50.0；W-REINFORCE=56.7(最佳)。
 - **PSR 提精度损多样性**：Pass@1 上升快但 k>8 后跌破 base，熵急剧下降、过拟合。
 - **Qwen3-4B 非思考模式**：PSR 无法激活潜在(思考模式)能力甚至损 MATH/AMC23；NSR/GRPO 能逼近思考模式(NSR Pass@1=94.0/Pass@64=98.0 ≈ 思考模式 94.5/97.8)。
@@ -59,12 +62,14 @@ RLVR 的二元奖励使奖励符号天然绑定到序列正确性(同一序列�
 内部自洽性强：分解—独立实验—梯度推导—外推—简单变体，环环相扣。需注意：(1) §4.3 把分析外推到 PPO/GRPO 属"定性不变"论证，未对 PPO critic 的细粒度 credit assignment 做严格分析(论文自己也观察到 PPO 后期熵回弹这一 GRPO 没有的现象)；(2) NSR/PSR 因只用半数样本，每 batch 有效样本少于 PPO/GRPO，比较并非等样本量(论文如实指出)；(3) 强先验依赖是反复出现的前提(Qwen 有效、Llama 普遍退化)，把结论限定在"模型先验强"时。
 
 ## 11. 残留问题 / 局限
+
 - **NSR 长训不稳**(§F)：上百步后性能明显下滑，提示其隐式护先验机制不足以长期稳定；W-REINFORCE 无此问题，但作者也承认这与 GRPO 等的长训崩溃同类，可能需引入一定 PSR。
 - **仅限稀疏二元奖励**：未验证 dense/连续/过程奖励或主观任务下 PSR/NSR/W-REINFORCE 的表现。
 - **backbone 依赖**：Llama 系列上 RL 普遍损 inference-scaling，方法增益主要在强先验模型上成立，泛化性受限。
 - **数据/任务窄**：训练仅 MATH 7.5K，评测均为数学竞赛类，未及代码/agentic 等。
 
 ## 12. 开源代码与框架(链接+框架+代码可得性)
+
 - 仓库 https://github.com/TianHongZXY/RLVR-Decomposed（本地已 clone，~15MB，Tier A）；模型集合 HuggingFace `TianHongZXY/rlvr-decomposed`。
 - **框架 = veRL**：仓库内 vendoring `verl/`(advantage/clip 逻辑在 `verl/trainer/ppo/core_algos.py`、`ray_trainer.py`)；推荐用 verl 官方 docker，Qwen3 需 vllm 0.8.5 + transformers 4.52.2。
 - 训练入口 `run_qwen2.5-math-7b_psr_nsr.sh` / `run_qwen3-4b_psr_nsr.sh`(脚本内指定 advantage 为 PSR/NSR/W-REINFORCE，W-REINFORCE 设 `positive_advantage_weight`=λ=0.1)；另有 `_ppo.sh`/`_grpo.sh`。评测 `eval.sh` + `calculate_metrics.py`(算 Pass@k)、`grader.py`。

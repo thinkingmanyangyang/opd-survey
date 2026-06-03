@@ -34,18 +34,21 @@ pass@k(k 个采样中任一正确即解出)在大 k 时逼近"模型潜在可解
 不提出新训练方法，而是把 base 当上界，系统比较 base 与其多种 RLVR 后版本在多家族/多尺寸/多算法/多 benchmark 上的 pass@k 曲线；辅以覆盖度与 perplexity 分析验证 RLVR 路径是否已在 base 采样分布内；定义采样效率差距 ΔSE 量化各算法逼近最优的程度；并对比蒸馏以区分二者本质。
 
 ## 6. 方法详解(通俗、分步骤)
+
 - **评测指标**：pass@k(无偏低方差估计器)；主张 pass@k(而非 Best-of-N / 多数投票)才反映"边界"。数学对 guessing 风险题人工核查 CoT 正确性，代码用编译器+单测。
 - **量化指标 ΔSE**：sampling efficiency gap = RL 模型 pass@1 与 base 模型 pass@k(k=256 作上界代理)之差，衡量算法逼近最优程度(§Fig.8 top)。
 - **覆盖度 + perplexity 分析**：验证 RLVR 生成的推理路径是否已存在于 base 的采样分布中。
 - **算法对比**：六种主流 RLVR 算法 = **PPO、GRPO、Reinforce++、RLOO、ReMax、DAPO**(均在 VeRL 上、以 Qwen2.5-Math-7B 为 base、Omni-Math-Rule 训练，依 DAPO/Oat-Zero 去掉 KL；§4.3)。〔已核-Table 1/§4.3〕
 
 ## 7. 实验数据集
+
 - 数学(zero-RL，base 起点)：LLaMA-3.1-8B、Qwen2.5-7B/14B/32B-Base、Qwen2.5-Math-7B;benchmark GSM8K、MATH500、Minerva、Olympiad、AIME24、AMC23。
 - 代码(instruct 起点)：Qwen2.5-7B-Instruct、DeepSeek-R1-Distill-Qwen-14B，用 Code-R1。
 - 视觉推理：另有设置。
 - v5 新增：评测 Oat-Zero-7B、DAPO-32B(Fig.11)、DeepScaleR，及熵/温度匹配分析。
 
 ## 8. 实验结果与主要发现
+
 1. **小 k 时 RLVR 优于 base，但大 k 时 base 持续反超**——所有 benchmark 与家族无例外，说明当前 RLVR 不扩展、甚至缩小可解题目范围(推理边界变窄)；随训练进行 pass@256 覆盖度下降(Fig 中 GRPO-step150/300/450 递减)。
 2. RLVR 生成的推理路径已存在于 base 输出分布(perplexity 分析佐证)——RLVR 只是更高效采样 base 已能解的题，能力受 base 上界约束。
 3. 六种 RLVR 算法 ΔSE 一致偏大(in-domain 从 GRPO 43.9 到 RLOO 最优 42.6，差异小)，均远未最优;DAPO 在 k=256 处显著下滑。
@@ -59,11 +62,13 @@ pass@k(k 个采样中任一正确即解出)在大 k 时逼近"模型潜在可解
 论证自洽：pass@k 作为边界代理的合理性、k=256 上界代理的选择、无偏估计器、人工核查 guessing 题，环环相扣。潜在张力在于"大 k 反超"对采样预算敏感(k=256 是工程代理而非真上界)，作者已用熵匹配等鲁棒性检查回应，结论稳健。
 
 ## 11. 残留问题 / 局限
+
 - pass@k 边界以有限 k(≤256)代理"真实潜力"，极大 k 或更优解码下结论是否变化存开放性。
 - 结论针对"当前 RLVR 算法/数据规模"；论文自身呼吁更好探索机制、更大数据 curation、细粒度 process signal、多轮 agent 交互——即不排除未来 RLVR 范式突破边界。
 - 蒸馏"扩展边界"的对照较简略，蒸馏引入的新能力是否只是 teacher 能力转移(而非 RL 式自主发现)未深究。
 
 ## 12. 开源代码与框架(链接+框架+代码可得性)
+
 - 链接：https://github.com/LeapLabTHU/limit-of-RLVR (已克隆 ~83MB;项目页 https://limit-of-RLVR.github.io)。含 `code/`(DeepCoder)、`math/`(eval_math_nodes.sh、pass@k.py、examples、install.sh、requirements.txt)。
 - 框架：评测/分析为主，核心是 vLLM 多次采样的 pass@k 评测;被评 RLVR 模型来自 SimpleRL-Zoo、Oat-Zero、DAPO(数学)、Code-R1(代码)，训练侧统一在 VeRL，并非自研新训练框架。
 - 可得性：评测脚本完整、可复现;不含新方法实现(本就无新方法)。

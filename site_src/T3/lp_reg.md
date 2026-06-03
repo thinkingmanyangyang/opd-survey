@@ -35,15 +35,18 @@ RLVR 推动 LLM 复杂推理，但训练常在性能平台期崩溃，伴随策�
 
 ## 6. 方法详解(通俗、分步骤)
 Low-probability Regularization(Lp-Reg)，集成进 GRPO：
+
 - **代理分布 π_proxy**：(1)过滤噪声——丢弃概率 < 阈值 τ 的 token(τ 可用固定值如 0.02，或 **min-p**：τ=κ·max π，主实验用 min-p、κ=0.02，自适应分布锐度);(2)概率重归一化——把丢弃 token 的质量重分配到剩余 token，得放大 spark 相对概率的"去噪"参考分布。
 - **目标函数**：第一项为 GRPO 策略梯度，但**去掉裁剪下界**(避免裁掉低概率探索动作)、加一个大上界 U(数值稳定);第二项为 Lp-Reg 惩罚——仅对**同时满足三条件**的 token 触发：①π_θ 低于批内最低 ρ 分位阈值 δ_B^ρ(低概率)、②在 π_proxy 中概率>0(非噪声)、③优势 A<0(负样本)，施加**前向 KL** D_KL(π_proxy‖π_θ)。前向 KL 在 π_θ→0 而 proxy 非零时给大惩罚，定向防 token 被消除，又不强制完全匹配 proxy。〔实现以 Lp-Reg-dev 为准〕
 
 ## 7. 实验数据集
+
 - RL 训练：Dapo-Math-17K，max 响应长度 8,192，global batch 256。
 - 评测(5 个数学基准)：AIME24、AIME25、MATH-500、OlympiadBench、Minerva Math。AIME24/25 采样 16 次(temp 0.6)、其余 greedy。
 - 骨干：Qwen3-14B-Base(主)、Qwen2.5-32B-Base。
 
 ## 8. 实验结果与主要发现
+
 - verl 上 GRPO，lr=1e-6 常数无 warmup，group=8，IS 比率上界 U=10。off-policy mini-batch 32(每 rollout 8 次梯度更新)。Lp-Reg：ρ=0.5%(32B)/1%(14B)，β=1.0，min-p κ=0.02。
 - 算力：14B 训约 1000 步(8000 GPU·h/32×H20)，32B 约 800 步(16000 GPU·h/64×H20);崩溃(准确率掉>10%)则早停。稳定性测试：Qwen2.5-32B 训 3000 步、81,204 GPU·h。
 - 基线：GRPO、GRPO+Entropy Loss、Clip-Higher、80/20 高熵训练、KL-Cov、GSPO。
@@ -56,12 +59,14 @@ Low-probability Regularization(Lp-Reg)，集成进 GRPO：
 自洽：从"整体熵"下沉到"低概率 token 的语义筛选(spark vs noise)"，用前向 KL + 三重门控做定向保护，比无差别熵 bonus 更有针对性，机制叙事与消融一致。前向 KL 的方向选择(proxy‖π_θ)与"防 token 消除"目标匹配，数学上合理。
 
 ## 11. 残留问题 / 局限
+
 - 核心增益 **+2.66%** 属中等增量，且大量算力(8 万 GPU·h)主要用于证明"长训练不崩"而非绝对分数跃升。
 - 引入多个阈值超参(τ/κ、ρ、β、U)，调参负担不小且对 14B/32B 取值不同，泛化稳健性需更多骨干验证。
 - "spark vs noise"以平均概率统计区分，个例上二者可能重叠，门控误判的代价未量化;仅在数学域验证。
 - 主仓为占位、需用 dev 仓复现，是工程可得性上的不便。
 
 ## 12. 开源代码与框架(链接+框架+代码可得性)
+
 - 链接：主仓 https://github.com/CarlanLark/Lp-Reg 当前仅含 README(占位，称正整合进最新 veRL);复现代码在开发仓 https://github.com/CarlanLark/Lp-Reg-dev(已 clone ~4.6MB，verl 底座，含 `recipe/lp_reg` 与 `recipe/dapo`)。〔实际实现以 Lp-Reg-dev 为准〕
 - 框架：verl(Sheng et al. 2024)，GRPO 基础。
 - 可得性：dev 仓代码真实可用、可复现;主仓为占位，需自行切到 dev 仓。

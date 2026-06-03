@@ -37,6 +37,7 @@
 
 ## 6. 方法详解(分类框架,通俗、分步骤)
 三条对应顺序设计决策的轴(Fig.1 taxonomy,每方法归一主类):
+
 - **§4 目标函数设计**:4.1 固定散度(GKD/MiniLLM/DistiLLM/DistiLLM-2/KETCHUP/vOPD/AntiSD);4.2 自适应散度(ToDi/AKL/EOPD/AOPD,按局部几何在 forward/reverse 间切换,优于固定);4.3 RL-增强目标(G-OPD/RLKD/KDRL/RLAD/AlignDistil 等——证 OPD 是 KD-约束 RL 特例,可超越教师上限)。
 - **§5 信号源与教师架构**:5.1 白盒 logit(同族 / 跨族,后者处理词表失配 DSKD/ULD/TAID 等);5.2 黑盒/API 受限(标量奖励或成对偏好:Lion/GAD/LUFFY/ThinkTuning 等);5.3 自蒸馏(**最大且增长最快**:5.3.1 特权信息 OPSD/CRISP/OEL/**OPHSD**/COPSD 等;5.3.2 纯自蒸馏 SDFT/SPIN 等;5.3.3 外部反馈 SDPO/SD-ZERO/**OpenClaw-RL** 等)。
 - **§6 训练效率与稳定**:6.1 token/样本加权(TIP/SCOPE/R-OPD 等);6.2 课程与难度自适应(PACED/Stable-OPD/CaOPD 等);6.3 计算优化(Lightning-OPD/SKD/FOPD 等)。
@@ -46,6 +47,7 @@
 综述本身无实验。用 per-section 对比表(Tables 1, 3–9, 2)汇总各方法的类别、核心贡献、信号源、loss 粒度等。覆盖白盒/黑盒/teacher-free 三大设定及散度设计、reward-guided、self-play、multi-teacher debate、agentic 轨迹蒸馏、跨模态等分支。引用的具体数值(如 DeepSeek-R1 学生规模 scaling、Qwen3 "OPD 以 ~1/10 GPU 时超直接 RL")均为转引原文。
 
 ## 8. 实验结果与主要发现(综述的核心结论与覆盖)
+
 - **成功条件(§7.1)**[Li 2026i]:① 师生需共享兼容推理模式(top-k token 高重叠;非思考教师蒸进思考学生会因初始重叠过低而失败);② 教师须提供超出学生已有的新能力(同数据同配方训出的师生分布趋同、无可迁移信号)。OPD 收益与"可利用的师生差距"成正比,过小过大都不行。另:Kim & Lee 2026 指出 OPSD 更像**压缩**(让模型更高效表达已知解)而非**纠错**(教会解更难题),推荐 SFT→RLVR→correct-only OPSD 流水线序。
 - **失效模式(§7.2)**:flawed prefix trap(学生错误前缀使教师条件分布失准)、extrapolation cliff(λ>1 reward 外推超阈值致格式坍缩)、Rock Tokens(高频结构 token 持续高 loss 却无功能贡献,占大量梯度)、self-play saturation/Ouroboros(自蒸馏锁死自身幻觉)、precision-recall/diversity collapse(reverse KL 高 Pass@1 低 Pass@k)、calibration-capability gap(更强但更过自信)、agentic 多轮坍缩(teacher 硬拷贝重置致 KL 从 2.637 骤降 0.343、轨迹结构侵蚀、reward-hint runaway)。
 - **统一理论(§7.3)**:散度选择本质是正则化决策;OPD≈稠密 KL-约束 RL,与 DPO/偏好优化同属"由散度选择与监督密度参数化"的目标族;Stable-OPD 加 reference 散度项 + rollout 混合可破坏长度膨胀自放大环(+7.2%)。

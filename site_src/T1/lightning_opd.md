@@ -22,6 +22,7 @@
 OPD 是有效的 LLM 后训练范式：在学生自生成 rollout 上让学生对齐教师分布（dense per-token 监督），常比离线 KD 收益更强（Thinking Machines Lab、Qwen3 等）。
 
 ## 2. 现有工作存在的问题
+
 - 标准 OPD 须在整个训练过程常驻大教师 server，GPU 被学生+教师共置而碎片化、成本高、需多节点；MoE 学生（如 30B-A3B）+教师共置常 OOM、不可行。
 - 一个自然想法是离线化（训练前一次性预算并缓存教师 log-prob 复用），但**朴素离线化无法可靠匹配标准 OPD**。论文追溯根因为被忽视的 **teacher consistency**：SFT 阶段与 OPD 阶段必须同一教师，违反则引入不可约梯度偏置（对在线/离线 OPD 都有害、离线更甚）。现实常被违反——如 TML 用 QwQ-32B 生成的 OpenThoughts-3 做 SFT，却用 Qwen3-32B 作 OPD 教师。
 
@@ -36,6 +37,7 @@ OPD 是有效的 LLM 后训练范式：在学生自生成 rollout 上让学生�
 
 ## 6. 方法详解(通俗、分步骤)
 设教师 π_T（固定）、学生 π_θ、SFT 参考策略 π_ref。
+
 - **per-token OPD advantage**：`A_t(θ)=log π_T(a_t|s_t)−log π_θ(a_t|s_t)`（教师比学生更自信处为正，反之为负；视作 stop-gradient 标量）。
 - **标准 OPD**：`J_on=E_{x∼π_θ}[Σ_t A_t]`（rollout 来自当前学生，需实时教师）。
 - **Lightning OPD（离线）**：`J_off=E_{x∼π_ref}[Σ_t A_t]`（rollout 分布固定为 π_ref）。二者共用 advantage、仅响应分布不同；IS 分解显示 `∇J_off` 是 w≡1 特例，teacher consistency 下偏差有界 + 隐式正则。
@@ -43,12 +45,14 @@ OPD 是有效的 LLM 后训练范式：在学生自生成 rollout 上让学生�
 - 〔已核-代码〕`slime/backends/megatron_utils/loss.py`（`advantage_estimator=="on_policy_distillation"`）：`advantages=teacher_log_prob−student_log_prob` 逐 token、与 Eq.2 一致、`returns=advantages`。`slime/rollout/on_policy_distillation.py` 用 `is_lightning_opd`/`is_offline_opd` 区分离线缓存 vs 在线查询，离线分支直接读预存 `teacher_log_probs`。SFT=LLaMA-Factory（configs/sft YAML）、OPD=slime（configs/opd 为标准 OPD 含 `deploy_teacher_model`+`--rm-url`；configs/lightning_opd 为离线版，含 4B/8B/30B-A3B 三套）。
 
 ## 7. 实验数据集
+
 - 学生/教师配对：Qwen3-4B-Base–Qwen3-8B、Qwen3-8B-Base–Qwen3-32B、Qwen3-30B-A3B-Base（MoE）；均 SFT 初始化。
 - SFT 数据：从 **OpenThoughts3-1.2M** 抽 prompt 采 **300K**（〔已核-代码〕`prepare_sft_prompts.py` 默认 `--num-samples 300000`），由各自教师生成响应。
 - OPD prompt：两域——数学 **DAPO-Math-17k**（17K 竞赛题）；代码 **EpiCoder-func-380k 的 30K 子集**（function-level）。每 prompt 从 π_ref 仅采单条 response 并一次性预算教师 log-prob。
 - 评测：数学 AIME24/AIME25/HMMT2025（每题 32 解，avg pass@1，max len 32768），代码 LiveCodeBench v5/v6（每题 4 解，max len 40960）。temperature 0.6、top-p 0.95。
 
 ## 8. 实验结果与主要发现
+
 - 与标准 OPD 在所有基准×规模组合上持平或更优，但 **3.6×–4.0× 提速**——4B 从 72→20 GPU·h（3.6×），8B 从 120→30 GPU·h（4.0×）。
 - 8B 在 30 GPU·h 达 AIME24 **69.9%**（SOTA 量级）。
 - MoE Qwen3-30B-A3B 在单 8×H100 节点达 AIME24 **71.0%** / LiveCodeBench v5 **60.8%**——而标准 OPD 此设置 **OOM 不可行**（论文表中标 ✗）。
@@ -60,6 +64,7 @@ OPD 是有效的 LLM 后训练范式：在学生自生成 rollout 上让学生�
 理论（IS 分解、有界偏差、隐式正则）、代码（loss 与 Eq.2 一致、离线/在线分支明确）、实验（持平+提速+MoE 可行）三者闭环自洽。teacher consistency 的提出既有理论刻画又有反例对照，是本文最扎实的贡献点。
 
 ## 11. 残留问题 / 局限
+
 - teacher consistency 是硬约束：要求 SFT 与 OPD 同教师，限制了复用第三方 SFT 数据（如直接用 OpenThoughts-3）的灵活性。
 - 离线缓存固定 π_ref 的 rollout，OPD 阶段学生若漂移较远，w≡1 近似的偏差是否仍可忽略，依赖 150 step 短训练 + clip + 隐式正则共同保证；更长训练/更大师生差距下的稳健性未充分探索。
 - 每 prompt 仅采单条 response，rollout 多样性受限。
@@ -67,5 +72,6 @@ OPD 是有效的 LLM 后训练范式：在学生自生成 rollout 上让学生�
 - Preprint（v2 2026-05），未评审。
 
 ## 12. 开源代码与框架(链接+框架+代码可得性)
+
 - 链接：https://github.com/jet-ai-projects/Lightning-OPD （已 clone，约 3.0MB；HF 组织 Lightning-OPD）。含 `slime/`、`slime_plugins/`、`configs/`（sft/opd/lightning_opd/models）、`data_curation/`（pipeline.py、prepare_lightning_opd.py）、`scripts/`（precompute_teacher_logprobs_*.sh、collect_rollouts.sh、serve_teacher_*.sh、generate_sft_data.sh）、`train.py`。
 - 框架：slime + slime_plugins；SFT 用 LLaMA-Factory 风格 YAML（含 dataset_info.json）；OPD 配置为 Python（configs/opd 标准 OPD、configs/lightning_opd 离线版含 4B/8B/30B-A3B 三套）；教师 log-prob 离线生成用 vLLM（data_curation/pipeline.py）。代码可得、关键 loss 与离线分支可逐处对照。

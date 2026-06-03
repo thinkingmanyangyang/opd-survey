@@ -22,6 +22,7 @@
 LLM agent 已广泛部署(终端/GUI/SWE/tool-call);交互数据被用于改进 framework、构建 memory(Mem0/Cognee/Letta)、产训练数据,但鲜有把它当**在线、实时**学习源。现有 agentic RL 基础设施(slime [Sheng 2025]、OpenRLHF [Hu 2024]、AReaL [Fu 2025] 等)假设批量预采集数据。方法侧:RLVR 仅能用标量奖励;OPD [Agarwal 2024]、SDPO/SDFT [Hübotter/Shenfeld 2026]、hindsight relabeling 能用结构化纠正信息但都在固定数据集上操作;并发 Buening 2026 直接用 next-state 提示在线改策略,但纠正 hint 仍隐含在 prompt 中。
 
 ## 2. 现有工作存在的问题
+
 - **基础设施**:RL server 需灵活对接用户多样且演进的 agent 框架,且优化须异步、不阻塞推理使用。
 - **方法学**:RLVR 无法把 directive(纠正性)信号转成策略梯度;OPD/hindsight 虽能用结构化纠正,但只在固定数据集上做。OPD 还因 teacher–student 分布失配 [Li 2026] 训练不稳/失效,低质量 hint 时更严重。
 
@@ -35,6 +36,7 @@ evaluative 与 directive 互补:directive 更富信息(token-level)但更稀疏,
 基础设施:把 RL 系统扩成 server–client——RL server 把策略包成推理 API,用户终端经 OpenClaw 把交互数据 HTTP 流式回传;独立异步 PRM/Judge server 从 next state 抽 evaluative + directive 信号(不阻塞推理);slime 协调环境 server / PRM / Megatron 训练 / SGLang serving,零 serving 中断、graceful weight update。方法:hybrid RL 目标在单次更新融合 evaluative(RLVR 标量)与 directive(OPD token-level KL,teacher 条件于纠正 hint)两类 loss,配 overlap-guided hint selection 与 logprob-diff clip 稳定。
 
 ## 6. 方法详解(通俗、分步骤)
+
 1. **Hybrid RL objective**:directive=OPD(token-level KL)+ evaluative=RLVR(标量奖励),单更新融合(附录 C 证明 OPD 目标即 token-level KL)。
 2. **Overlap-guided hint selection**:候选纠正 hint 中,选其诱导 teacher 分布与学生 **top-k token 重叠最大**者(可逐 token 或序列聚合)。
 3. **Log-probability-difference clip**:对 token-level logprob 差做 clip,bound 每 token advantage(personal 设置默认 C=1)。
@@ -42,11 +44,13 @@ evaluative 与 directive 互补:directive 更富信息(token-level)但更稀疏,
 - 集成了社区 SDFT、SDPO 等方法到 `openclaw-opd/`。
 
 ## 7. 实验数据集
+
 - **Personal agents**:用 LLM 模拟不同职业用户(学生避免 AI 痕迹 / 助教要详细评分 / 教师要友好评语)在 GSM8K 任务上使用 OpenClaw,度量"对齐各用户偏好所需最少 sessions"(连续 3 session 满足偏好即达标)。policy & reward 均 Qwen3-4B-Thinking-2507;用户用 Qwen3-32B 模拟。
 - **General agents(Track 2)**:四类真实部署环境,模型分别为 Terminal=Qwen3-8B、GUI=Qwen3VL-8B-Thinking、SWE=Qwen3-4B、Tool-call=Qwen3-4B-SFT(Retool-4B,源自 Zhu 2025);训练数据分别为 SETA RL data / OSWorld-Verified / SWE-Bench-Verified / DAPO RL data;GUI 评在训练集(去 chrome 与 multi-apps),tool-call 评 AIME 2024,terminal/SWE 报窗口内平均 rollout-task acc。声称是首个统一这四类 agent 的开源 RL 框架。
 - (注:正文实验未涉及 Qwen3.5;仓库 `openclaw-opd/run_qwen35_4b_openclaw_opd.sh` 与 slime qwen3.5-4B 配置存在,但非论文报告模型。)
 
 ## 8. 实验结果与主要发现
+
 - **Personal**(Table 3,最少 sessions↓,5 trials 均值):joint 优化下 Hybrid RL 平均 **10.3** sessions,优于 GRPO 14.1、OPD 单用 29.7、Mem0 14.5、Cognee 14.9;separate 优化下 Hybrid 15.0 仍最优。注:纯 OPD 远差(29.7),增益主要来自 hybrid 融合;joint 优化放大 RL 增益而 memory 类几乎不变。
 - **General**:hybrid RL 在四环境均优于纯 RLVR 且更稳定;next-state 信号在长 horizon 稀疏奖励环境尤其有用。
 - **消融**:overlap-guided hint selection 与 logprob-diff clip 对效率/稳定性均关键;另有 k 与 support set S_i、PRM、policy/reward 模型组合的消融(§4.8–4.11)。

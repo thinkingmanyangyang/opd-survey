@@ -34,6 +34,7 @@ o1、DeepSeek-R1-Zero 展示了大规模 RL 的 "训练时间 scaling"：随算�
 直接在 Qwen2.5 base 上用 R1-Zero 风格 prompt 启动 RL，采用极简(minimalist)配方：vanilla PPO + GAE(λ=1,γ=1) + 仅检查 `<answer>` 与参考答案精确匹配的二值奖励，完全不加任何 KL 正则，并配合大规模、多样化数据，即可稳定 scale up 性能与响应长度。
 
 ## 6. 方法详解(通俗、分步骤)
+
 - **选 PPO 而非 GRPO**：学习到的 critic 给出更准的 token 级 value 与 credit assignment；分析显示 PPO 对重复 token 赋更负的 advantage，能抑制坍缩。
 - **GAE λ=1, γ=1**：无偏配置充分捕捉长程依赖；优势简化为 Â = R − V_φ(s_t)，value 目标 (V_φ(s_t) − R)²。
 - **去掉 KL**：免去 reference model 的显存/计算与调参，鼓励探索。
@@ -42,10 +43,12 @@ o1、DeepSeek-R1-Zero 展示了大规模 RL 的 "训练时间 scaling"：随算�
 - **采样/训练细节**：每步 128 prompt × 每 prompt 64 response，temperature/top-p=1.0；严格 on-policy；batch-level advantage 归一化。32B 末段加 100 步 annealing（13k 难题）。〔已核 repo playground/orz_32b_ppo.py：gamma=lambd=1.0、init_kl_coef=0、kl_loss_coef=0.0（use_kl_loss=True 但系数为 0，即 KL 实际关闭）、n_samples_per_prompt=64〕
 
 ## 7. 实验数据集
+
 - 训练：ORZ 精选数据（正文表述 "tens of thousands of curated QA pairs"；开源含 orz_math_57k / orz_math_72k_extended / orz_math_13k_hard；来源 AIME(≤2023)、MATH、Numina-Math、Tulu3 MATH、OpenR1-Math-220k、AoPS 论坛 + 程序合成的逻辑/多步/反事实题）；排除证明题等难评测题，并用 LLM 过滤极端 pass rate。对照实验用 ORZ-57k vs MATH-train-7.5k。
 - 评测：AIME2024、AIME2025、MATH500、GPQA Diamond（均 avg@16）；泛化 MMLU、MMLU_PRO。
 
 ## 8. 实验结果与主要发现
+
 - 基座 Qwen2.5-{0.5,1.5,7,32}B base，直接大规模 RL、跳过 SFT。
 - 主结果：ORZ-32B 在 AIME2024(48.1)、MATH500(92.2)、GPQA Dia.(55.5) 上超越或持平 DeepSeek-R1-Zero-Qwen-32B(47.0/91.6/55.0)，且**仅用约 1/10 训练步数**；MMLU/MMLU_PRO 超 Qwen2.5-Instruct-32B。〔已核 PDF Table，行 318-321/968-971〕
 - 消融：GAE λ=1.0 优于 0.95；去 KL 优于 KL Loss/KL Penalty；ORZ-57k 优于 MATH-7.5k（后者早早 plateau）。
@@ -58,12 +61,14 @@ o1、DeepSeek-R1-Zero 展示了大规模 RL 的 "训练时间 scaling"：随算�
 配方主张与消融基本一一对应，可信度较高。需注意：PPO 优于 GRPO 的论证主要依赖作者自身曲线与 "advantage on repeated token" 的定性分析，并非对所有任务/尺度的普适结论；"1/10 步数" 的对比依赖与 DeepSeek 复现条件的可比性（数据、prompt 不同），属同向但非严格控制比较。
 
 ## 11. 残留问题 / 局限
+
 - 与 R1-Zero 的步数对比跨实现/跨数据，严格可比性有限。
 - 仅评测数学+少量通用基准；对代码、agentic 等域的可迁移性未充分验证。
 - "去 KL 总更好" 的结论在 base 模型起点成立，迁移到已对齐/已蒸馏起点时不一定（参见 ProRL 反向主张保留 KL）。
 - 二值奖励对证明题、开放式任务不适用。
 
 ## 12. 开源代码与框架(链接+框架+代码可得性)
+
 - 仓库：https://github.com/Open-Reasoner-Zero/Open-Reasoner-Zero（本地已克隆约 92MB，含 orz/ 包、playground/ 各尺寸训练脚本、docker/）。
 - 模型/数据：HuggingFace Open-Reasoner-Zero（ORZ-{0.5,1.5,7,32}B、ORZ-R1-Distill-Qwen-14B、critic 权重、ORZ 数据）。
 - 框架：OpenRLHF（+ vLLM + DeepSpeed + Ray），实现 vanilla PPO + GAE 的大规模分布式训练。代码可得性：完整（含 critic 权重，开放程度在同类工作中最高）。

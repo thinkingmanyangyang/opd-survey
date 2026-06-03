@@ -22,6 +22,7 @@
 大推理模型(o1、DeepSeek-R1)靠大规模 RL 延长推理链取得成功，test-time compute 成为新 scaling 维度。但传统 softmax 注意力二次复杂度限制了推理链持续延长。学界提出稀疏注意力、线性注意力、状态空间模型、线性 RNN 等高效替代，但几乎未在大规模推理模型上充分验证(例外 Hunyuan-T1 用 Mamba，但未开源、细节少)。RL 算法侧 PPO→GRPO(去 critic、组相对 advantage)→DAPO(提高上裁剪界、dynamic sampling、length penalty)是主线。
 
 ## 2. 现有工作存在的问题
+
 - 大规模 RL 训练中 PPO/GRPO/DAPO 的**裁剪丢弃大更新 token 的梯度**：反思类 token(However/Recheck/Wait/Aha，常是推理"分叉点")在 base 模型下概率低，更新时 r_{i,t} 高，首次 on-policy 更新后即被裁掉，无法参与后续 off-policy 梯度；在 16 轮 off-policy 更新/批 的设置下尤甚，而这些 token 对稳熵/可扩展 RL 关键。DAPO 的提高上界做法在此设置下不够有效。
 - 混合注意力架构下 RL scaling 出现**训练/推理 kernel 精度不匹配**，导致 reward 无法增长。
 - 长生成 RL 中负样本长度增长快于正样本，序列后段累积过大负梯度→pattern collapse(后段退化为乱码)。
@@ -36,6 +37,7 @@ PPO 的 IS 权重本是为 off-policy 修正，裁掉 token 更新会连带丢�
 从带 offline 修正的 REINFORCE 目标出发，CISPO(Clipped IS-weight Policy Optimization)沿用 GRPO 的组相对 advantage 与 token-level loss，但对 IS 权重 r̂_{i,t}=clip(r_{i,t},1−ε^IS_low,1+ε^IS_high) 做裁剪(实验中不设下界、只调 ε^IS_high)，无 KL 项；梯度因权重裁剪略有偏差但保留全部 token 梯度。再给统一公式(引入 token-wise mask M_{i,t}，可表示 PPO 信任域隐式 mask 等不同裁剪策略)。配合连续预训练(7.5T)、SFT cold-start、curriculum RL(先规则可验证、渐混入模型奖励通用任务)，并解决混合架构特有工程问题(FP32 LM head、AdamW 超参、重复检测早停)。
 
 ## 6. 方法详解(通俗、分步骤)
+
 1. **连续预训练**(§2.1)：在 MiniMax-Text-01(456B 总参、单 token 激活 45.9B、32 experts；每 7 个 lightning-attention transnormer 块后跟 1 个 softmax 块)上续训 7.5T tokens(STEM/code/book/reasoning 占 70%，避合成数据、语义去重)；lr 8e-5 训 2.5T 再衰减到 8e-6 over 5T；长上下文分四阶段从 32K 扩到 1M(避免梯度爆炸)。
 2. **SFT cold-start**(§2.2)：注入反思式长 CoT，math+code 约 60%。
 3. **CISPO**(§3.1，式 4–5)：裁 IS 权重而非 token 更新；用 dynamic sampling + length penalty；无 KL。
@@ -47,10 +49,12 @@ PPO 的 IS 权重本是为 off-policy 修正，裁掉 token 更新会连带丢�
 9. **资源**：完整 RL run 512×H800、约 3 周、约 $0.53M。
 
 ## 7. 实验数据集
+
 - **训练**：连续预训练 7.5T；RL 数据近 50K 数学 + 53K 逻辑 + 30K 竞赛编程 + 数千 SE + 25K 通用(curriculum 组织)。
 - **评测**(temp 1.0, top-p 0.95)：数学 MATH-500/AIME 2024/2025(AIME 采 32 取均)；编程 LiveCodeBench/FullStackBench(16 采均)；推理知识 GPQA-Diamond(32 采)/MMLU-Pro/HLE(无工具)；SWE-bench Verified；agentic TAU-Bench；长上下文 MRCR 等。
 
 ## 8. 实验结果与主要发现
+
 - **CISPO 受控对比**(图 2，Qwen2.5-32B-base zero-RL，AIME 2024)：同步数显著超 DAPO/GRPO，用 50% 步数即达 DAPO 水平(对 DAPO 2× 加速)。
 - **核心基准**(表 2，M1-80k)：AIME 2024 86.0、AIME 2025 76.9、MATH-500 96.8、LiveCodeBench 65.0、FullStackBench 68.3、GPQA-Diamond 70.0。
 - **定位**：整体超原 DeepSeek-R1 与 Qwen3-235B；对最新 DeepSeek-R1-0528，数学/编程竞赛落后，但工具使用/长上下文相当或更优；TAU-Bench 超 Gemini 2.5 Pro，长上下文超 o3 与 Claude 4 Opus。
@@ -65,6 +69,7 @@ PPO 的 IS 权重本是为 off-policy 修正，裁掉 token 更新会连带丢�
 算法动机(token clipping 丢反思 token)→CISPO(裁 IS 权重)→统一 mask 公式→受控验证,逻辑链清晰;工程问题(精度失配/优化器/重复/pattern collapse)均给出根因+解法,自洽性较强。需注意:(1) CISPO 的核心比较(图 2)在 Qwen2.5-32B 而非 M1 本体上做,M1 全量训练并无 CISPO-vs-DAPO 的同条件消融,"2× 加速"结论的外推到 456B 混合架构属间接证据;(2) GenRM/通用任务奖励高度依赖内部 GenRM 与人标基准,长度偏置靠"在线监控+重校准"这类经验闭环处理,难以复现/量化;(3) 多个核心创新(CISPO 代码、GenRM、沙箱、数据)均未开源,paper-only 信任;(4) 部分基准(HLE 等)带 ∗ 标注(自测/口径差异),横向比较需谨慎。
 
 ## 11. 残留问题 / 局限
+
 - **核心算法不可复现**:CISPO 训练实现、GenRM、SE 沙箱、RL 数据均未开源;公开仓为权重/推理仓。
 - **CISPO 的 M1 本体证据间接**:主算法对比在 32B dense 上,缺 M1(456B 混合)上的同条件消融。
 - **数学/编程竞赛落后最新 R1**:相对 DeepSeek-R1-0528 在 AIME/LiveCodeBench 上落后,优势集中在工具/长上下文。
@@ -74,6 +79,7 @@ PPO 的 IS 权重本是为 off-policy 修正，裁掉 token 更新会连带丢�
 - **成本高**:512×H800×3 周(~$0.53M),门槛极高。
 
 ## 12. 开源代码与框架(链接+框架+代码可得性)
+
 - 仓库 https://github.com/MiniMax-AI/MiniMax-M1 ;权重在 HuggingFace。支持 vLLM / Transformers 推理,有部署指南;另有商用 API(minimax.io)。
 - **该仓为模型发布/权重仓;CISPO 训练代码、GenRM、SE 沙箱、RL 数据均不在仓内**。本地未 clone(CloneTier=B,仅记录)。
 - **框架 = 自研 RL**(借 lightning attention 高效 rollout);注:论文提到 VeRL 默认 AdamW 配置会导致不收敛(故改 β2=0.95, eps=1e-15),说明其设置与 verl 相关但训练实现未公开。**model-release / paper-only**——CISPO 不在 repo,本分析基于论文(2506.13585)。

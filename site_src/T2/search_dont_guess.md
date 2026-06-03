@@ -34,18 +34,21 @@
 提出 **Always-Search Policy(ASP)**:训练时显式约束搜索行为,三种实现——(1) **SFT**:只保留"始终用搜索工具获取信息"(剔除"I remember"类)的高质量轨迹做监督;(2) **OPD(on-policy distillation)**:不显式过滤轨迹,而是用 system prompt 要求模型总是搜索,期望 teacher 的 log-prob 分布在 student 自身 rollout 上调控其搜索行为;(3) **Mixed**:先 ASP-SFT 再 OPD 强化。下游再加 **RFT(Rejection Fine-Tuning)** 选择性强化高质量 agentic 行为。整体是工程化 recipe,非新算法。
 
 ## 6. 方法详解(通俗、分步骤)
+
 - 推理:Search-o1 式迭代 search agent,检索 = E5(embedding)+ BM25(keyword)双检索,summarizer = Qwen3-32B。
 - **ASP-SFT**:从 HotpotQA 采 **18,000** 条 Qwen3-32B teacher 轨迹(String-F1>0.65 保留;且只留"始终搜索"轨迹),**3 epochs、lr 1e-5** 蒸馏。
 - **ASP-OPD**:**3,000** 个 HotpotQA 训练题,每题学生采样 **8** 条轨迹,teacher 给 token 分布、最小化 KL,**4 epochs、lr 2e-6**;靠 system prompt 强制搜索而非显式过滤。
 - **RFT**:学生自生成 **10,000** 条轨迹(与蒸馏用不同题),**2 epochs、lr 5e-6**,拒绝采样保留高质量行为。
 
 ## 7. 实验数据集
+
 - **训练仅用 HotpotQA 训练集**(teacher = **Qwen3-32B**)。
 - 评测:结构化多跳 HotpotQA / 2WikiMultiHopQA / Bamboogle / MuSiQue;agentic 信息检索 BrowseComp-plus / Frames / LongSeAL。指标 **String-F1**(也报 EM)。
 - 检索器 e5-large-v2 + fullwiki-20210620 语料(BrowseComp-Plus 用 Qwen3-Embedding-8B + 自带语料)。
 - 模型:Qwen3-0.6B/1.7B/4B/8B/32B、Llama-3.2-1B/3B。
 
 ## 8. 实验结果与主要发现
+
 - **逼近大模型**(Table 1,String-F1):三种 ASP 法均使 1.7B 逼近 Qwen3-8B——HotpotQA 上 Mixed-1.7B = **58.2** ≈ 8B(58.2);**2Wiki 上 OPD-1.7B = 62.9,超过 8B(58.1)**。(注:上一轮已更正"OPD 56.2→62.9"的误读——56.2 是 OPD 的 HotpotQA 分、62.9 是其 2Wiki 分;本轮再核 Table 1 OPD-1.7B 行 = 56.2/62.9/61.4/… 属实。)
 - **泛化**:只在 HotpotQA 训练却泛化到 OOD(BrowseComp/Frames/LongSeAL)。
 - **搜索频率**(§4.2):vanilla 1.72 → ASP-SFT 2.47 → ASP-OPD 2.84 搜索/题(Vanilla-8B 亦 2.84)。OPD 在多个表上搜索频率最高,是本文 OPD 有效性的具体实证点。
@@ -59,6 +62,7 @@
 recipe 与诊断对齐,叙事自洽。中性看待:(1) 三种 ASP 实现孰优缺乏统一胜者(SFT/OPD/Mixed 在不同 benchmark 互有高低),论文未给清晰选择准则;OPD 的优势主要体现在搜索频率与个别 benchmark,而非全面占优;(2) "总是搜索"在 query 本可由内部知识快速回答时会增加延迟/成本(Table 5 显示 OPD-1.7B 端到端 ~3.1s),论文承认但未量化"过度搜索"代价;(3) 仅 Qwen3 系评测,跨家族结论保守(论文亦自述局限)。
 
 ## 11. 残留问题 / 局限
+
 - 训练单一(仅 HotpotQA 单跳/多跳混合),跨域/跨任务训练分布缺失。
 - "总是搜索"对简单 query 引入不必要搜索开销,无最优搜索预算分析。
 - 检索噪声处理仅做 10% 失败注入的鲁棒性测试,缺更系统的对抗检索机制(论文列为 future work)。
@@ -66,6 +70,7 @@ recipe 与诊断对齐,叙事自洽。中性看待:(1) 三种 ASP 实现孰优�
 - 仓库以语料/检索/推理脚手架为主,SFT/OPD/RFT 训练实现细节相对简略(在 appendix B)。
 
 ## 12. 开源代码与框架(链接+框架+代码可得性)
+
 - 仓库:https://github.com/yizhou0409/Agentic-Rag(100% Python)。含 `build_corpus/`(`extract_wiki.py`、`build_e5_corpus.py`、`merge_e5_splits.py`:Wikipedia 语料构建/索引)、`e5_retriever.py` + `bm25_retriever.py`(双检索)、`main.py`(推理 pipeline)、`prompts/`(`default_QA.yaml`、`default_retrieval_summary.yaml`、`free_QA.yaml`)、`utils.py`。
 - 框架:检索 E5(embedding)+ BM25(keyword);推理 Search-o1 式迭代 search agent;训练含 SFT、OPD、RFT 三阶段(trainer 实现见 appendix,仓库内偏脚手架)。
 - 代码可得性:Tier B——语料/检索/推理可跑,但训练(SFT/OPD/RFT)脚本不完整,复现需补 appendix B 细节。

@@ -34,6 +34,7 @@ LLM 靠长 CoT 解决复杂推理。已有纠错分两类：(1) post-hoc 迭代�
 两阶段 monitor-reflect-optimize 循环：用滑窗熵统计的动态阈值识别 critical token；触发时暂停解码，在投影头前的 hidden state 上优化一个瞬态 δ（最小化当前步熵同时保真历史前缀），用优化后的 logits 生成该 token 后即丢弃 δ。
 
 ## 6. 方法详解(通俗、分步骤)
+
 - **Stage 1 动态不确定性监测**：每步算 next-token 分布熵 H_t；维护大小 N 的滑窗，算均值 μ、标准差 σ；当 H_t > μ + k·σ 时触发反思（动态阈值适配不同模型的熵分布，避免固定阈值失效；代码另含 `minimal_threshold` 下限）。
 - **Stage 2 自反思优化**：触发时暂停解码，优化瞬态向量 δ∈R^d（初始化 0），加到投影头前 hidden state：logits' = W(h_{t−1}+δ)。混合损失 L = (1−λ)·L_CE + λ·L_AEM：
   - **L_CE（回溯上下文损失）**：对已生成前缀施加同一 δ，惩罚破坏既有上下文预测的修正（保真度）；
@@ -44,6 +45,7 @@ LLM 靠长 CoT 解决复杂推理。已有纠错分两类：(1) post-hoc 迭代�
 数学推理：AIME2024、AIME2025、HMMT2025、AMC；通用推理：GPQA；代码：EvalPlus；效率分析在 MATH500。基座：Qwen2.5-Math-7B、DeepSeek-R1-Distill-Qwen-7B、DeepSeek-R1-Distill-Llama-8B、Qwen3-32B（覆盖两架构族、7B~32B、distill/SFT/RL 多种后训练）。
 
 ## 8. 实验结果与主要发现
+
 - 超参（论文正文）：内层步 T=3、lr η=0.01、熵窗 N=25、std 系数 k=4；解码 T=0.6 / top-p=0.95（Qwen2.5-Math-7B 另报 T=0）；max_gen 4096（Qwen2.5-Math-7B）/32768（其余）；准确率取 5 次 pass@1 均值。
 - 数学增益显著：AIME2024 上 DS-R1-Qwen-7B +12.0pp、Qwen2.5-Math-7B +7.4pp、Qwen3-32B +6.0pp，普遍优于 Self-Refine。
 - 效率（MATH500/Qwen2.5-Math-7B，100 题）：wall-clock 1025s→1198s、token 7.2w→8.0w，远低于 Self-Refine（2316s）与 MI-Peak（1744s）；可与 SLOT 等叠加。
@@ -56,12 +58,14 @@ LLM 靠长 CoT 解决复杂推理。已有纠错分两类：(1) post-hoc 迭代�
 方法机制自洽（高熵→触发→局部 δ 优化→丢弃）。Theorem 1 只是把加权和重述为 Lagrangian，理论新意有限，不保证 δ 优化得到更"正确"的 token，仅更"自信且保真"。代码 argparse 默认 N=20、K=2、lr=0.1，与论文报告 N=25、k=4、lr=0.01 不同；但 README 的推荐命令与 config 示例正是 N=25/K=4/lr=0.01，与论文一致——即默认值与论文实验设置不同、推荐设置一致（以论文/README 推荐为准）。代码确含 `--adaptive_entropy`/`--minimal_threshold` 开关印证动态熵阈值机制。
 
 ## 11. 残留问题 / 局限
+
 - 增益高度集中在"早期 slip 易翻盘"的数学/AIME 类任务，对任务类型挑剔。
 - "零训练"但有真实推理开销：每个触发点 T 步反向传播优化 δ，且 L_CE 需对整段前缀重算，长前缀下单次干预成本随已生成长度增长（与论文"只随干预次数缩放"的表述存在张力，触发频繁或前缀很长时开销不可忽略）。
 - 熵阈值法对已低熵的强 RL 模型可能很少触发，非数学领域泛化证据弱。
 - 与本项目 MTP 仅是松散概念类比（都关注不确定点），实现路径完全不同；可借鉴价值在"动态熵阈值 + 局部修正向量"这一测试时机制本身。
 
 ## 12. 开源代码与框架(链接+框架+代码可得性)
+
 - https://github.com/2020-qqtcg/SRGen （已克隆 ~18MB，含 `SRGen/` 框架与 aime/gsm8k/math/gpqa evaluator、`analysis/`、`scripts/`、OpenAI 兼容 `srgen_server.py`，代码完整可跑）。
 - 框架：基于 HuggingFace Transformers 的即插即用推理框架（任意 HF 模型可用）；含 vLLM/OpenAI 兼容 server；evaluator 覆盖 AIME/GSM8K/MATH/GPQA。硬件 NVIDIA A800-80G。
 - 关键实现：`SRGen/tnot_decorator.py`（熵滑窗阈值 `mean_history + K·std_history`、触发逻辑）、`SRGen/base_evaluator.py`（argparse 超参，默认 N=20/K=2/lr=0.1，推荐用论文 N=25/K=4/lr=0.01）。

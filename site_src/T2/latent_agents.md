@@ -22,6 +22,7 @@
 Multi-agent debate（Du et al. 2023; Liang et al. 2024）通过多模型多轮对话降幻觉、提升事实准确性。DebateGPT（Subramaniam et al. 2024）仅用最终 consensus 输出蒸馏。length-pruning 借鉴 ThinkPrune（Hou et al. 2025，代码注释明示）。
 
 ## 2. 现有工作存在的问题
+
 - 显式辩论 token 开销巨大（多模型多轮 transcript 才给答案）。
 - 仅蒸馏最终 consensus（DebateGPT）token 最省但性能普遍不如显式辩论，因丢掉了驱动增益的中间交互。
 - 缺乏对"内化后辩论结构是否仍保留、能否被控制"的机制性理解。
@@ -36,6 +37,7 @@ Multi-agent debate（Du et al. 2023; Liang et al. 2024）通过多模型多轮�
 三阶段 IMAD：(1) 用标准 multi-agent debate（n=3 agents, m=2 rounds, GPT-3.5-turbo 当 agent）在算术题上生成 944 条带结构标签的辩论 trace；(2) 在完整 trace 上做 next-token CE 学辩论格式（SFT）；(3) GRPO 内化，奖励 `r=w_fmt·R_fmt+w_clip·R(y;l)`，R_fmt 为结构标签匹配的格式奖励（权重 w_fmt 随训练 1.0→0.05 衰减），R(y;l) 为"正确答案出现在前 l token 内记 1"的长度裁剪奖励（l 随训练 2000→500 退火），两者协同迫使模型把分析压进潜空间。
 
 ## 6. 方法详解(通俗、分步骤)
+
 1. **数据收集**：标准 debate（n=3, m=2, GPT-3.5-turbo）在 6 个两位数表达式算术题上生成 transcript；过滤无 majority consensus 的；加结构标签 `<|Agent 1|>`/`<|Round 1|>`/`<|Consensus|>`/`<|endofdebate|>`；共 **944** 条 {Question, Trace, Answer}。
 2. **Debate Structure Learning（SFT）**：在完整辩论 trace（非仅最终输出）上做自回归 CE。
 3. **RL for Internalization（GRPO）**：`r=w_fmt·R_fmt+w_clip·R(y;l)`；w_fmt 1.0→0.05 衰减、l 2000→500 退火，把多视角分析转入潜空间直接产答案。
@@ -43,10 +45,12 @@ Multi-agent debate（Du et al. 2023; Liang et al. 2024）通过多模型多轮�
 - 两阶段均用 LoRA；GRPO 阶段从 SFT 的 LoRA checkpoint 起再叠一层 LoRA。
 
 ## 7. 实验数据集
+
 - 训练：仅 944 条算术题辩论 trace。
 - 评测：GSM8K（多步数学）、MMLU-Pro（多领域多选）、BigBench Hard（多样推理）；各随机采 1000 题，三次运行报均值±标准误。训练仅算术、评测跨域跨格式，测泛化。
 
 ## 8. 实验结果与主要发现
+
 - **效率**：所有模型上 IMAD 仅用 Debate 的 **6.3%~21.1%** token（5–16× 提效）。
 - LLaMA-3.1-8B-Instruct 上三个 benchmark 全面超 Debate；Mistral-Nemo-12B 在 GSM8K 上超 Debate **18.97** 个百分点；Qwen2.5-7B 增益温和。
 - 仅算术训练却能跨域泛化（附录另做多任务扩展数据集，性能更强）。
@@ -59,12 +63,14 @@ Multi-agent debate（Du et al. 2023; Liang et al. 2024）通过多模型多轮�
 两阶段范式与奖励设计逻辑清晰，机制实验为"内化"提供了表示层证据。但整体属概念验证：训练数据极小（944 条、仅算术、n=3/m=2 最小辩论），增益跨 backbone 差异大（Qwen 仅"温和"），机制结论主要靠 steering 实验单一证据链支撑，泛化主张依赖附录扩展数据。
 
 ## 11. 残留问题 / 局限
+
 - 训练数据与规模都很小（944 条算术 trace、LoRA、n=3/m=2），结论可扩展性存疑。
 - 增益在不同 backbone 间差异显著（LLaMA/Mistral 强、Qwen 弱），未充分解释。
 - 教师辩论用 GPT-3.5-turbo，质量天花板受限；机制结论（agent 子空间可控）证据链较窄。
 - ACL 2026 Oral 据 README，论文 PDF 内未见该字样，〔待核〕。
 
 ## 12. 开源代码与框架(链接+框架+代码可得性)
+
 - 链接：https://github.com/johnsk95/latent_agents （README 写 ACL 2026 Oral）。含 `sft.py`、`grpo.py`、`grpo_persona.py`、`steering/`、`eval/`、`data/`、`utils/generate_arithmetic*.py`。
 - 框架：TRL（`GRPOConfig`/`GRPOTrainer`，trl>=0.11）+ PEFT/LoRA（peft>=0.13）+ transformers>=4.46 + accelerate；length-pruning 注释借鉴 ThinkPrune。
 - Backbone：LLaMA-3.1-8B-Instruct、Qwen2.5-7B、Mistral-Nemo-12B。SFT 3–6 epoch、GRPO 2 epoch。代码可得、流程可复现。

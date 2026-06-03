@@ -1,4 +1,5 @@
 # rethink_opd — Rethinking On-Policy Distillation of Large Language Models: Phenomenology, Mechanism, and Recipe
+
 - **arXiv/链接**: arXiv:2604.13016 (v2, 2026-04-15);代码 https://github.com/thunlp/OPD
 - **机构/作者**: 清华大学(THUNLP)+ 上海科技大学 + UIUC + 中国人民大学。Yaxuan Li、Yuxin Zuo、Bingxiang He(共同一作)、Jinqian Zhang、Chaojun Xiao、Cheng Qian、Tianyu Yu、Huan-ang Gao、Wenkai Yang、Zhiyuan Liu、Ning Ding(通讯)。
 - **发表/时间**: arXiv 预印本,2026-04;已被 ICML 2026 FoGen Workshop 接收。
@@ -35,17 +36,20 @@ OPD 已成为 LLM 后训练的核心技术(Qwen3、MiMo、GLM-5 均采用),Think
 
 ## 6. 主要方法
 分三层递进:
+
 - **现象学(§3)**:提出两条支配 OPD 成败的经验条件——(i) 思维模式一致性(师生 top-k 分布的 overlap ratio 要高,即使 teacher 分数更高,模式不匹配导致初始 overlap 低则训练无法挽回);(ii) 高分≠新知识(若师生用同数据/recipe 训练会收敛到同尺度的相似分布,teacher 缺少可迁移信号;只有 teacher 携带学生未见过的知识时 OPD 才有大增益)。通过 weak-to-strong 反向蒸馏验证:同族 1.5B 与 7B teacher 从学生视角分布上"不可区分",证明 OPD 本质学的是思维模式而非分数。
 - **机制(§4)**:定义 Overlap Ratio、Overlap-Token Advantage、Entropy / Entropy Gap 等动态指标。成功 OPD 的签名是 student-visited states 上分布渐进对齐:高概率 token 的 overlap ratio 从约 72% 升到 91%,熵差收窄,共享 top-k token 集中了 97%–99% 的概率质量。失败 run 则 overlap 停滞、熵差持续。进一步证明仅用 overlap token 监督即可匹配 full top-k 性能,说明 overlap 集是 OPD 梯度信号的主要来源。给出三种监督粒度的统一刻画:sampled-token OPD(单样本无偏估计逐 token reverse KL)、full-vocabulary OPD、top-k OPD(在学生 top-k 子集上重归一化后算子集 KL)。
 - **Recipe(§5)**:两个互补修复策略——(i) **off-policy cold start**:OPD 前先在 teacher 生成的 rollout 上做 SFT warmup,抬高初始 overlap ratio;(ii) **teacher-aligned prompt selection**:用取自 teacher 后训练数据的 prompt 锐化高概率 token 对齐,但会显著降低学生熵,需要混入 OOD prompt。两者恢复的 run 都呈现与天然成功 run 相同的动态签名。
 - **代价(§6)**:reward 质量随轨迹深度系统性退化,不稳定起于靠后 token 并向前传播;即便失败 teacher 其 reward 仍与 rollout 正确性全局相关——说明失败不是信号质量问题,而是局部优化几何(更大 teacher 在学生策略附近诱导出局部平坦的 reward landscape),揭示监督密度与监督可靠性的根本张力,指向当前 OPD 在长程推理/agentic 上的局限。
 
 ## 7. 实验数据集
+
 - 训练:DAPO-Math-17K(主)、DeepMath-103K(对比/cold-start 互补 prompt,需对 DAPO-Math-17K 去重)、OpenThoughts3-1.2M 的 math 子集(用于 teacher rollout → 学生 SFT cold start,发布为 OpenThought3-Qwen3-4B 数据集)。
 - 评测:AIME 2024、AIME 2025、AMC 2023(math 竞赛级,avg@16)。
 - 模型:学生 Qwen3-1.7B / DeepSeek-Distill-1.5B(DS-1.5B);teacher 含 Qwen3-4B(Non-thinking)、Qwen3-4B-Math、DS-7B、JustRL-1.5B(=对 DS-1.5B 做 RL)、Skywork-OR1-Math-7B(SW-7B=对 DS-7B 做 RL)。发布 Qwen3-1.7B-SFT、Qwen3-4B-Base-GRPO 等 checkpoint。
 
 ## 8. 怎么做的(训练/数据/流程)
+
 - OPD:`bash on_policy_distillation.sh`,`ADV_ESTIMATOR=token_reward_direct`,teacher 作为 REWARD_MODEL 提供 token 级 reward;关键超参 N_RESPONSES=4、MAX_RESP_LENGTH=7168、`LOG_PROB_TOP_K=16`(置 0 退化为 sampled-token OPD)、`TOP_K_STRATEGY=only_stu`(可选 only_tch/intersection/union/union-intersection)、`REWARD_WEIGHT_MODE=student_p`(可选 teacher_p/none)。
 - SFT(cold start):用 `scripts/infer/vllm_rollout.py` 让 teacher(如 Qwen3-4B Non-thinking)对 OpenThoughts3 math prompt 做带 rejection sampling 的 rollout,再用 LlamaFactory 对学生(如 Qwen3-1.7B-Base)做 full SFT。
 - RL 对照:GRPO,设 `ADV_ESTIMATOR=grpo` 且 `LOG_PROB_TOP_K=0`(`grpo.sh`)。

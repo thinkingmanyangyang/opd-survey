@@ -36,6 +36,7 @@ https://github.com/horizon-llm/RESD （已克隆约 52MB；含 verl 源码、sel
 
 ## 6. 主要方法
 RESD 在自蒸馏循环中算子化"主动反馈理解"：
+
 - **回溯反思（REFLECT）**：对失败 rollout 生成自然语言反思 r，定位失败的可能原因与本应采取的修正；同时对已有 playbook 条目打 helpful/harmful/neutral 标签。
 - **playbook 策展（CURATE/CONCISE）**：playbook 是持久化的自然语言经验条目集；CURATE 由反思生成非冗余新条目，每条维护 (helpful, harmful) 计数；CONCISE 在每次更新前剪枝（删除净 harmful 条目、超预算时驱逐最久未标记条目）。
 - **记忆增强自蒸馏**：teacher 经 EMA 与 student 同步，条件于"富化上下文"（playbook P、反思 r、上次 trial y、反馈 c、buffer 解 B(x)）产出 token 级监督；学生最小化统一的 f-散度自蒸馏目标 L_SD（可取 forward/reverse KL 或 JSD），并对成功样本按 batch 成功率施加 per-sample 加权。因 P、B 跨步持久，即使当前 batch 无成功示范，监督也能随训练改善。

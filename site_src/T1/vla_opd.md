@@ -22,6 +22,7 @@
 VLA 后训练当前两大范式：(1) 离线 SFT / 行为克隆（O'Neill 2024, Black 2024 π0），dense 监督、收敛快；(2) 在线 RL（SimpleVLA-RL、VLA-RL、RLinf-VLA 等），用 GRPO 做 group-relative 优势、免 critic，把策略对齐到自身诱导的状态分布以学恢复行为。交互式模仿学习（DAgger/HG-DAgger）在 student 诱导的 OOD 状态上收集专家标注。LLM 蒸馏侧的 MiniLLM(Gu 2023)、GKD(Tan 2023) 提出 reverse-KL / on-policy 蒸馏，本文将其迁移到动作预测。
 
 ## 2. 现有工作存在的问题
+
 - 离线 SFT 是 off-policy：在专家状态训练却在 student 诱导状态评测，复合误差（exposure bias）使其无法从自致偏离状态恢复；且对 static、disjoint 数据集做激进参数更新 → 灾难性遗忘。
 - 稀疏奖励在线 RL（GRPO）：机器人任务通常只有终态二值信号 R(τ)∈{0,1}，信用分配困难、方差高、样本效率极低。
 - 简单把 SFT 改 on-policy（如 DAgger）用次优对齐目标：Forward-KL（soft 标签）mode-covering，在 teacher 高熵的 OOD 状态会模仿其犹豫 → 熵爆炸；Hard-CE（argmax 标签）丢弃 dark knowledge，在多模决策边界刚性追 argmax → 过早熵坍缩、丧失探索多样性。
@@ -36,6 +37,7 @@ VLA 后训练当前两大范式：(1) 离线 SFT / 行为克隆（O'Neill 2024, 
 三阶段闭环（Algorithm 1）：student πθ 在环境 on-policy rollout G 条轨迹（主动暴露 OOD 失败状态）→ 对 student 访问过的每个状态查询冻结 teacher πtea 的 action logits（不在环境执行）→ 用 token-level 负 reverse-KL 作内在奖励 r_t = −(log πθ(a_t|s_t) − log πtea(a_t|s_t))（对 student log-prob 项 stop_gradient），等价于在 student-visited states 上最小化对 teacher 的 reverse-KL；用 group 平均的 policy gradient 降方差。
 
 ## 6. 方法详解(通俗、分步骤)
+
 1. **初始化**：student 由极少演示 SFT 得到（LIBERO 1-traj、RoboTwin2.0 1000-traj），是脆弱下界；teacher 为 RL 训得的鲁棒专家（SimpleVLA-RL），全程冻结。
 2. **Phase 1 学生采样（探索）**：πθ 在环境中跑 G 条轨迹，频繁进入 OOD 失败态 serr，把"未知"区显式纳入训练分布。
 3. **Phase 2 教师标注（纠正）**：对每个被访问状态 st，查询 teacher 得 qt(a)=πtea(a|st) 作 dense 引导，注入恢复先验；teacher 只打标不执行。
@@ -44,12 +46,14 @@ VLA 后训练当前两大范式：(1) 离线 SFT / 行为克隆（O'Neill 2024, 
 6. **两个变体**：Ours(Distill) 仅蒸馏；Ours(Distill+GRPO) 蒸馏热启后再 GRPO 微调。主实验 batch=64、G=8（沿用 SimpleVLA-RL）；消融固定 batch=32。
 
 ## 7. 实验数据集
+
 - **LIBERO**（单臂，四套件 Spatial/Object/Goal/Long）：极端数据稀缺，每任务 1-traj SFT 初始化。
 - **RoboTwin2.0**（双臂协作，四代表任务 Pick dual bottles / Place Empty Cup / Handover Block / Stack Bowls Two，覆盖 short→long horizon）：每任务 1000-traj SFT 初始化。
 - 遗忘评测：在 seen 任务微调，在 4 个 held-out unseen 任务（2 Object、2 Spatial）评估 seen–unseen 权衡。
 - 全部为**仿真基准，无真机**。
 
 ## 8. 实验结果与主要发现
+
 - **效率（Fig.2）**：LIBERO-Object 蒸馏 10 步内 >90%（"垂直起飞"）；LIBERO-Long 仅 ~50 步达基线 ~150 步水平（≈3× 加速），且曲线平滑（基线 GRPO 锯齿震荡）。
 - **效能（Table 2，LIBERO 成功率%）**：student init 平均 48.9 → Distill 87.4（媲美/超过若干 50-traj 全量基线如 Octo 75.1、OpenVLA 76.5）→ Distill+GRPO 93.4（逼近 teacher SimpleVLA-RL 93.9）。
 - **双臂（Table 3，RoboTwin2.0）**：student init 45.2 → Distill 71.1（近 teacher 74.0），超 π0(50.5)、RDT(32.0)；未报 Distill+GRPO。
@@ -58,6 +62,7 @@ VLA 后训练当前两大范式：(1) 离线 SFT / 行为克隆（O'Neill 2024, 
 - **group size（Fig.5，LIBERO-Object，batch=32）**：G=8 最高(~89%)，G∈{2,4} 仍 >80% 不坍缩，小 G 显著省 rollout/teacher 推理开销。
 
 ## 9. 结果如何支撑其主张
+
 - "效率优于稀疏 RL"：Fig.2 收敛步数对比直接支撑（10/50 步 vs 150 步）。
 - "效能逼近 teacher"：Table 2/3 终值（93.4 vs 93.9；71.1 vs 74.0）支撑。
 - "reverse-KL 优于另两目标且对应熵行为"：Fig.4 性能曲线 + actor 熵曲线一一对应，是对核心主张最直接的证据。
@@ -65,11 +70,13 @@ VLA 后训练当前两大范式：(1) 离线 SFT / 行为克隆（O'Neill 2024, 
 - 整体证据链自洽，但多为单基准/单任务曲线（如消融仅 1 个 RoboTwin 任务），统计显著性与多 seed 方差未报。
 
 ## 10. 逻辑自洽性(中性评估)
+
 - 内在逻辑顺：把延迟稀疏奖励换成 dense token 监督、reverse-KL 解释熵两极，链条清晰。
 - 但有两处张力：(1) "raw reverse-KL 作优势、不做归一化仍稳定"只有经验曲线支撑，无理论收敛保证，且 stop_gradient 后该梯度估计的方差/偏置性质未分析；(2) 与稀疏 RL 的"效率"对比未计入 teacher 自身训练成本——teacher 即由 RL(SimpleVLA-RL) 得到，"省掉 RL 探索成本"实质是把成本前移到 teacher 训练，公平性存疑。
 - "近 teacher"也意味着方法本质受 teacher 性能上界约束（作者承认）。
 
 ## 11. 残留问题 / 局限
+
 - 依赖高性能 teacher 的先验可得性（作者列为 future work 的主攻方向）。
 - 评测仅 LIBERO/RoboTwin2.0 两仿真基准、**无真机**；泛化到真实物理/感知噪声未知。
 - 不归一化的优势稳定性靠经验；无多 seed 方差、无显著性检验。
@@ -77,6 +84,7 @@ VLA 后训练当前两大范式：(1) 离线 SFT / 行为克隆（O'Neill 2024, 
 - 代码未放出，复现性受限。
 
 ## 12. 开源代码与框架(链接+框架+代码可得性)
+
 - 项目页：https://irpn-lab.github.io/VLA-OPD/ ，标注 "Code (Coming Soon)"；论文未给 GitHub 链接。
 - **代码可得性：截至核查日无可用仓库（RepoExists=NO），仅论文可读**。〔待核：后续是否放出〕
 - 论文层面框架：student=OpenVLA-OFT，teacher=SimpleVLA-RL；分组采样沿用 SimpleVLA-RL 设置（batch=64, G=8）；优化为 group-based policy gradient（类 GRPO 但不做 outcome reward 归一化）。

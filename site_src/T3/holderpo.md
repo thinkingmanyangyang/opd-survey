@@ -34,16 +34,19 @@ GRPO（Shao et al. 2024）用组内采样轨迹估优势、无需 critic，推�
 把 GRPO 目标中对 token 级重要性比的算术均值替换为 Hölder p-mean `ρ_{i,p}=((1/|y_i|)Σ_t r_{i,t}^p)^{1/p}`，套上 PPO 式序列级 clip 形成目标；p 是连续旋钮，p→0 取几何均值（极限）恢复 GSPO，p=1 恢复 GRPO。理论上证明大 p 集中梯度权重以放大稀疏信号（代价方差界变松）、小/负 p 严格收紧梯度方差（代价削弱稀疏响应）。再用一个沿训练从高正值退火到负值的调度，无额外计算开销地兼顾两端。
 
 ## 6. 方法详解(通俗、分步骤)
+
 - **Hölder 聚合**：`ρ_{i,p}(θ)=((1/|y_i|)·Σ_t r_{i,t}^p)^{1/p}`（p≠0），p=0 取几何均值。目标用序列级 clip：`J=E[ min(ρ_{i,p}·Â_i, clip(ρ_{i,p},1−ε,1+ε)·Â_i) ]`，以控梯度方差。
 - **梯度集中（Thm 1）**：per-token 梯度权重 `W_{i,t}(p)=r_{i,t}^p/Σ_k r_{i,k}^p` 构成概率分布；其 Shannon 熵在 p=0 取全局最大（均匀），|p| 增大严格下降；p→+∞ 集中到最大比 token（上向集中），p→−∞ 集中到最小比 token（下向集中，放大模型犹豫处的非常规有效决策点→促进多样性）。
 - **方差界（Thm 2）**：给出 `‖Var(∇J)‖` 上界，刻画"集中度↑→方差↑"的风险。
 - **动态退火**：p 从高正值（早期激进信号放大）线性/分段调度到负值（后期方差受控收敛）。
 
 ## 7. 实验数据集
+
 - 数学（基模 **Qwen2.5-Math-7B**，另覆盖 1.5B–8B 多基模）：AIME、AMC、MATH500、Minerva、OlympiadBench 五基准；亦报 R1-Distill-Qwen-7B。
 - 智能体：**ALFWorld**（开放世界 agentic，基模 Qwen2.5-Instruct-1.5B，agentic 分支）。
 
 ## 8. 实验结果与主要发现
+
 - 五数学基准平均 **54.9%**（Qwen2.5-Math-7B，linear 2→−2 schedule），对 GRPO 51.2 相对 +7.2%，超并发 PMPO 54.2、超 GMPO 52.7；R1-Distill-Qwen-7B 上同 schedule 达 66.4 avg。
 - 固定 p=3 即把 AIME 记录从 43.3% 推到 46.7%（先验证 p 的任务敏感性，再用退火统一两端）。
 - ALFWorld 用 **1→−1** schedule 取得 **93.8%** 成功率，对 GRPO 72.8% 相对 **+28.8%**；而数学用的 2→−2 schedule 在此仅 87.5%——印证"退火端点须按基模成熟度/任务信号密度标定"（Qwen2.5-Instruct-1.5B 缺域内预训练故偏好保守上限）。
@@ -55,12 +58,14 @@ GRPO（Shao et al. 2024）用组内采样轨迹估优势、无需 critic，推�
 框架自洽：单参数 p 把已有算子作为特例统一，理论（熵单调、方差界）与经验（p 扫描、退火）相互印证，代码实现与公式一致。但"动态优于静态"的因果归因部分被超参选择稀释——见 §11。
 
 ## 11. 残留问题 / 局限
+
 - 主结论建立在单一基模 Qwen2.5-Math-7B，跨架构/规模泛化未充分验证（虽宣称覆盖 1.5B–8B，核心对照集中在 7B）。
 - "p<0 逆向集中促进多样性"理论叙事直观，但其经验收益与退火日程（起止值、schedule 形状）强耦合——数学用 2→−2、ALFWorld 用 1→−1，本质是需调的额外超参；论文将其包装为"无额外开销"略乐观。
 - Preprint（2026-05），未经评审。
 - 〔已核-代码〕`train_zero_math_holder.py` 含 `holder_p_schedule`(constant/linear/quad)、`holder_p_min/max`、`_get_current_holder_p`，loss 为 `ρ=((1/|y|)Σr_t^p)^{1/p}`、p→0 取几何均值、序列级 PPO clip，与 §6 一致。
 
 ## 12. 开源代码与框架(链接+框架+代码可得性)
+
 - 链接：https://github.com/YihangChen9/HolderPO （已 clone，约 8.8MB；README 标题/作者/摘要与论文一致；另有 `agentic` 分支跑 ALFWorld）。
 - 框架：oat (sail-sg/oat) + vLLM 0.8.4，内含 `understand_r1_zero_main`（Understanding-R1-Zero / Dr.GRPO 系）子包。
 - 入口：`train_zero_math_holder.py`，启动脚本 `scripts/qwen2.5-math-7b-holder.sh`，p 调度经环境变量旋钮配置。代码可得、可复现性良好。

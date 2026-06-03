@@ -22,6 +22,7 @@
 LLM 推理任务常有大量高质量离线数据（专家标注 / 蒸馏轨迹）。在线 RL（PPO/GRPO）是 on-policy，只能从当前策略采样轨迹学习，难利用分布外离线数据；传统两阶段 SFT→RL（RLHF 范式）则在 RL 阶段易灾难性遗忘 SFT 知识。SuperRL 属"在 RL 流程内细粒度统一 SFT/RL"的方向。
 
 ## 2. 现有工作存在的问题
+
 - 纯 SFT 只记忆正例，缺乏从错误/负例学习的机制。
 - 纯在线 RL 在稀疏奖励下因 rollout 全失败而拿不到梯度信号。
 - 两阶段 SFT→RL 在 RL 阶段灾难性遗忘 SFT 知识，样本/算力效率低；过拟合离线轨迹与狭窄 RL 目标又损泛化。
@@ -37,10 +38,12 @@ LLM 推理任务常有大量高质量离线数据（专家标注 / 蒸馏轨迹�
 
 ## 6. 方法详解(通俗、分步骤)
 **核心方法（主推，`SuperRLActor`）：实例级自适应回退（adaptive switching / fallback）。**
+
 - `SuperRLActor.update_policy`：用 `advantages*response_mask` 与 `token_level_rewards*response_mask` 的**绝对均值是否 > eps** 双重判定信号有效性（`pg_signal_eps=1e-8`、`reward_eps=1e-8`）；
 - 有有效信号 → `_ppo_update`（复用父类 GRPO/PPO）；两者皆 ~0（无梯度）→ `_sft_update`：对 `extra_info["tagged_answer"]` 做 `F.cross_entropy(..., reduction="mean")`。
 
 论文给出两个变体（代码也提供）：
+
 - **Hybrid-Adv-Gated**（`HybridAdvGatedActor`）：有效 PG 信号→PPO，否则→SFT，同样不融合（比 SuperRLActor 少一层 reward 检查，仅判 advantage）。
 - **Hybrid-Log-Sigma**（`HybridLogSigmaActor`）：用学习到的不确定性权重软融合：`L = exp(−2·σ_pg)·L_ppo + exp(−2·σ_sft)·L_sft + (σ_pg + σ_sft)`，`log_sigma_pg/sft` 为可学习参数加入优化器（init 0 / 1）；并带 σ 随步衰减（`sigma_decay_rate=0.99`、`min_log_sigma=−2.0`）。论文指出变体虽有改进但需额外调参/开销，主推简洁的实例级回退。
 
@@ -57,12 +60,14 @@ SuperRL 在 GSM8K/Metamath/PRM12K/LIMO/OpenR1/AIME 上全面优于 RL、SFT、SF
 方法逻辑清晰自洽：判信号→二选一更新。代码与论文描述一致（双 eps 判定、cross_entropy 回退、Log-Sigma 软融合公式）。需注意：阈值 eps=1e-8 极小，意味着"几乎任何非零 advantage"都判为有效信号、回退仅在严格全零时触发——回退频率高度依赖奖励稀疏度，论文未给出回退触发率的统计。
 
 ## 11. 残留问题 / 局限
+
 - 仓库仅核心组件（actor/dataset/reward/预处理），**非完整训练框架**，需拷入并集成进官方 verl v0.5.0+ 对应目录（改 `fsdp_workers.py`、`main_ppo.py`、`ray_trainer.py`）才能运行——复现门槛较高。
 - 回退依赖每个 prompt 都备有高质量 `tagged_answer`（离线示范），真实稀疏场景未必都有。
 - 主方法是硬切换，对"部分有信号"的中间情形无细粒度调节；软融合变体则需额外调参。
 - 回退触发率、SFT 与 RL 更新步占比等关键运行时统计未充分报告。
 
 ## 12. 开源代码与框架(链接+框架+代码可得性)
+
 - https://github.com/microsoft/SuperRL 。仓库提供 `actor/`（`SuperRLActor.py`、`HybridAdvGatedActor.py`、`HybridLogSigmaActor.py`）、`dataset/`（`HybridDataset`）、`reward/`（`superrl.py` 统一数学奖励）、`data_preprocess/`；需集成进官方 verl。
 - 框架：veRL（v0.5.0）；三 actor 均继承 `verl.workers.actor.dp_actor.DataParallelPPOActor`，通过 `actor_type`（`superrl`/`hybrid_adv_gated`/`hybrid_log_sigma`/`default`）在 `fsdp_workers.py` 选用；adv_estimator 用 grpo。FSDP + 梯度检查点。
 - 流程：`HybridDataset` 加载 prompt + `tagged_answer`（预处理脚本将 GSM8K/MetaMath/OpenR1/PRM12K/LIMO/HiTab 转 parquet）→ verl GRPO 流程采样 rollout → `reward/superrl.py` 打分 → 自定义 actor 的 `update_policy` 按信号有效性实例级切换（主方法）或软融合（Log-Sigma 变体）。集成方式见 README。

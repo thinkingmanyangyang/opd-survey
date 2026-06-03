@@ -34,6 +34,7 @@ KD 分两类：black-box(仅教师生成文本可见，近期在 LLM API 蒸馏�
 目标 min_θ KL[q_θ‖p]，用 Policy Gradient Theorem 推梯度(式 2，∇L = −E[Σ(R_t−1)∇log q_θ])；因策略梯度高方差、reward hacking、偏好短句，引入三项稳定化：单步分解(把单步 r_t 从 R_t 分离、直接对词表求和算 E[r_t] 降方差)、教师混合采样(ep=α·p+(1−α)·q_θ，α=0.2，抑制退化句、缓解 reward hacking，并用重要性采样修正、近似为单步 importance weight 降方差)、长度归一(对 R_{t+1} 归一消除短句偏好)。最终梯度含 PPO 式 clipping，并叠加 D_PT 上的语言建模 loss 保基准能力；整体流程类 RLHF：先 SFT 初始化，再 on-policy 训练。
 
 ## 6. 方法详解(通俗、分步骤)
+
 1. **初始化**：在任务数据 D(Dolly)上 SFT 学生，取最低验证 loss 的 checkpoint。
 2. **采样**：从混合分布 ep=α·p+(1−α)·q_θ 采 response(α=0.2)，抑制退化。
 3. **算梯度**：(∇L)_Single 直接对整个词表求和算单步质量(降方差)；(∇L)_Long^Norm 用长度归一的 R_{t+1} 加 importance weight w_t≈q_θ/ep(近似单步以避免连乘方差累积)与 clip(式 7、算法 1)。
@@ -41,11 +42,13 @@ KD 分两类：black-box(仅教师生成文本可见，近期在 LLM API 蒸馏�
 5. **更新**：θ ← θ − η·[(∇L)_Single + (∇L)_Long^Norm + ∇L_PT]，按验证集 Rouge-L 选 checkpoint。
 
 ## 7. 实验数据集
+
 - **训练**：databricks-dolly-15K(过滤超长后约 12.5K 训练 / 1K 验证 / 0.5K 测试)；D_PT：GPT-2 族用 OpenWebText，其余用 RoBERTa 语料。
 - **评测**(5 个指令遵循集)：DollyEval(500)、SelfInst(252)、VicunaEval(80)、S-NI(SuperNaturalInstructions，用 [11,+∞] 长子集)、UnNI(从 UnnaturalInstructions 采 10K)。指标：Rouge-L、GPT-4 feedback(仅 Dolly/SelfInst/Vicuna)、人工评测(SelfInst)；另测校准(ECE，SST2/BoolQ)、exposure bias(ExAccErr)、多样性(distinct-4gram + 测试集 LM loss)。temp=1，每 prompt 取 5 次生成均值。
 - **模型**：GPT-2(120M/340M/760M，教师 GPT-2-1.5B)、OPT(1.3B/2.7B/6.7B，教师 OPT-13B)、LLaMA-7B(教师 13B)；附录另用 GPT-J 6B 作教师。
 
 ## 8. 实验结果与主要发现
+
 - **全范围一致超基线**：120M–13B、三族、5 集、Rouge-L 与 GPT-4 两指标下 MiniLLM 几乎全胜 SFT/word-KD/SeqKD；非 Dolly 集上优势更大(OOD 泛化好)。如 GPT-2-1.5B→120M 在 DollyEval GPT4：MiniLLM 44.7 vs SeqKD 41.2 / KD 40.3 / SFT 38.6。
 - **学生有时超教师 Rouge-L**(Vicuna/S-NI/UnNI)：归因于教师 teacher-forcing 的 exposure bias，而 MiniLLM 的 on-policy 采样缓解之。
 - **人工评测**(LLaMA-7B←13B)：MiniLLM 人偏好优于所有基线，逼近教师。
@@ -59,6 +62,7 @@ KD 分两类：black-box(仅教师生成文本可见，近期在 LLM API 蒸馏�
 方法链(reverse-KLD 动机 → 策略梯度 → 三项降方差/防 hacking/去偏 → 类 RLHF 训练)自洽，消融能逐项验证稳定化项的作用。需注意：(1) 三项稳定化均为近似(单步 importance weight 近似、单步分解、长度归一)，是为可训练性做的工程权衡，可能引入偏差，论文以经验稳定性而非无偏性论证；(2) "学生超教师 Rouge-L"基于 Rouge-L 这一表面重叠度量 + 教师也经 teacher-forcing 微调，结论需谨慎(并非学生能力真超教师)；(3) reverse-KLD 理论上 mode-dropping，作者用 distinct-4gram/LM loss 说明多样性"几乎无损"，但承认对需多样输出的场景这是权衡。
 
 ## 11. 残留问题 / 局限
+
 - **无专门 Limitations 章节**：局限需从正文推断。
 - **mode-seeking 的多样性代价**：reverse-KLD 本性丢模式；论文以"多数 NLP 应用一个正确响应即够"为由淡化，但对需高覆盖/多样生成的任务并不适用。
 - **依赖 white-box 教师**：需教师完整输出分布(全词表 logits)，无法用于仅 API 可见的 black-box 教师；且需教师与学生 tokenizer/词表兼容。
@@ -67,6 +71,7 @@ KD 分两类：black-box(仅教师生成文本可见，近期在 LLM API 蒸馏�
 - **算力开销**：on-policy 需训练中持续采样 + 教师前向算分布，比离线 SeqKD 重。
 
 ## 12. 开源代码与框架(链接+框架+代码可得性)
+
 - 仓库 https://github.com/microsoft/LMOps （子目录 `minillm/`）；本地已 clone 整个 LMOps(348MB，<500MB 保留)，MiniLLM 代码在 `resource/repos/minillm/minillm/`，核心算法在 `minillm/minillm/`：`losses.py`(含单步正则 `single_step_reg`、`length_norm`、reverse-KLD 奖励/优势计算)、`trainer.py`、`sampler.py`、`pipelines.py`、`reward.py`、`storages.py`。已被 HuggingFace TRL 收录(`trl/experimental/minillm`)。
 - **框架 = 自研(custom)**：基于改版 HF Transformers(`t1101675/transformers@minillm` 分支，加 model/tensor parallel 与 teacher-mixed sampling)+ DeepSpeed + Accelerate；`install.sh` 装定制 transformers/deepspeed/accelerate/peft；`train_minillm.py` + `scripts/` 经 deepspeed 启动。无 veRL/TRL/OpenRLHF 等外部 RL 框架，训练 pipeline 自研(类 RLHF)。
 - 训练资源：16×32G V100(小模型可减)，大模型用 tensor parallel(size=4)。基线 SFT / word-level KD / SeqKD。α=0.2 全程固定，按验证 Rouge-L 搜超参。

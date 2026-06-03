@@ -22,6 +22,7 @@
 o1、DeepSeek-R1 等推理模型通过 test-time scaling（长 CoT、探索/验证/回溯）在数学、代码等任务上大幅提升，RL（针对可验证奖励 RLVR）是核心驱动并能缓解 reward hacking。
 
 ## 2. 现有工作存在的问题
+
 - 流行观点认为 RL 不带来超越 base 的新能力（base 即使大量采样也做不出的题，RL 后仍不行），只是放大已潜在的高奖励输出。
 - 长程 RL 面临**熵坍缩**与不稳定：输出分布过早变尖、熵骤降、探索受限；GRPO 依赖多样采样估相对优势，熵坍缩使更新偏置、训练停滞。
 - 单纯提高采样温度只能延缓而非阻止熵坍缩。
@@ -37,6 +38,7 @@ o1、DeepSeek-R1 等推理模型通过 test-time scaling（长 CoT、探索/验�
 
 ## 6. 方法详解(通俗、分步骤)
 基座 **GRPO**：A(τ)=(R−mean)/std。叠加：
+
 1. **DAPO 两组件**：
    - **Decoupled Clip（clip-higher）**：把 PPO 上下 clip 界拆成独立 ε_low/ε_high，调高 ε_high 提升低概率 token、鼓励探索、保留熵、减少过早 mode collapse。
    - **Dynamic Sampling**：过滤一贯全对(acc=1)/全错(acc=0) 的 prompt，聚焦中等难度、维持学习信号。
@@ -46,10 +48,12 @@ o1、DeepSeek-R1 等推理模型通过 test-time scaling（长 CoT、探索/验�
    - **Reference Policy Reset**：训练推进后 KL 项渐主导、更新变小；故周期性把 π_ref **硬重置**为近期在线快照并重置优化器状态，在保留 KL 收益的同时持续提升、避免过早收敛。
 
 ## 7. 实验数据集
+
 - 训练：自构 **136K** 可验证问题，覆盖数学、代码、STEM、逻辑谜题（Reasoning Gym）、指令遵循，每类配清晰奖励（二值或连续）。
 - 评测：跨域 pass@k；与 DeepSeek-R1-Distill-Qwen-1.5B 及领域专用基线对比；用 **Creativity Index** 衡量推理轨迹与预训练语料的重叠（越低越新颖）。
 
 ## 8. 实验结果与主要发现
+
 - 框架 veRL；基座 DeepSeek-R1-Distill-Qwen-1.5B；产出 **Nemotron-Research-Reasoning-Qwen-1.5B**（号称当时最强 1.5B 推理模型）。
 - 超参（已核 §3）：GRPO+DAPO 解耦 clip ε_low=0.2、ε_high=0.4；动态采样过滤 acc=0/1；每 prompt n=16；高采样温度 **1.2**；batch 256、mini-batch 64（每 rollout 步 4 次更新）；AdamW 常数 lr 2×10⁻⁶；约 16k GPU·小时（4×8 H100）；多数训练 response 上限 8k，末段约 200 步提至 16k。
 - 主结果（相对 base，已核 §3 行 201-202/305-308）：数学 **+15.7%**、代码 **+14.4%**、STEM **+25.9%**、指令遵循 **+22.0%**、逻辑谜题 **+54.8%**；并超领域专用基线（数学 +4.6%、代码 +6.5%）。
@@ -63,12 +67,14 @@ o1、DeepSeek-R1 等推理模型通过 test-time scaling（长 CoT、探索/验�
 内在逻辑自洽且与 ORZ "去 KL" 的对立主张可调和——ProRL 明确把适用前提限定在 "良好初始化（已蒸馏）起点"。但 "扩展边界" 的核心证据（pass@k 在大 k 下 base 仍 0）对 k 的取值与采样温度敏感，结论强度依赖该测度的稳健性。摘要与正文数值不一致削弱了表面严谨性（虽不改变定性结论）。
 
 ## 11. 残留问题 / 局限
+
 - 仅 1.5B 单一规模、单一 base（R1-Distill）；更大模型/不同起点的可迁移性未验证。
 - "扩展边界 vs 放大分布" 的判定依赖 Creativity Index 与大 k pass@k，两者皆有测度争议。
 - 摘要 vs 正文增益数值不一致（见 §8 NEW）。
 - 无独立训练代码，复现依赖对 veRL + 描述超参的自行拼装。
 
 ## 12. 开源代码与框架(链接+框架+代码可得性)
+
 - 仅发布**模型权重**：https://huggingface.co/nvidia/Nemotron-Research-Reasoning-Qwen-1.5B 。无独立训练代码仓库。
 - 框架：veRL（verl-based）；算法 = GRPO + DAPO（解耦 clip + 动态采样）+ KL 正则 + 参考策略重置。
 - 代码可得性：paper-only（weights-only，无训练代码，需依论文超参在 veRL 上复现）。

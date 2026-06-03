@@ -19,11 +19,13 @@
 *Ongoing Work 31 Appendix E GRAINGER COLLEGE OF ENGINEERING Figure 1: Overview of our work. We introduce a few-shot demonstration-guided RLVR paradigm to address three primary challenges: the lack of on-demand data, limited expert input, and high overfitting risk. To mitigate, FEST incorporates three*
 
 ## 1. 相关工作与进展
+
 - **RLVR**(可验证奖励 RL)在数学/编码上很成功，但在难题上**样本效率低**。
 - **demonstration-guided RL / unified post-training**(LUFFY、SRFT、HPT、ReLIFT、MIFO、SuperRL、CHORD 等)：在 RL 采样失败(全错、advantage=0、无学习信号)时引入 SFT 提供外部知识。
 - 这条线已较成熟，但代价是 **SFT 数据需求大**(数 K~50K)。
 
 ## 2. 现有工作存在的问题
+
 - **SFT 数据昂贵**：高质量长链推理示范需精心策划(如 HLE 2500 题动用 1000 名博士)；从已有模型蒸馏又涉及合法性、API 成本、model collapse 风险。相比之下"只有答案、无推理过程"的 RL 数据易得。
 - **现有方法不能用随机少量数据**：LUFFY/SRFT 用满 46K、HPT 10K、ReLIFT 8.6K、MIFO 6.4K，且多需精心策划、非随机。
 - **few-shot 极少数据的三大挑战**：(i) 无按需数据(专家不能对任意失败题现场补示范)、(ii) 语义覆盖有限、(iii) 反复多 epoch 训练**过拟合风险高**。
@@ -50,6 +52,7 @@
 训练用 OpenR1-Math-46K-8192，随机抽 128 题作 D_E、其余作答案-only D_I；模型 Qwen2.5-Math-1.5B。评测 6 个数学基准：AIME25、AMC23、AIME24、MATH-500、OlympiadBench、Minerva，报 Avg@8(均值±标准差)与 Pass@8。基线 GRPO、SRFT、LUFFY、CHORD-φ、MIFO、HPT、ReLIFT(及其 -G 变体)。
 
 ## 8. 实验结果与主要发现
+
 - **128-shot 下 FEST 最优**：FEST-DPO 平均 **41.98**、FEST-GRPO **42.36**，均超 vanilla RL(39.79)及所有 128-shot 基线，甚至匹配用**全量数据**的 SRFT(35.05)/MIFO；是该稀疏数据条件下**唯一**显著超过纯 RL 的方法。
 - **朴素把 RL 也加到 gold few-shot 上(HPT-G、ReLIFT-G)会显著掉点**(如 HPT-G 仅 32.02)：训练曲线显示中途骤降——说明在极少 gold 数据上做 RL 不稳定。
 - 增益相对 RL 基线约 +2.2~+2.6 分(绝对值)，主要卖点是"数据从数 K 降到 128"。
@@ -61,12 +64,14 @@
 形式化清晰、自洽：把"用好 few-shot"拆成三要素，再证明 semi-online DPO 的梯度天然含这三项、并与"REINFORCE 负奖励 + 加权 SFT"等价，把 DPO 纳入 HPT 框架——这一分解是论文最扎实的部分。可质疑处：(1)自适应 β 三档划分是启发式，β 取值范围(0.001–0.1)依赖经验调参;(2)Remark 3.1 对"DPO 难翻转偏好/拒答主导"的辩护(称在本场景无害)偏定性。
 
 ## 11. 残留问题 / 局限
+
 - **验证面窄**：仅单模型 Qwen2.5-Math-1.5B、单一数据源(OpenR1-Math)、纯数学；规模小(论文自标 Ongoing Work)。
 - **超参敏感**：自适应 β 三档 + 系数 c(FEST-DPO 仍需调，FEST-GRPO 才缓解)依赖经验。
 - **128 这一数字的来源**是沿用前作 batch size(一个 epoch 恰好一步)，并非对"最少需多少示范"的系统搜索(Sec.4.2 有 shots 缩放但仍有限)。
 - **txt 仅捕获到前 6 页**，附录(B/C/D 的理论与超参分析)未在本地全文核对〔待核：附录细节〕。
 
 ## 12. 开源代码与框架(链接+框架+代码可得性)
+
 - 代码 github.com/KaiYan289/FEST。核心 `ternary_dpo/`(基于 VeRL，含 verl、setup.py)、`examples/math-1.5b-v3`、`dataset/`、`utils/`、`eval_by_question_results/`。
 - **框架**：VeRL；GRPO 为主 RL 框架，few-shot 用 semi-online DPO。
 - **训练配置**：2×NVIDIA GH200(96GB)，600 步；n=8 rollout/题，温度 1.0，max len 8192；AdamW，cosine lr 1e-5→5e-6；global batch 128 题、mini-batch 512 rollouts。报告取第 600 步结果(沿用 ReLIFT)。

@@ -34,6 +34,7 @@
 从同一模型 p_θ 实例化两条策略:教师 p_T(·|x,y*)(条件含问题 + 参考解),学生 p_S(·|x)(仅问题)。学生采样 on-policy 轨迹 ŷ~p_S(·|x);loss 最小化沿学生轨迹的逐 token 散度 D(p_T‖p_S)(ŷ|x)= (1/|ŷ|)Σ_n D(p_T(·|x,y*,ŷ_<n)‖p_S(·|x,ŷ_<n))。梯度仅经学生 logits 回传;教师只一次前向(prefill)隐式 rationalize、不真正生成 token(prompt 中要求教师"看完参考解后用自己的方法解",见 Fig.2)。
 
 ## 6. 方法详解(通俗、分步骤)
+
 - **两条策略**:同参数 θ、不同条件上下文;教师额外看 y*。
 - **on-policy 采样**:学生生成 ŷ,两条策略在同一学生前缀上各自给 next-token 分布。
 - **训练目标(两种实例化)**:① 全词表 logit 蒸馏(如 GKD,full softmax,逐 token f-散度;效果更好但峰值显存高,因每位置存词表大小 logits);② 采样 token 的策略梯度(如 Lu & Lab 2025:把 A_n=log p_T(ŷ_n|·)−log p_S(ŷ_n|·) 当 stop-gradient 优势,做 reverse-KL 风格 policy gradient;省显存)。主实验用 ①。

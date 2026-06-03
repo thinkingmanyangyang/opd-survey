@@ -34,6 +34,7 @@ MOPD 在此设定下有三点吸引力：(1) 教师 checkpoint 直接从 Cascade
 
 ## 6. 方法详解(通俗、分步骤)
 **总体流程（Figure 2）**：Base → SFT → **IF-RL** → **Multi-domain RL** → **MOPD** → **RLHF** → **Long-context RL** → **Code RL** → **SWE RL**。
+
 - **SFT**：把所有样本打包到 ≤256K token 序列，单阶段训练，约 **1.5 epoch** 达最优。数学含 1.8M tool-calling + 2.6M 非 TIR 样本（响应由 DeepSeek-V3.2/V3.2-Speciale、GPT-OSS-120B 生成）、816K 证明样本；代码约 165K 去重 prompt，教师 GPT-OSS-120B，按测试用例正确性过滤。
 - **IF-RL（首阶段）**：用 Nano-v3 的可验证指令数据 + 动态过滤(去掉全对/全错) + overlong penalty；仅 thinking mode、无奖励模型；IFBench 达 83.13%。置于首位原因：IF-RL 会损害 ArenaHard 而后续 RLHF 几乎不损 IF；且早期 IF-RL 产出的强指令遵循模型可作后续 MOPD 的教师。
 - **Multi-domain RL**：增强工具调用、STEM 推理、格式遵循。
@@ -46,6 +47,7 @@ MOPD 在此设定下有三点吸引力：(1) 教师 checkpoint 直接从 Cascade
 评测：IMO 2025 / IMO-AnswerBench / IMO-ProofBench、AIME 2025/2026、HMMT Feb25（数学）；IOI 2025、ICPC World Finals 2025、LiveCodeBench v6 / LiveCodeBenchPro 25Q2（代码）；SciCode、MMLU-Redux/Pro、GPQA-Diamond、HLE（知识/STEM）；ArenaHard v2、SWE Verified(OpenHands)（对齐/agentic）。基线：Nemotron-3-Nano-30B-A3B、Nemotron-3-Super-120B-A12B、Qwen3.5-35B-A3B 等。训练数据：已公开 SFT-Data 与 RL-Data 集合。
 
 ## 8. 实验结果与主要发现
+
 - **数学/代码（Table 1）**：AIME 2025 92.4 (TIR 98.6)、HMMT Feb25 94.6、IMO-AnswerBench 79.3、IMO-ProofBench 72.9；LiveCodeBench v6 87.2、LCBPro 25Q2 Easy 87.0/Med 27.6；**IMO 2025 35 pts 金牌级、IOI 2025 439.28 金牌级、ICPC WF 2025 解出 10/12**。继 DeepSeek-V3.2-Speciale-671B 之后第二个达 IMO/IOI/ICPC 金牌级的开源权重模型，参数约少 20×。
 - **MOPD 效率（核心证据）**：AIME25（Fig.3c），math-only 下 GRPO 25 步 89.9→91.0，**MOPD 30 步达 92.0 并恢复到教师水平**；ArenaHard v2（Table 3），MOPD **52 步** 把 Hard Prompt 71.5→85.5、Creative Writing 40.6→71.0，而 RLHF 需 **160 步** 才到 80.7/71.2。
 - **代价（限制性发现）**：在知识/STEM 上**弱于** Qwen3.5-35B-A3B——MMLU-Redux 86.3 vs 93.3、MMLU-Pro 79.8 vs 85.3、GPQA-Diamond 76.1 vs 84.2、HLE 17.7 vs 22.4；SciCode 36.4 也低于 Super-120B(42.1)。即该 pipeline 把能力预算重压在推理/agentic，牺牲了通用知识广度。
@@ -57,6 +59,7 @@ MOPD 在此设定下有三点吸引力：(1) 教师 checkpoint 直接从 Cascade
 方法描述与公式自洽，MOPD 的 reverse-KL 优势 + 截断重要性权重设计清晰、超参透明。但有几点需中性看待：(1) 这是技术报告 + 模型发布，**无端到端训练代码**，外部不可完整复现；(2) Cascade RL 的阶段顺序自承"非普适常数、依模型行为动态决定"，本质是经验工程而非可迁移原则；(3) MOPD 与 abstract 措辞"throughout the Cascade RL process"略有出入——Figure 2 实际把 MOPD 作为 Multi-domain RL 之后的**单个稳定化阶段**，而非贯穿全程的并行机制〔原稿"贯穿 Cascade 全程"已据 Figure 2 与 §4.4 修正为定位于特定阶段〕；(4) 知识/STEM 的明显落后说明"接近前沿"仅限数学/代码维度，整体能力画像并不均衡。
 
 ## 11. 残留问题 / 局限
+
 - 知识广度(MMLU/GPQA/HLE)显著落后同级 Qwen3.5，pipeline 存在明显能力取舍。
 - 缺乏"完整 pipeline 有无 MOPD"的端到端消融，MOPD 贡献多以局部 matched-checkpoint 对照展示。
 - 阶段顺序高度经验化、依赖大量内部数据与教师 checkpoint，迁移到其他 base/数据未知。
@@ -64,6 +67,7 @@ MOPD 在此设定下有三点吸引力：(1) 教师 checkpoint 直接从 Cascade
 - 教师全部源自同一 SFT 初始化，限制了"教师比学生强多少"的上限（无外部更强教师注入）。
 
 ## 12. 开源代码与框架(链接+框架+代码可得性)
+
 - 无独立训练代码仓（CloneTier=B，未 clone）。NVIDIA 发布：HF Nemotron-Cascade-2-30B-A3B（后训练模型）、Nemotron-Cascade-2-SFT-Data、Nemotron-Cascade-2-RL-Data。
 - 框架：**Nemo-RL**（NVIDIA 开源后训练库，§4.1.2 明确"using the Nemo-RL repository"；环境用 Nemo Gym）。RL 算法 GRPO + 严格 on-policy（单次更新、IS ratio=1、完全移除 KL，退化为 group-normalized REINFORCE + token-level loss）〔原稿曾误记 NeMo-Aligner，已据 §4.1.2 确认为 Nemo-RL〕。
 - 论文未随附本工作专用的端到端训练脚本；项目页 https://research.nvidia.com/labs/nemotron/nemotron-cascade-2/ 。

@@ -34,6 +34,7 @@
 在序列尾附 k 个唯一可学习 mask token，从同一前缀联合预测 k 个未来 token;用 gated LoRA 把 NTP/MTP 分成两条功能路径(NTP 路径行为与原模型完全不变、无质量退化，只让 MTP 路径学多 token);加轻量 sampler 头顺序精化 MTP token，配合 consistency 等辅助损失;推理时用 speculative 策略让 token 在未来"二次方扩展"同时保真。微调只更新 LoRA + sampler，冻结原 decoder。
 
 ## 6. 方法详解(通俗、分步骤)
+
 - **Masked-input 表述**：序列尾附 k 个唯一 mask token m_1..m_k(嵌入为可学习随机向量)，从同一前缀联合预测 k 个未来 token。NTP=标准下一 token 预测，MTP=对 mask 位的预测。
 - **Gated LoRA**：对 decoder 层加 gated LoRA，用二值 mask(已知每个位置是否为 mask token)区分 NTP/MTP 两条路径——保证 NTP token 行为与原模型**完全不变**(无质量退化)，只让 MTP 路径学多 token。微调只更新 LoRA + sampler，冻结原权重。
 - **Sampler head**：轻量两层 MLP，顺序生成 MTP token，每步条件于当前 latent 与上一已采样 token，产出连贯序列。
@@ -42,10 +43,12 @@
 - **训练效率技巧**：对长 n 序列，改输入/position id/label/attention bias，在一次前向里并行模拟多个"前 i token + k mask"子 prompt;NTP token 只 attend 之前 NTP token(保 NTP 输出不变)，MTP token attend 同 block 内 NTP+MTP 但不跨更早 MTP block。
 
 ## 7. 实验数据集
+
 - 基模 Tulu3-8B，微调预测 **8 个额外 token**;微调数据 Tulu3 数据集(开源，近 100 万样本，跨问答/数学/编码/对话/科学)。
 - 评测基准(加速比 + 质量是否退化为主指标)：知识=MMLU、PopQA、TruthfulQA;数学=GSM8k;编码=HumanEval;对话=AlpacaEval、IFEval;安全=XSTest、HarmBench;另用 ARC-Challenge(Harness 库)验证 NTP 路径质量不变。〔已核-正文/Fig.6a〕
 
 ## 8. 实验结果与主要发现
+
 - 加速比单调随 token 数上升：代码/数学近 **5×**，通用对话/知识近 **2.5×**(知识约 2.4× 收敛)，且"无质量损失"。
 - NTP 路径质量验证：ARC-Challenge zero-shot 准确率在加 gated LoRA 后不掉(普通 LoRA 会掉，Fig.6a)——证明 gated 设计的必要性。
 - "无质量损失"是**结构性保证**(NTP 路径冻结、行为不变)，而非经验偶然。
@@ -57,11 +60,13 @@
 内部自洽：gated LoRA 用二值 mask 隔离 NTP/MTP，理论上 NTP 输出与原模型逐 token 相同，故"无质量损失"是可证而非偶然，这是相对其他 MTP 头方法的实质强项。但需注意主张严格限定在"知道未来 token(speculative 加速)"，并未主张"知道未来推理结论/提升正确率"。
 
 ## 11. 残留问题 / 局限
+
 - **纯加速向**工作：MTP 输出不直接用于提升推理正确率;把它当"foresight 提升推理质量"的证据时需谨慎——论文只主张模型隐式知道未来 token，未主张知道未来推理结论。
 - 官方代码缺位(repo 404)：sampler 结构、consistency loss 形式、speculative 二次扩展的具体算法细节无法独立复核。〔代码受限〕
 - 仅在 Tulu3-8B 单一基模上验证;k=8 的选择、对更大模型/更长上下文的扩展性未充分给出。
 
 ## 12. 开源代码与框架(链接+框架+代码可得性)
+
 - 链接：任务清单给出的 https://github.com/apple/ml-mtp **返回 404**(api.github.com 与 git clone 均报 "Repository not found")。Apple ML Research 论文页(machinelearning.apple.com/research/prediction-potential)未挂 GitHub 链接，仅指向 arXiv。结论：**官方代码当前未公开释出**(或仓库名有误/已下线)，本分析仅基于 PDF(14 页)。
 - (社区相关但非官方实现：jwkirchenbauer/mtp-lm、Xiaohao-Liu/L-MTP 等为他人 MTP 工作，勿混淆。)
 - 框架：无官方仓库。论文实现层面在预训练 decoder 上加 gated LoRA + 两层 MLP sampler head 做 SFT(只更新 LoRA 与 sampler，冻结原 decoder)。

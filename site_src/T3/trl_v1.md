@@ -20,6 +20,7 @@ TRL 处于 LLM 后训练方法爆发的生态位：SFT、偏好优化（DPO/KTO/
 用 v1.0 的"稳定核心 + 实验隔离"双层结构解决稳定性与迭代速度的矛盾：稳定核心（SFT/DPO/Reward Modeling/RLOO/GRPO）遵循 semver 给生产用；实验方法（含全部蒸馏 trainer）隔离在 `trl.experimental/` 下快速演进，成熟后再"转正"。每方法一子包、独立实现，便于读改。
 
 ## 6. 方法详解(通俗、分步骤)
+
 - **稳定核心**：SFTTrainer、DPO、Reward Modeling、RLOO、GRPO（顶层导入）。
 - **实验性方法**（已核对本地 `trl/experimental/` 目录，确含）：`gkd`（GKD，Generalized Knowledge Distillation，on-policy distillation）、`gold`、`minillm`、`sdft`、`sdpo`、`distillation`、`ssd`、`async_grpo`、`gspo_token`、`gfpo`、`papo`、`dppo`、`ppo`、`prm`、`bco`、`cpo`、`kto`、`orpo`、`nash_md`、`online_dpo`、`xpo`、`tpo`、`openenv`、`openreward`、`grpo_with_replay_buffer`、`bema_for_ref_model` 等——即 shortlist 标题中的 GKD/MiniLLM 确实存在（experimental 子模块）。
 - **on-policy distillation 实现路径**：经 GKD/GOLD/MiniLLM trainer（student 自生成轨迹 + teacher token-level 监督）。
@@ -38,11 +39,13 @@ N/A（非实验论文）。可观测事实：本地 clone VERSION=1.6.0.dev0（�
 作为基础设施，"低抽象 + 稳定/实验分级"哲学与其目标（生产稳定 + 研究迭代）自洽，且仓库实际目录布局与文档一致。无实验主张需检验。唯一需谨慎的是版本号：blog 称 v1.0，本地是 1.6.0.dev0 开发快照，精确特性清单应以官方 blog/CHANGELOG 为准。
 
 ## 11. 残留问题 / 局限
+
 - 蒸馏 trainer 全在 `experimental`，API 不受 semver 保护、可能变动。
 - 〔待核〕blog 给出的 release 日期 2026-03-31 与"75+ 方法"数为 WebFetch 小模型摘要，未逐字核对原 blog；本地 clone 版本为 1.6.0.dev0（非恰好 v1.0 tag），v1.0 精确特性清单以官方 blog/CHANGELOG 为准。
 - 作为框架本身不产出新方法/新发现，对 mtp_opd 的价值是"可复用的 OPD 基线实现与训练栈"。
 
 ## 12. 开源代码与框架(链接+框架+代码可得性)
+
 - 仓库 https://github.com/huggingface/trl （已 clone 到 resource/repos/trl_v1，~11MB，<500MB 故保留；含 `trl/`、`trl/experimental/`、`examples/`、`docs/`、`tests/`、VERSION=1.6.0.dev0）。
 - 框架：TRL 本身即框架，基于 HuggingFace Transformers / Accelerate / PEFT，可选 vLLM（GRPO rollout）、DeepSpeed（多卡）。
 - 用法：`pip install trl`，稳定方法从 `trl` 顶层导入、实验方法从 `trl.experimental.<method>` 导入；配 `accelerate`/DeepSpeed 多卡；GRPO 类可选 vLLM rollout 与 `environment_factory` 做工具/验证奖励。on-policy distillation 经 GKD/GOLD/MiniLLM trainer 实现。代码可得性满分（活跃维护的大型开源库）。

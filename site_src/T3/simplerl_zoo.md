@@ -22,6 +22,7 @@
 DeepSeek-R1 表明从 base 模型直接做规则奖励的纯 RL（"zero RL training"）可自发涌现长 CoT 与自反思（"aha moment"）。但该成功最初在 671B 的 DeepSeek-V3 上演示，社区复现（Zeng 2025a、Yeo 2025、Xie 2025、Hu 2025、Yu/DAPO 2025）主要集中在 Qwen2.5 系列。
 
 ## 2. 现有工作存在的问题
+
 - Qwen2.5 base 因预训练含大量合成数据，本身已具较强指令跟随与 backtracking/verification 行为，**不能代表"in the wild"的多样 base 模型**；
 - 现有分析多停留在响应长度、准确率等表层指标，无法判断推理行为是否真正改变，也未澄清推理涌现机制；
 - 缺乏对"哪些关键因素决定 zero RL 成败"的系统研究。
@@ -36,17 +37,20 @@ DeepSeek-R1 表明从 base 模型直接做规则奖励的纯 RL（"zero RL train
 用最简配方——GRPO + 仅正确性二值奖励（+1/0，**不加 format reward**）+ 全部模型相同超参——在 10 个 base 模型上从零起训，配合两项关键设计（避免刚性格式约束、按模型内在探索能力匹配数据难度），并用认知行为指标透明监控训练动态，归纳成败因素。
 
 ## 6. 方法详解(通俗、分步骤)
+
 - **算法**：GRPO；奖励仅判正确性（二值），不用 format reward（避免强格式约束惩罚探索）。
 - **数据难度控制**：按难度分 Easy（GSM8K + MATH lv.1）/ Medium（lv.1–4）/ Hard（lv.3–5），各约 8K 题；难度须匹配模型内在探索能力。
 - **统一超参**：所有模型同一组超参，弱指令跟随模型用更简单 prompt；均从 base 直接 RL（无 SFT cold start）。
 - **监控指标**：Reasoning Behavior Ratio（GPT-4o 标四类认知行为）、Clip Ratio、Average Stopped Length、pass@k。
 
 ## 7. 实验数据集
+
 - 训练：仅 GSM8K + MATH 训练集（规则奖励），三档难度各约 8K。
 - 模型（10 个）：Mistral-7B-v0.1、Mistral-Small-24B、Llama-3.1-8B、DeepSeek-Math-7B、Qwen2.5-{0.5,1.5,7,14,32}B、Qwen2.5-Math-7B。
 - 评测：GSM8K、MATH500、Minerva Math、OlympiadBench、AIME24（Pass@1 与 Avg@32）、AMC23；泛化 IFEVAL、MMLU、GPQA-Diamond。
 
 ## 8. 实验结果与主要发现
+
 1. 响应长度增长并不总对应 "aha moment"——多数 Qwen2.5 模型长度涨但认知行为（自反思）频率未升。
 2. 首次在 Qwen 家族外的小模型（Llama3-8B、DeepSeek-Math-7B）观察到 verification 等认知行为显著增长。
 3. 刚性 format reward（如强制 \boxed{}）会惩罚探索、压低性能上限、诱发 overthinking；许多 base 初期跟不上格式约束，format reward 反而惩罚正确探索（Fig.6 对比）。
@@ -62,12 +66,14 @@ DeepSeek-R1 表明从 base 模型直接做规则奖励的纯 RL（"zero RL train
 作为经验研究自洽性较好：用统一超参 + 多样模型隔离"模型族"变量，用认知行为指标把"长度"与"推理质量"解耦。一个需注意点：Reasoning Behavior Ratio 依赖 GPT-4o 作行为分类器，分类一致性/偏差未深入校验；"aha moment 涌现"部分结论建立在该自动标注之上。
 
 ## 11. 残留问题 / 局限
+
 - 无新算法：贡献是配方、模型、分析工具与系统经验，方法学新意有限。
 - 仅数学域（GSM8K+MATH）训练，认知行为分类器依赖 GPT-4o，存在标注偏差风险。
 - "难度须匹配探索能力"为定性结论，缺乏可操作的难度-能力量化判据。
 - 部分结论（如 SFT cold start 损害探索）与具体 SFT 数据/步数强相关，外推到长 CoT SFT 需谨慎。
 
 ## 12. 开源代码与框架(链接+框架+代码可得性)
+
 - 仓库 https://github.com/hkust-nlp/simpleRL-reason （已克隆约 66MB，最新 commit cf1c785；当前版即论文 v1 配方）。
 - 框架：veRL（仓内自带 `verl/` 目录，pyproject name="verl"），RL 算法 GRPO。核心脚本 `train_grpo_math_tune_ray.sh`（Ray 启动）、`eval_math_nodes.sh`、`install.sh`、`launch_gradio.sh`。README 注明旧版（v0）用 OpenRLHF + PPO。
 - 模型：HF hkust-nlp/simplerl-zoo collection（10 个）。代码与配方可得、可复现。
