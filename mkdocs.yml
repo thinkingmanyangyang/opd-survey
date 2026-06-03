@@ -1,4 +1,5 @@
 site_name: On-Policy Distillation 调研手册
+site_url: https://thinkingmanyangyang.github.io/opd-survey/
 docs_dir: site_src
 site_dir: site
 use_directory_urls: false
