@@ -1,0 +1,9 @@
+# 中间产物 / 重资源,不发布
+_build/
+_state/
+figures/
+site/
+analysis/
+*.pdf
+*.log
+# 保留(会被提交):mkdocs.yml, site_src/, survey.html, SURVEY_on_policy_distillation.md, PLAN.md, README.md, .github/
