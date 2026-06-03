@@ -1,4 +1,4 @@
-site_name: On-Policy Distillation 调研手册
+site_name: 自进化 LLM Agent · 论文精读手册
 site_url: https://thinkingmanyangyang.github.io/opd-survey/
 docs_dir: site_src
 site_dir: site
@@ -11,33 +11,26 @@ theme:
       toggle: { icon: material/weather-night, name: 暗色 }
     - scheme: slate
       toggle: { icon: material/weather-sunny, name: 亮色 }
-  features:
-    - navigation.tracking
-    - navigation.top
-    - search.suggest
-    - search.highlight
-    - content.code.copy
-    - toc.follow
+  features: [navigation.tracking, navigation.top, search.suggest, search.highlight, content.code.copy, toc.follow]
 plugins:
   - search
   - glightbox
 markdown_extensions:
   - tables
   - admonition
-  - toc:
-      permalink: true
-  - pymdownx.betterem:
-      smart_enable: underscore
+  - toc: { permalink: true }
+  - pymdownx.betterem: { smart_enable: underscore }
   - pymdownx.highlight
   - pymdownx.superfences
-  - pymdownx.arithmatex:
-      generic: true
+  - pymdownx.arithmatex: { generic: true }
 extra_javascript:
   - js/mathjax.js
   - https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-svg.js
 nav:
   - 总览: index.md
-  - 'T1 · On-Policy Distillation 核心 / 自蒸馏': T1.md
-  - 'T2 · Tool-Agent / 多轮': T2.md
-  - 'T3 · GFT 统一 SFT-RL & GRPO-RLVR': T3.md
-  - 'T4 · 思维链-Token 级 / MTP': T4.md
+  - 'L1 · 在线策略蒸馏 / 自蒸馏 (OPD)': L1.md
+  - 'L2 · 统一 SFT-RL · 奖励微调 (GFT 类)': L2.md
+  - 'L3 · RLVR · GRPO 家族推理训练': L3.md
+  - 'L4 · Agent / 工具 / 多轮自进化': L4.md
+  - 'L5 · 记忆/技能库 & 持续学习 · 防遗忘': L5.md
+  - 'L6 · 思维链 / Token 级信用 & 前瞻 (MTP)': L6.md

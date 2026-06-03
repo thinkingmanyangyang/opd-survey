@@ -1,0 +1,37 @@
+denoiserl | DenoiseRL: Bootstrapping Reasoning Models to Recover from Noisy Prefixes | 复旦大学 / 上海创智学院(Caijun Xu, Changyi Xiao, Zhongyuan Peng, Yixin Cao) | arXiv 2605.28421(v1 2026-05-27)·预印本 | 主题线 L1(自蒸馏/前缀注入)+ L3(GRPO/DAPO)·相关性 高(与本项目核心 path-recovery 最近邻)
+
+**原始论文**:https://arxiv.org/abs/2605.28421
+
+## 一眼看懂
+- 🟦 TL;DR:把**弱模型生成的错误推理前缀**当作"结构化噪声"注入策略的 rollout,用 RL 训练策略从错误中间状态"去噪并恢复"到正确答案——从而在不引入更强 teacher、不构造难数据的前提下,把"自纠错/从错误中恢复"从涌现行为提升为**显式训练目标**。在 Qwen3-4B/8B-Base 上一致改进 GRPO/DAPO 基线(4B 平均 39.6→42.0,8B-DAPO 42.8→44.8)【原文 Abstract, §1, Table 1】。
+- 最巧的一步:**只对策略自己生成的续写部分算梯度、把 off-policy 错误前缀 mask 掉**。抽掉它(也更新前缀),训练直接崩——§4.4 Fig.5 实证:更新 off-policy 前缀时验证精度 step 80 峰值 34.7% 后急降,step 400 在所有 benchmark 塌到 0。为什么:offline 噪声前缀在当前策略下与产生它的行为策略 log-prob 分布差异巨大,PPO 重要性比作用到这些重 off-policy token 上注入高方差噪声梯度,摧毁推理质量与长度控制【原文 §4.4, Fig.5】。
+
+## 为什么做
+- 研究背景:RL(GRPO/DAPO)已成 LLM 推理 post-training 主范式,但 SOTA 系统常依赖更强模型的监督/指导;当没有足够强的现成 teacher 时,能力提升越来越难,引出根本问题:**如何在不依赖更强模型作监督者的前提下获得强模型?**【原文 §1】。
+- 解决的具体痛点:①W2SG(weak-to-strong)用弱模型监督强学生,但学生天花板被弱监督者的噪声与有限能力卡住(被优化去模仿伪标签);②难数据构造(难题合成/对抗样本/长轨迹)依赖复杂流水线、过滤验证与大量人工;③标准 on-policy RL 受限于自生成状态分布——策略一旦饱和就多产正确 rollout 或狭窄失败模式,**信息量大的失败样本太稀缺**,难提供有意义梯度【原文 §1, §2】。
+- 相关工作 & 各自不足:GRPO/DAPO 受自生成状态分布约束(探索瓶颈);W2SG 受弱 teacher 上限约束;Prefix 条件类——LUFFY 把 off-policy 推理轨迹混入 on-policy RL,PrefixRL 在**成功**前缀上条件化并优化续写,专家解/oracle 提示让稀疏奖励更可达。DenoiseRL 的差异:用弱模型**错误**前缀作"误导状态"让策略从中恢复,而非作示范/特权提示【原文 §2】。
+- 动机链:现状(推理 RL 依赖强 teacher/难数据)→缺陷(W2SG 受弱 teacher 封顶、难数据贵、标准 RL 失败样本稀缺)→所以必须(统一 W2SG 与难度驱动合成:不让弱模型合成难数据/给学习信号,而把它当**结构化扰动生成器**,在不产生任何新数据下自动抬高难度;并把推理 RL 重述为去噪问题,呼应去噪自编码器/BART)【原文 §1, §3.1】。
+- 与最近邻工作的Δ:相对 PrefixRL(注入成功前缀)——**DenoiseRL 反转为注入弱模型错误前缀**,控制起始状态、强迫从损坏中间态恢复;相对 LUFFY(混 off-policy 轨迹)——DenoiseRL 只更新 on-policy 续写、前缀 mask。关键有用点:前缀对后续轨迹有不成比例影响,注入错误前缀既极大扩展失败模式状态多样性(暴露标准 on-policy RL 罕见的 off-policy 语境),又直接强化"从错误恢复"这一被低估的能力。
+
+## 怎么做 + 靠不靠谱
+- 方法流水线:输入训练集 MATH-7.5K + 弱模型 πw(Qwen2.5-1.5B-Instruct)→ ①**离线噪声采集**(一次性):πw 对每题采 M=8 次,过滤出 verifier 判错的轨迹构成固定池 W(q)(训练中固定、每步零额外成本;某题 8 次都无格式良好错误答案则其 denoise 槽用额外 main rollout 顶替)→ ②每步采样:每题 N=12 main rollout(标准 on-policy y∼πθ(·|q))+ K=4 denoise rollout(取错误轨迹前 p=max(1,⌈ρ|w|⌉) token 作 assistant 前缀,ρ=0.2,策略续写 y>p∼πθ(·|q,w₁:ₚ))→ ③预算折叠(两类 rollout 共享响应窗 R=4096,前缀占 p,续写折叠进剩余 R−p,超出丢弃)→ ④verifier 对完整折叠响应 ỹ=(前缀,续写)打 0/1 奖励 → ⑤token 级 GRPO(N+K 条共享 advantage baseline,只对续写算梯度,前缀 mask)→ 联合目标 J=N/(N+K)·J_main+K/(N+K)·J_denoise【原文 §3, Eq.1-11】。
+- 逐组件必要性(消融较齐全):
+  - **denoise rollout(注入错误前缀)**:核心。Table 1 两尺度两 backbone 全部 ≥ 基线。没它=退回标准 GRPO/DAPO【原文 §4.2 Table 1】。
+  - **只更新 on-policy 续写(前缀 mask)**:**有硬消融(§4.4 Fig.5)**——不 mask 则 step 400 塌到 0。没它=训练崩溃【原文 §4.4】。
+  - **length-fair 折叠(p+L≤R)**:**有消融(Table 2)**——不设上限 42.0→40.2(降 1.8 点),不公平的长恢复预算鼓励冗长但不可靠推理【原文 §4.5 Table 2】。
+  - **噪声强度 ρ**:**有扫描(§4.3 Fig.2/3)**——ρ∈{0.2,0.5,0.8};ρ=0.2 长度紧凑(末 100 步均 1.38K),ρ=0.8 升至 2.26K 并触顶,ρ=0.5 反而最不稳(3.87K);ρ 越大 overthinking 越重(无休止自我怀疑/反复验证)。〔v1 标注的"单点 ρ=0.2 缺扫描曲线"在此 RESOLVED:扫描存在,ρ=0.2 为最佳权衡〕【原文 §4.3】。
+  - **denoise rollout 数 K**:**有扫描(§4.3 Fig.4)**——K∈{1,4,8} 固定 ρ=0.2;K=1 信号太稀(+14.9%),K=8 占半数 rollout 分散主目标(+11.9%),**K=4 最佳(+16.3%,AIME24 +16.5/AIME25 +16.9)**【原文 §4.3】。
+- 关键机制/公式(直觉):①denoise rollout 起于 off-policy 错误前缀,token 级重要性比 r_{i,t}(Eq.6)的 context 对 main 是 q、对 denoise 是 (q,w₁:ₚ);②N+K 条共享同题 advantage baseline(μ_q、σ_q 在 N+K 上统计,Eq.5)——denoise rollout 对易题提供负样本,让正样本携带有效学习信号;③PPO clip 代理目标(ε_low=ε_high=0.2);④两条设计经验:噪声不能过强(过长前缀→overthinking),不要更新 off-policy 前缀(否则不稳)【原文 §3.2, §4.3-4.4】。
+- 实验与证据:弱模型 Qwen2.5-1.5B-Instruct,策略 Qwen3-4B-Base / Qwen3-8B-Base(仓库另含 1.7B 脚本但正文主表只报 4B/8B),训练 MATH-7.5K;N=12+K=4、R=4096、ρ=0.2、prompt batch 16、lr 1e-6、无 KL/length loss、PPO clip 0.2、训练 temperature 1.0/top-p 1.0;评测 MATH500/AMC23/AIME2024/AIME2025/BBEH(AMC23/AIME24/AIME25 报 AVG@16,MATH500/BBEH 报 AVG@1),验证解码 temperature 0.6/top-p 0.95。主表(Table 1 平均):4B Base 26.6→GRPO 39.6/DAPO 39.8→**DenoiseRL-GRPO 42.0**(最佳平均)/DenoiseRL-DAPO 41.5;8B Base 29.3→GRPO 43.0/DAPO 42.8→DenoiseRL-GRPO 43.3/**DenoiseRL-DAPO 44.8**(每个 benchmark 均最佳)【原文 §4.1-4.2】。baseline 公平性:与同 base 同 backbone 的 GRPO/DAPO 直接对照,且 length-fair 折叠保证 denoise 与 main rollout 共享同响应预算,公平。"看着强但没回答"的点:**增益偏小**(8B 上 GRPO 仅 +0.3,DAPO +2.0);且"恢复能力随难度增强"的核心叙事**主要靠定性案例(Table 4/5/6 + Fig.3 overthinking)而非定量恢复率曲线**——没有可复核的"恢复率/纠错率随训练难度变化"硬指标【原文 §4.7, §5; 推断】。
+- 假设与失效边界:【原文 Limitations】①效果依赖弱模型行为——若弱模型产出过于平凡/重复/不真实的错误,恢复信号价值有限、难诱发有意义提升;②增大 corruption 长度会放大 overthinking(更长轨迹、更高推理成本、更低解码效率),平衡恢复监督与高效推理是未来方向。【推断】仅 MATH-7.5K 单一数据源 + 仅 2 个策略模型(4B/8B)+ 仅数学+BBEH,跨域泛化未充分检验;mask 掉前缀只规避了重 off-policy 优化的不稳定,**没有正面解决从重 off-policy 数据学习的问题**——"去噪/恢复"更多是被**条件化**出来而非被**显式优化**出来(训练只在续写段算梯度,off-policy 前缀实为"免费的难初始状态")。
+- 祛魅总结:真贡献=把 prefix 注入从"注入好前缀"反转为"注入弱模型错误前缀",实现干净(只更新 on-policy 续写 + 共享 baseline + 预算折叠),在工程上回避了重 off-policy 优化的不稳定,且把"从错误恢复"显式化为训练目标;消融较扎实(ρ/K 扫描、前缀 mask 崩溃、length-fair、训练时间均有)。包装/高估处:"recover from mistakes / denoising"叙事很吸引人,但本质是"用错误前缀当难初始状态做条件化续写 RL",**并未真正优化 off-policy 分布**(前缀被 mask);增益规模有限(8B-GRPO +0.3);"self-correction emerges / 随难度增强"缺定量证据,靠 case study 支撑【推断】。
+
+## 结构化抽取
+- 🎯 机制速览6轴:**学什么信号**=verifier 对"错误前缀+策略续写"完整折叠响应的 0/1 结果奖励(组内 N+K 共享 baseline 归一)| **改什么**=策略全参数,但**只在 on-policy 续写 token 上算梯度**(off-policy 前缀 mask)| **何时改**=RL 训练期,每步 N main + K denoise rollout 联合优化 | **免梯度?**=否(token 级 GRPO 梯度训练)| **记忆-技能生命周期**=不涉及显式记忆/技能库;弱模型错误轨迹池 W(q) 一次性离线构建后固定(可视为静态"负样本记忆"),自纠错能力固化进权重 | **防遗忘机制**=无 KL loss(明确"no KL loss"),无专门防遗忘;靠 N:K=12:4 的 main:denoise 配比防止偏离主目标(K=8 会损主目标)【原文 §3.2, §4.1, §4.3】。
+- ⑦ 开源代码+框架/harness:https://github.com/ALEX-nlp/DenoiseRL(本地已 clone)。基于 **VeRL** fork(含完整 verl/ 包)。核心配方在 recipe/denoise/:dapo_ray_trainer.py(denoise rollout + 折叠 + GRPO/DAPO 联合目标)、data_prepare.py、verifier.py、main_dapo.py,启动脚本 denoise_qwen3-{1.7b,4b,8b}_v1.0.sh 与 dapo_denoise_qwen3-{1.7b,4b,8b}_v1.0.sh,配置在 config/;另含 data/、paper/。框架 **VeRL**,RL backbone GRPO/DAPO。代码可得性高(配方/脚本/数据预处理/verifier 齐全,可直接复现 4B/8B)。【完整克隆,无 LFS/体积问题】
+- 💰 资源/成本与可扩展性:**有具体数据(Table 3)**:Qwen3-4B-Base、MATH-7.5K、batch 16、**4×H100**;GRPO 基线 16 on-policy rollout = 43.8 s/step,DenoiseRL(12+4)= 49.7 s/step(略慢,因 denoise rollout 让续写 token 多 1.27× 需更长采样/反传,但同 cost 量级)。离线噪声采集为一次性预处理、训练中零额外成本【原文 §4.6, §3.1】。
+- 🎯 对"探索-巩固"对标:**强支撑(巩固/回轨侧最近邻竞品 + 探索侧扩状态多样性)** —— 一句判定:DenoiseRL 与本项目"巩固/回轨=走偏后自选恢复分支并固化"几乎正面对标——它把"从错误中间态恢复"显式化为 RL 训练目标,且通过注入弱模型错误前缀扩展失败模式状态多样性(对应"探索=暴露到罕见 off-policy 语境");依据:Fig.1 四步(错误前缀→强制绕道→学去噪→到达答案)、§1"elevates self-correction from emergent behavior to direct training target"。**与本项目的关键区别(竞品 vs 差异化)**:①DenoiseRL 用**弱模型外部错误**前缀(off-policy 注入),本项目设想 student **自己走偏**(on-policy 自选恢复分支)——前者前缀来源 off-policy 且 mask 掉不优化,后者强调 on-policy 自选;②DenoiseRL 的 teacher 角色被"弱模型扰动器"替代(无强 teacher 脚手架),本项目是"强 teacher 当稀疏脚手架";③DenoiseRL **无 MTP 前瞻、无技能/记忆固化的持续学习视角**。可借组件:**直接可借**——recipe/denoise 的"前缀注入+折叠+只更新续写+共享 baseline"是 path-recovery 的现成干净实现,本项目可在此 fork 上把"弱模型错误前缀"替换为"student 自生成的走偏前缀"、把"固定 ρ"替换为"在高熵/低置信关键步切分"(呼应 MEMORY 中 survey-grpo-step-segmentation 的结论);缺口:on-policy 自选恢复分支、MTP 前瞻探针、防遗忘的技能固化均需本项目补。**这是 ASSIGNED 六篇里与本项目核心 idea 最直接对标的一篇,建议作为方法实现基线 fork。**
+- 🔭 开放问题/未来方向:【原文】Limitations——降低对弱模型错误质量的依赖(过平凡错误无价值)、平衡恢复监督强度与推理效率(抑制 overthinking)。【推断】把 off-policy 错误前缀升级为 on-policy 自选走偏前缀(正面解决 off-policy 优化而非 mask 规避)、给"恢复率"定量度量、把关键步切分(高熵/低置信)替代固定 ρ、引入 MTP 前瞻判断"何时该恢复"、把恢复能力固化进技能库做持续学习均未涉及。
+
+---
+RETURN: denoiserl | 读到PDF? 是(17页全文) | L1(前缀注入/自蒸馏)+L3(GRPO/DAPO) | 强支撑且最近邻竞品:path-recovery 显式化的现成干净实现(recipe/denoise),建议作本项目方法基线 fork;但用弱模型 off-policy 错误前缀(mask 不优化)而非 on-policy 自选,无 MTP/无技能固化——正是本项目差异化空间 | 残留待核 1(已 RESOLVE v1 两项:ρ/K 扫描存在§4.3、训练时间§4.6 有;仍存:"恢复能力随难度增强"只有定性 case study/overthinking 图,无定量恢复率曲线)

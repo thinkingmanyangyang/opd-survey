@@ -1,35 +1,30 @@
-# On-Policy Distillation 调研手册
+# 自进化 / 持续学习 LLM Agent · 论文精读手册
 
-围绕 **On-Policy Distillation(含 +Tool/Agent)** 为主轴,外加 **GFT 类统一 SFT-RL 微调** 与 **思维链推理(CoT/MTP)** 两条相关线的系统性文献调研。时间窗以 **2025-06 ~ 2026-06** 为主。
+围绕 **探索-巩固(explore-consolidate)** 视角的系统性论文精读:On-Policy Distillation(含 +Tool/Agent)、统一 SFT-RL(GFT 类)、RLVR/GRPO、Agent 自进化、持续学习/防遗忘、思维链/Token 信用与前瞻(MTP)。时间窗以 **2025-06 ~ 2026-06** 为主。
 
-- **深读(有代码)论文:117 篇**,每篇 12 节解析 + 2 张关键图(① motivation ② 方法/架构)。
-- 检视候选合计约 **660+** 篇(深读 117 + 附录候选池 ~550)。
-- 每篇均经过**两层防幻觉核验**(元数据 WebSearch 交叉验证 + 内容层对照 PDF 全文与核心代码),并做过多轮二次审查纠错。
+- **117 篇有代码深读论文**,按 **L1–L6** 六条主题线组织;每篇含:
+  一眼看懂(TL;DR + 最巧的一步)→ 为什么做(背景/痛点/相关工作/动机链/与最近邻Δ)→ 怎么做+靠不靠谱(流水线/逐组件必要性+消融核查/机制直觉/实验证据/假设与失效边界/祛魅)→ 结构化抽取(机制6轴 / 开源代码+框架 / 成本 / 对"探索-巩固"对标 / 开放问题)。
+- 每篇附 **📄 原始论文链接** 与 **2 张关键图**(motivation + 方法/架构)。
+- **防幻觉**:严格读真实 PDF 正文,三标注分离事实与判断 —— **【原文】** 直接来自论文 / **【推断】** 有据判断 / **【待核】** 拿不准项;关键论断带 §/图/表/页 锚点。
 
 ## 三种阅读方式
+1. **在线(推荐)**:GitHub Pages 站点(本仓库 Actions 自动部署),手机/电脑浏览器打开,带全文搜索、L1–L6 导航、图片放大、暗色、公式 MathJax 渲染。
+2. **离线单文件**:直接打开 `survey.html`(自包含,图与 MathJax 已内嵌,无需联网)。
+3. **本地预览**:`pip install mkdocs-material mkdocs-glightbox && mkdocs serve` → `http://127.0.0.1:8000`。
 
-1. **在线(推荐)**:部署到 GitHub Pages 后,手机/电脑浏览器打开站点 URL,带全文搜索、分主题导航、图片点击放大、暗色模式。
-2. **离线单文件**:直接打开 `survey.html`(自包含,229 张图已内嵌),手机浏览器即可看,无需联网。
-3. **本地预览**:`pip install mkdocs-material mkdocs-glightbox && mkdocs serve` 然后访问 `http://127.0.0.1:8000`。
-
-## 部署到 GitHub Pages(只需 3 步)
-
+## 部署到 GitHub Pages
 ```bash
-# 1) 在 github.com 新建一个空的【公开】仓库,例如 opd-survey(不要勾选 README)
-# 2) 关联并推送(本目录已是 git 仓库、已提交)
+# 已是 git 仓库且已提交;关联远端并推送:
 git remote add origin https://github.com/<你的用户名>/opd-survey.git
 git push -u origin main
-# 3) 仓库 Settings → Pages → Build and deployment → Source 选 "GitHub Actions"
+# 仓库 Settings → Pages → Source 选 "GitHub Actions";1~2 分钟后:
+# https://<你的用户名>.github.io/opd-survey/
 ```
-推送后 `.github/workflows/deploy.yml` 会自动用 mkdocs-material 构建并发布,
-站点地址形如 `https://<你的用户名>.github.io/opd-survey/`。
+(代理:`git config --global http.proxy http://127.0.0.1:7897` + `https.proxy` 同。)
 
 ## 目录
+- `analysis_v2/` — 117 篇精读源(探索-巩固模板);`site_src/` — MkDocs 文档源(L1–L6 + 图);`mkdocs.yml` — 站点配置。
+- `survey.html` — 离线单文件版。
+- `_build/` — 构建脚本(build_site_v2.py / make_single_html.py / 抽图与选图脚本)。
 
-- `site_src/` — MkDocs 文档源(`index.md` 速览表 + `T1`–`T4` 四主题 × 每篇一页,含已选关键图)。
-- `mkdocs.yml` — 站点配置(Material 主题、搜索、glightbox 图片放大、KaTeX 公式)。
-- `survey.html` — 离线单文件版(图内嵌)。
-- `SURVEY_on_policy_distillation.md` — 全部内容的单一长文 markdown(打印/导出用)。
-- `PLAN.md` — 调研全流程与进度记录。
-
-> 内容为对公开论文的中立、批判性解读;方法/数据集/数字均尽量对照原文与开源代码核验,不确定处标注 `〔待核〕`。
+> 内容为对公开论文的中立、批判性解读,事实尽量对照原文与开源代码核验,不确定处标 〔待核〕。

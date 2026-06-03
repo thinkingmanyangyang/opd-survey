@@ -1,485 +1,499 @@
 {
  "order": [
-  "T1",
-  "T2",
-  "T3",
-  "T4"
+  "L1",
+  "L2",
+  "L3",
+  "L4",
+  "L5",
+  "L6"
  ],
+ "names": {
+  "L1": "L1 · 在线策略蒸馏 / 自蒸馏 (OPD)",
+  "L2": "L2 · 统一 SFT-RL · 奖励微调 (GFT 类)",
+  "L3": "L3 · RLVR · GRPO 家族推理训练",
+  "L4": "L4 · Agent / 工具 / 多轮自进化",
+  "L5": "L5 · 记忆/技能库 & 持续学习 · 防遗忘",
+  "L6": "L6 · 思维链 / Token 级信用 & 前瞻 (MTP)"
+ },
  "topics": {
-  "T1": [
-   {
-    "key": "adaspec",
-    "title": "adaspec — AdaSPEC: Selective Knowledge Distillation for Efficient Speculative Decoders"
-   },
+  "L1": [
    {
     "key": "aligndistil",
-    "title": "aligndistil — AlignDistil: Token-Level Language Model Alignment as Adaptive Policy Distillation"
+    "title": "AlignDistil: Token-Level Language Model Alignment as Adaptive Policy Distillation"
    },
    {
     "key": "apple_ssd",
-    "title": "apple_ssd — SSD: Embarrassingly Simple Self-Distillation Improves Code Generation"
+    "title": "(SSD) Embarrassingly Simple Self-Distillation Improves Code Generation"
    },
    {
     "key": "avsd",
-    "title": "avsd — AVSD: Adaptive-View Self-Distillation by Balancing Consensus and Teacher-Specific Privileged Signals"
+    "title": "AVSD: Adaptive-View Self-Distillation by Balancing Consensus and Teacher-Specific Privileged Signals"
    },
    {
     "key": "brts",
-    "title": "brts — On-Policy Distillation with Best-of-N Teacher Rollout Selection (BRTS)"
+    "title": "On-Policy Distillation with Best-of-N Teacher Rollout Selection (BRTS)"
    },
    {
     "key": "caopd",
-    "title": "caopd — The Illusion of Certainty: Decoupling Capability and Calibration in On-Policy Distillation (CaOPD)"
+    "title": "The Illusion of Certainty: Decoupling Capability and Calibration in On-Policy Distillation (CaOPD)"
    },
    {
     "key": "copsd",
-    "title": "copsd — Crosslingual On-Policy Self-Distillation for Multilingual Reasoning (COPSD)"
+    "title": "Crosslingual On-Policy Self-Distillation for Multilingual Reasoning (COPSD)"
    },
    {
     "key": "csd",
-    "title": "csd — Distillation of Large Language Models via Concrete Score Matching (Concrete Score Distillation, CSD)"
+    "title": "Distillation of Large Language Models via Concrete Score Matching (CSD)"
    },
    {
     "key": "dasd",
-    "title": "dasd — Distribution-Aligned Sequence Distillation (DASD-4B-Thinking)"
-   },
-   {
-    "key": "distillm",
-    "title": "distillm — DistiLLM: Towards Streamlined Distillation for Large Language Models"
-   },
-   {
-    "key": "distillm2",
-    "title": "distillm2 — DistiLLM-2: A Contrastive Approach Boosts the Distillation of LLMs"
-   },
-   {
-    "key": "gad",
-    "title": "gad — Black-Box On-Policy Distillation of Large Language Models (GAD)"
-   },
-   {
-    "key": "gemma2",
-    "title": "gemma2 — Gemma 2: Improving Open Language Models at a Practical Size"
-   },
-   {
-    "key": "gkd",
-    "title": "gkd — On-Policy Distillation of Language Models: Learning from Self-Generated Mistakes (GKD)"
-   },
-   {
-    "key": "glm45",
-    "title": "glm45 — GLM-4.5: Agentic, Reasoning, and Coding (ARC) Foundation Models"
-   },
-   {
-    "key": "gopd",
-    "title": "gopd — Learning beyond Teacher: Generalized On-Policy Distillation with Reward Extrapolation (G-OPD / ExOPD)"
-   },
-   {
-    "key": "hpd",
-    "title": "hpd — Hybrid Policy Distillation for LLMs (HPD)"
-   },
-   {
-    "key": "lightning_opd",
-    "title": "lightning_opd — Lightning OPD: Efficient Post-Training for Large Reasoning Models with Offline On-Policy Distillation"
-   },
-   {
-    "key": "lightreasoner",
-    "title": "lightreasoner — LightReasoner: Can Small Language Models Teach Large Language Models Reasoning?"
-   },
-   {
-    "key": "madopd",
-    "title": "madopd — MAD-OPD: Breaking the Ceiling in On-Policy Distillation via Multi-Agent Debate"
-   },
-   {
-    "key": "minillm",
-    "title": "minillm — MiniLLM: On-Policy Knowledge Distillation of Large Language Models"
-   },
-   {
-    "key": "nemotron_cascade2",
-    "title": "nemotron_cascade2 — Nemotron-Cascade 2: Post-Training LLMs with Cascade RL and Multi-Domain On-Policy Distillation"
-   },
-   {
-    "key": "nemotron_nano2",
-    "title": "nemotron_nano2 — NVIDIA Nemotron Nano 2: An Accurate and Efficient Hybrid Mamba-Transformer Reasoning Model"
-   },
-   {
-    "key": "opd_blog",
-    "title": "opd_blog — On-Policy Distillation (Thinking Machines Lab 博客 + tinker-cookbook 配方)"
-   },
-   {
-    "key": "opd_survey",
-    "title": "opd_survey — A Survey of On-Policy Distillation for Large Language Models"
-   },
-   {
-    "key": "ophsd",
-    "title": "ophsd — Training with Harnesses: On-Policy Harness Self-Distillation for Complex Reasoning"
-   },
-   {
-    "key": "opsa",
-    "title": "opsa — Reducing the Safety Tax in LLM Safety Alignment with On-Policy Self-Distillation"
-   },
-   {
-    "key": "opsd",
-    "title": "opsd — Self-Distilled Reasoner: On-Policy Self-Distillation for Large Language Models"
-   },
-   {
-    "key": "prism",
-    "title": "prism — Beyond SFT-to-RL: Pre-alignment via Black-Box On-Policy Distillation for Multimodal RL (PRISM)"
-   },
-   {
-    "key": "qwen3",
-    "title": "qwen3 — Qwen3 Technical Report"
-   },
-   {
-    "key": "resd",
-    "title": "resd — Learning with Rare Success but Rich Feedback via Reflection-Enhanced Self-Distillation (RESD)"
-   },
-   {
-    "key": "rethink_opd",
-    "title": "rethink_opd — Rethinking On-Policy Distillation of Large Language Models: Phenomenology, Mechanism, and Recipe"
-   },
-   {
-    "key": "rock_tokens",
-    "title": "rock_tokens — Cornerstones or Stumbling Blocks? Deciphering the Rock Tokens in On-Policy Distillation"
-   },
-   {
-    "key": "rosd",
-    "title": "rosd — ROSD: Reflective On-Policy Self-Distillation for Language Model Reasoning across Domains"
-   },
-   {
-    "key": "safesteer",
-    "title": "safesteer — SafeSteer: Localized On-Policy Distillation for Efficient Safety Alignment"
-   },
-   {
-    "key": "scope",
-    "title": "scope — SCOPE: Signal-Calibrated On-Policy Distillation Enhancement with Dual-Path Adaptive Weighting"
-   },
-   {
-    "key": "sdcl",
-    "title": "sdcl — Self-Distillation Enables Continual Learning (SDFT)"
-   },
-   {
-    "key": "tip",
-    "title": "tip — TIP: Token Importance in On-Policy Distillation"
-   },
-   {
-    "key": "unisd",
-    "title": "unisd — UniSD: Towards a Unified Self-Distillation Framework for Large Language Models"
-   },
-   {
-    "key": "vla_opd",
-    "title": "vla_opd — VLA-OPD: Bridging Offline SFT and Online RL for Vision-Language-Action Models via On-Policy Distillation"
-   },
-   {
-    "key": "why_sd_degrade",
-    "title": "why_sd_degrade — Why Does Self-Distillation (Sometimes) Degrade the Reasoning Capability of LLMs?"
-   }
-  ],
-  "T2": [
-   {
-    "key": "chain_of_agents",
-    "title": "chain_of_agents — Chain-of-Agents: End-to-End Agent Foundation Models via Multi-Agent Distillation and Agentic RL"
-   },
-   {
-    "key": "deepdive",
-    "title": "deepdive — DeepDive: Advancing Deep Search Agents with Knowledge Graphs and Multi-Turn RL"
-   },
-   {
-    "key": "distill_agent_tools",
-    "title": "distill_agent_tools — Distilling LLM Agents into Small Models with Retrieval and Code Tools (Agent Distillation)"
-   },
-   {
-    "key": "gigpo",
-    "title": "gigpo — Group-in-Group Policy Optimization for LLM Agent Training (GiGPO)"
-   },
-   {
-    "key": "icrl",
-    "title": "icrl — ICRL: Learning to Internalize Self-Critique with Reinforcement Learning"
-   },
-   {
-    "key": "latent_agents",
-    "title": "latent_agents — Latent Agents: A Post-Training Procedure for Internalized Multi-Agent Debate"
-   },
-   {
-    "key": "meow_tea_taro",
-    "title": "meow_tea_taro — A Practitioner's Guide to Multi-turn Agentic Reinforcement Learning"
-   },
-   {
-    "key": "open_agentrl",
-    "title": "open_agentrl — RLAnything: Forge Environment, Policy, and Reward Model in Completely Dynamic RL System (Open-AgentRL)"
-   },
-   {
-    "key": "openclaw_rl",
-    "title": "openclaw_rl — OpenClaw-RL: Train Any Agent Simply by Talking"
-   },
-   {
-    "key": "pi_play",
-    "title": "pi_play — π-Play: Multi-Agent Self-Play via Privileged Self-Distillation without External Data"
-   },
-   {
-    "key": "rstar2",
-    "title": "rstar2 — rStar2-Agent: Agentic Reasoning Technical Report"
-   },
-   {
-    "key": "score",
-    "title": "score — From Correction to Mastery: Reinforced Distillation of LLM Agents (SCoRe)"
-   },
-   {
-    "key": "search_dont_guess",
-    "title": "search_dont_guess — Search, Do not Guess: Teaching Small Language Models to Be Effective Search Agents"
-   },
-   {
-    "key": "search_r1",
-    "title": "search_r1 — Search-R1: Training LLMs to Reason and Leverage Search Engines with Reinforcement Learning"
-   },
-   {
-    "key": "sod_stepwise",
-    "title": "sod_stepwise — SOD: Step-wise On-policy Distillation for Small Language Model Agents"
-   },
-   {
-    "key": "spear",
-    "title": "spear — SPEAR: Learn the Ropes, Then Trust the Wins — Self-imitation with Progressive Exploration for Agentic RL"
-   },
-   {
-    "key": "sweet_rl",
-    "title": "sweet_rl — SWEET-RL: Training Multi-Turn LLM Agents on Collaborative Reasoning Tasks"
-   },
-   {
-    "key": "tcod",
-    "title": "tcod — TCOD: Exploring Temporal Curriculum in On-Policy Distillation for Multi-turn Autonomous Agents"
-   },
-   {
-    "key": "webagent_r1",
-    "title": "webagent_r1 — WebAgent-R1: Training Web Agents via End-to-End Multi-Turn Reinforcement Learning"
-   }
-  ],
-  "T3": [
-   {
-    "key": "amft",
-    "title": "amft — AMFT: Aligning LLM Reasoners by Meta-Learning the Optimal Imitation-Exploration Balance"
-   },
-   {
-    "key": "ampo",
-    "title": "ampo — AMPO: Adaptive Multi-Guidance Policy Optimization for Diverse Exploration"
-   },
-   {
-    "key": "asft",
-    "title": "asft — ASFT: Anchored Supervised Fine-Tuning"
-   },
-   {
-    "key": "bapo",
-    "title": "bapo — BAPO: Stabilizing Off-Policy Reinforcement Learning for LLMs via Balanced Policy Optimization with Adaptive Clipping"
-   },
-   {
-    "key": "behavior_priming",
-    "title": "behavior_priming — Beneficial Reasoning Behaviors in Agentic Search and Effective Post-training to Obtain Them"
-   },
-   {
-    "key": "ca_survey",
-    "title": "ca_survey — From Reasoning to Agentic: Credit Assignment in Reinforcement Learning for Large Language Models"
-   },
-   {
-    "key": "cbrl",
-    "title": "cbrl — Context Bootstrapped Reinforcement Learning (CBRL)"
-   },
-   {
-    "key": "cepo",
-    "title": "cepo — CEPO: RLVR Self-Distillation using Contrastive Evidence Policy Optimization"
-   },
-   {
-    "key": "chord",
-    "title": "chord — On-Policy RL Meets Off-Policy Experts: Harmonizing SFT and RL via Dynamic Weighting (CHORD)"
-   },
-   {
-    "key": "dapo",
-    "title": "dapo — DAPO: An Open-Source LLM Reinforcement Learning System at Scale"
-   },
-   {
-    "key": "deepseek_r1",
-    "title": "deepseek_r1 — DeepSeek-R1: Incentivizing Reasoning Capability in LLMs via Reinforcement Learning"
-   },
-   {
-    "key": "deepseekmath",
-    "title": "deepseekmath — DeepSeekMath: Pushing the Limits of Mathematical Reasoning in Open Language Models（GRPO 起源）"
+    "title": "Distribution-Aligned Sequence Distillation for Superior Long-CoT Reasoning (DASD-4B-Thinking)"
    },
    {
     "key": "denoiserl",
-    "title": "denoiserl — DenoiseRL: Bootstrapping Reasoning Models to Recover from Noisy Prefixes"
+    "title": "DenoiseRL: Bootstrapping Reasoning Models to Recover from Noisy Prefixes"
    },
    {
-    "key": "dft_reweight",
-    "title": "dft_reweight — On the Generalization of SFT: A Reinforcement Learning Perspective with Reward Rectification (DFT / Dynamic Fine-Tuning)"
+    "key": "distillm",
+    "title": "DistiLLM: Towards Streamlined Distillation for Large Language Models"
    },
    {
-    "key": "dr_grpo",
-    "title": "dr_grpo — Understanding R1-Zero-Like Training: A Critical Perspective (Dr. GRPO)"
+    "key": "distillm2",
+    "title": "DistiLLM-2: A Contrastive Approach Boosts the Distillation of LLMs"
    },
    {
-    "key": "eaft",
-    "title": "eaft — Entropy-Adaptive Fine-Tuning: Resolving Confident Conflicts to Mitigate Forgetting (EAFT)"
+    "key": "gad",
+    "title": "Black-Box On-Policy Distillation of Large Language Models (GAD)"
    },
    {
-    "key": "entropy_mechanism",
-    "title": "entropy_mechanism — The Entropy Mechanism of Reinforcement Learning for Reasoning Language Models"
+    "key": "gemma2",
+    "title": "Gemma 2: Improving Open Language Models at a Practical Size"
    },
    {
-    "key": "fest",
-    "title": "fest — FEST: Boosting RLVR via Randomly Selected Few-Shot Guidance"
+    "key": "gkd",
+    "title": "On-Policy Distillation of Language Models: Learning from Self-Generated Mistakes (GKD)"
    },
    {
-    "key": "gmpo",
-    "title": "gmpo — Geometric-Mean Policy Optimization (GMPO)"
+    "key": "glm45",
+    "title": "GLM-4.5: Agentic, Reasoning, and Coding (ARC) Foundation Models"
    },
    {
-    "key": "gspo",
-    "title": "gspo — Group Sequence Policy Optimization (GSPO)"
+    "key": "gopd",
+    "title": "Learning beyond Teacher: Generalized On-Policy Distillation with Reward Extrapolation (G-OPD / ExOPD)"
    },
    {
-    "key": "hapo",
-    "title": "hapo — Heterogeneous Adaptive Policy Optimization: Tailoring Optimization to Every Token's Nature"
+    "key": "hpd",
+    "title": "Hybrid Policy Distillation for LLMs (HPD)"
    },
    {
-    "key": "holderpo",
-    "title": "holderpo — Hölder Policy Optimisation"
+    "key": "lightning_opd",
+    "title": "Lightning OPD: Efficient Post-Training for Large Reasoning Models with Offline On-Policy Distillation"
    },
    {
-    "key": "hpt_upge",
-    "title": "hpt_upge — Towards a Unified View of Large Language Model Post-Training (UPGE / HPT)"
+    "key": "madopd",
+    "title": "MAD-OPD: Breaking the Ceiling in On-Policy Distillation via Multi-Agent Debate"
    },
    {
-    "key": "limit_rlvr",
-    "title": "limit_rlvr — Does Reinforcement Learning Really Incentivize Reasoning Capacity in LLMs Beyond the Base Model?"
+    "key": "minillm",
+    "title": "MiniLLM: On-Policy Knowledge Distillation of Large Language Models"
    },
    {
-    "key": "lite_ppo",
-    "title": "lite_ppo — Part I: Tricks or Traps? A Deep Dive into RL for LLM Reasoning (Lite PPO)"
+    "key": "nemotron_cascade2",
+    "title": "Nemotron-Cascade 2: Post-Training LLMs with Cascade RL and Multi-Domain On-Policy Distillation"
    },
    {
-    "key": "lp_reg",
-    "title": "lp_reg — Low-probability Tokens Sustain Exploration in Reinforcement Learning with Verifiable Reward (Lp-Reg)"
+    "key": "nemotron_nano2",
+    "title": "NVIDIA Nemotron Nano 2: An Accurate and Efficient Hybrid Mamba-Transformer Reasoning Model"
    },
    {
-    "key": "luffy",
-    "title": "luffy — Learning to Reason under Off-Policy Guidance (LUFFY)"
+    "key": "opd_blog",
+    "title": "On-Policy Distillation (博客 + tinker-cookbook 配方)"
    },
    {
-    "key": "magistral",
-    "title": "magistral — Magistral（Mistral 首个推理模型与自建可扩展 RLVR 流水线）"
+    "key": "opd_survey",
+    "title": "A Survey of On-Policy Distillation for Large Language Models"
    },
    {
-    "key": "minimax_m1",
-    "title": "minimax_m1 — MiniMax-M1: Scaling Test-Time Compute Efficiently with Lightning Attention"
+    "key": "ophsd",
+    "title": "Training with Harnesses: On-Policy Harness Self-Distillation for Complex Reasoning"
    },
    {
-    "key": "negative_reinforce",
-    "title": "negative_reinforce — The Surprising Effectiveness of Negative Reinforcement in LLM Reasoning"
+    "key": "opsa",
+    "title": "Reducing the Safety Tax in LLM Safety Alignment with On-Policy Self-Distillation"
    },
    {
-    "key": "nft",
-    "title": "nft — NFT: Bridging Supervised Learning and Reinforcement Learning in Math Reasoning"
+    "key": "opsd",
+    "title": "Self-Distilled Reasoner: On-Policy Self-Distillation for Large Language Models"
    },
    {
-    "key": "on_policy_sft",
-    "title": "on_policy_sft — On-Policy Supervised Fine-Tuning for Efficient Reasoning"
+    "key": "pi_play",
+    "title": "π-Play: Multi-Agent Self-Play via Privileged Self-Distillation without External Data"
    },
    {
-    "key": "one_shot_rlvr",
-    "title": "one_shot_rlvr — Reinforcement Learning for Reasoning in Large Language Models with One Training Example"
+    "key": "prism",
+    "title": "Beyond SFT-to-RL: Pre-alignment via Black-Box On-Policy Distillation for Multimodal RL (PRISM)"
    },
    {
-    "key": "orz",
-    "title": "orz — Open-Reasoner-Zero: An Open Source Approach to Scaling Up Reinforcement Learning on the Base Model"
+    "key": "qwen3",
+    "title": "Qwen3 Technical Report"
    },
    {
-    "key": "prefix_rft",
-    "title": "prefix_rft — Prefix-RFT: Blending Supervised and Reinforcement Fine-Tuning with Prefix Sampling"
+    "key": "resd",
+    "title": "Learning with Rare Success but Rich Feedback via Reflection-Enhanced Self-Distillation (RESD)"
    },
    {
-    "key": "prorl",
-    "title": "prorl — ProRL: Prolonged Reinforcement Learning Expands Reasoning Boundaries in LLMs"
+    "key": "rethink_opd",
+    "title": "Rethinking On-Policy Distillation of Large Language Models: Phenomenology, Mechanism, and Recipe"
    },
    {
-    "key": "psft",
-    "title": "psft — Proximal Supervised Fine-Tuning (PSFT)"
+    "key": "rock_tokens",
+    "title": "Cornerstones or Stumbling Blocks? Deciphering the Rock Tokens in On-Policy Distillation"
    },
    {
-    "key": "raft_reinforce_rej",
-    "title": "raft_reinforce_rej — A Minimalist Approach to LLM Reasoning: from Rejection Sampling to Reinforce (RAFT / RAFT++ / Reinforce-rej)"
+    "key": "rosd",
+    "title": "ROSD: Reflective On-Policy Self-Distillation for Language Model Reasoning across Domains"
    },
    {
-    "key": "revisit_entropy",
-    "title": "revisit_entropy — Revisiting Entropy in Reinforcement Learning for Large Reasoning Models"
+    "key": "safesteer",
+    "title": "SafeSteer: Localized On-Policy Distillation for Efficient Safety Alignment"
    },
    {
-    "key": "rl_plus",
-    "title": "rl_plus — RL-PLUS: Countering Capability Boundary Collapse of LLMs in Reinforcement Learning with Hybrid-policy Optimization"
+    "key": "scope",
+    "title": "SCOPE: Signal-Calibrated On-Policy Distillation Enhancement with Dual-Path Adaptive Weighting"
    },
    {
-    "key": "rl_survey_lrm",
-    "title": "rl_survey_lrm — A Survey of Reinforcement Learning for Large Reasoning Models"
+    "key": "sdcl",
+    "title": "Self-Distillation Enables Continual Learning (SDFT)"
    },
    {
-    "key": "scaf_grpo",
-    "title": "scaf_grpo — Scaf-GRPO: Scaffolded Group Relative Policy Optimization for Enhancing LLM Reasoning"
+    "key": "sod_stepwise",
+    "title": "SOD: Step-wise On-policy Distillation for Small Language Model Agents"
    },
    {
-    "key": "sed_sft",
-    "title": "sed_sft — SED-SFT: Selectively Encouraging Diversity in Supervised Fine-Tuning"
-   },
-   {
-    "key": "simplerl_zoo",
-    "title": "simplerl_zoo — SimpleRL-Zoo: Investigating and Taming Zero RL for Open Base Models in the Wild"
-   },
-   {
-    "key": "skywork_or1",
-    "title": "skywork_or1 — Skywork Open Reasoner 1 Technical Report"
-   },
-   {
-    "key": "spurious_rewards",
-    "title": "spurious_rewards — Spurious Rewards: Rethinking Training Signals in RLVR"
-   },
-   {
-    "key": "srft",
-    "title": "srft — SRFT: A Single-Stage Method with Supervised and Reinforcement Fine-Tuning for Reasoning"
-   },
-   {
-    "key": "superrl",
-    "title": "superrl — SuperRL: Reinforcement Learning with Supervision to Boost Language Model Reasoning"
-   },
-   {
-    "key": "trapo",
-    "title": "trapo — TRAPO: Trust-Region Adaptive Policy Optimization"
+    "key": "tcod",
+    "title": "TCOD: Exploring Temporal Curriculum in On-Policy Distillation for Multi-turn Autonomous Agents"
    },
    {
     "key": "trl_v1",
-    "title": "trl_v1 — TRL v1.0: 统一后训练栈（SFT, RM, DPO, GRPO, GKD, MiniLLM 等）"
+    "title": "TRL v1.0: 统一 LLM 后训练栈（SFT/RM/偏好优化/RLVR/on-policy 蒸馏 75+ 方法）"
+   },
+   {
+    "key": "unisd",
+    "title": "UniSD: Towards a Unified Self-Distillation Framework for Large Language Models"
+   },
+   {
+    "key": "vla_opd",
+    "title": "VLA-OPD: Bridging Offline SFT and Online RL for Vision-Language-Action Models via On-Policy Distillation"
+   },
+   {
+    "key": "why_sd_degrade",
+    "title": "Why Does Self-Distillation (Sometimes) Degrade the Reasoning Capability of LLMs?"
    }
   ],
-  "T4": [
+  "L2": [
+   {
+    "key": "amft",
+    "title": "AMFT: Aligning LLM Reasoners by Meta-Learning the Optimal Imitation-Exploration Balance"
+   },
+   {
+    "key": "asft",
+    "title": "ASFT: Anchored Supervised Fine-Tuning"
+   },
    {
     "key": "beyond_loglik",
-    "title": "beyond_loglik — Beyond Log Likelihood: Probability-Based Objectives for Supervised Fine-Tuning across the Model Capability Continuum"
+    "title": "Beyond Log Likelihood: Probability-Based Objectives for Supervised Fine-Tuning across the Model Capability Continuum"
    },
    {
-    "key": "llm_future_mtp",
-    "title": "llm_future_mtp — Your LLM Knows the Future: Uncovering Its Multi-Token Prediction Potential"
+    "key": "chord",
+    "title": "On-Policy RL Meets Off-Policy Experts: Harmonizing SFT and RL via Dynamic Weighting (CHORD)"
    },
    {
-    "key": "rho1",
-    "title": "rho1 — Rho-1: Not All Tokens Are What You Need"
+    "key": "dft_reweight",
+    "title": "On the Generalization of SFT: A Reinforcement Learning Perspective with Reward Rectification (DFT / Dynamic Fine-Tuning)"
    },
    {
-    "key": "segment_attrib",
-    "title": "segment_attrib — Segment-Level Attribution for Selective Learning of Long Reasoning Traces"
+    "key": "fest",
+    "title": "FEST: Boosting RLVR via Randomly Selected Few-Shot Guidance"
    },
    {
-    "key": "srgen",
-    "title": "srgen — Self-Reflective Generation at Test Time (SRGen)"
+    "key": "hpt_upge",
+    "title": "Towards a Unified View of LLM Post-Training (UPGE / HPT)"
+   },
+   {
+    "key": "luffy",
+    "title": "Learning to Reason under Off-Policy Guidance (LUFFY)"
+   },
+   {
+    "key": "nft",
+    "title": "NFT: Bridging Supervised Learning and Reinforcement Learning in Math Reasoning"
+   },
+   {
+    "key": "on_policy_sft",
+    "title": "On-Policy Supervised Fine-Tuning for Efficient Reasoning"
+   },
+   {
+    "key": "prefix_rft",
+    "title": "Prefix-RFT: Blending Supervised and Reinforcement Fine-Tuning with Prefix Sampling"
+   },
+   {
+    "key": "psft",
+    "title": "Proximal Supervised Fine-Tuning (PSFT)"
+   },
+   {
+    "key": "raft_reinforce_rej",
+    "title": "A Minimalist Approach to LLM Reasoning: from Rejection Sampling to Reinforce (RAFT / RAFT++ / Reinforce-Rej)"
+   },
+   {
+    "key": "rl_plus",
+    "title": "RL-PLUS: Countering Capability Boundary Collapse of LLMs in Reinforcement Learning with Hybrid-policy Optimization"
+   },
+   {
+    "key": "sed_sft",
+    "title": "SED-SFT: Selectively Encouraging Diversity in Supervised Fine-Tuning"
+   },
+   {
+    "key": "srft",
+    "title": "SRFT: A Single-Stage Method with Supervised and Reinforcement Fine-Tuning for Reasoning"
    },
    {
     "key": "sstoken",
-    "title": "sstoken — ssToken: Self-modulated and Semantic-aware Token Selection for LLM Fine-tuning"
+    "title": "ssToken: Self-modulated and Semantic-aware Token Selection for LLM Fine-tuning"
+   },
+   {
+    "key": "superrl",
+    "title": "SuperRL: Reinforcement Learning with Supervision to Boost Language Model Reasoning"
+   },
+   {
+    "key": "trapo",
+    "title": "TRAPO: Trust-Region Adaptive Policy Optimization"
    },
    {
     "key": "vcore",
-    "title": "vcore — VCORE: Variance-Controlled Optimization-based Reweighting for Chain-of-Thought Supervision"
+    "title": "VCORE: Variance-Controlled Optimization-based Reweighting for Chain-of-Thought Supervision"
+   }
+  ],
+  "L3": [
+   {
+    "key": "ampo",
+    "title": "AMPO: Adaptive Multi-Guidance Policy Optimization for Diverse Exploration"
+   },
+   {
+    "key": "bapo",
+    "title": "BAPO: Stabilizing Off-Policy Reinforcement Learning for LLMs via Balanced Policy Optimization with Adaptive Clipping"
+   },
+   {
+    "key": "ca_survey",
+    "title": "From Reasoning to Agentic: Credit Assignment in Reinforcement Learning for Large Language Models"
+   },
+   {
+    "key": "cbrl",
+    "title": "Context Bootstrapped Reinforcement Learning (CBRL)"
+   },
+   {
+    "key": "cepo",
+    "title": "CEPO: RLVR Self-Distillation using Contrastive Evidence Policy Optimization"
+   },
+   {
+    "key": "dapo",
+    "title": "DAPO: An Open-Source LLM Reinforcement Learning System at Scale"
+   },
+   {
+    "key": "deepseek_r1",
+    "title": "DeepSeek-R1: Incentivizing Reasoning Capability in LLMs via Reinforcement Learning"
+   },
+   {
+    "key": "deepseekmath",
+    "title": "DeepSeekMath: Pushing the Limits of Mathematical Reasoning in Open Language Models (GRPO 起源)"
+   },
+   {
+    "key": "dr_grpo",
+    "title": "Understanding R1-Zero-Like Training: A Critical Perspective (Dr. GRPO)"
+   },
+   {
+    "key": "entropy_mechanism",
+    "title": "The Entropy Mechanism of Reinforcement Learning for Reasoning Language Models"
+   },
+   {
+    "key": "gmpo",
+    "title": "Geometric-Mean Policy Optimization (GMPO)"
+   },
+   {
+    "key": "gspo",
+    "title": "Group Sequence Policy Optimization (GSPO)"
+   },
+   {
+    "key": "hapo",
+    "title": "Heterogeneous Adaptive Policy Optimization (HAPO)"
+   },
+   {
+    "key": "holderpo",
+    "title": "Hölder Policy Optimisation (HölderPO)"
+   },
+   {
+    "key": "limit_rlvr",
+    "title": "Does RL Really Incentivize Reasoning Capacity in LLMs Beyond the Base Model?"
+   },
+   {
+    "key": "lite_ppo",
+    "title": "Part I: Tricks or Traps? A Deep Dive into RL for LLM Reasoning (Lite PPO)"
+   },
+   {
+    "key": "lp_reg",
+    "title": "Low-probability Tokens Sustain Exploration in RL with Verifiable Reward (Lp-Reg)"
+   },
+   {
+    "key": "magistral",
+    "title": "Magistral(Mistral 首个推理模型与自建可扩展 RLVR 流水线)"
+   },
+   {
+    "key": "minimax_m1",
+    "title": "MiniMax-M1: Scaling Test-Time Compute Efficiently with Lightning Attention"
+   },
+   {
+    "key": "negative_reinforce",
+    "title": "The Surprising Effectiveness of Negative Reinforcement in LLM Reasoning"
+   },
+   {
+    "key": "one_shot_rlvr",
+    "title": "Reinforcement Learning for Reasoning in LLMs with One Training Example"
+   },
+   {
+    "key": "orz",
+    "title": "Open-Reasoner-Zero: An Open Source Approach to Scaling Up Reinforcement Learning on the Base Model"
+   },
+   {
+    "key": "prorl",
+    "title": "ProRL: Prolonged Reinforcement Learning Expands Reasoning Boundaries in Large Language Models"
+   },
+   {
+    "key": "revisit_entropy",
+    "title": "Revisiting Entropy in Reinforcement Learning for Large Reasoning Models"
+   },
+   {
+    "key": "rl_survey_lrm",
+    "title": "A Survey of Reinforcement Learning for Large Reasoning Models"
+   },
+   {
+    "key": "scaf_grpo",
+    "title": "Scaf-GRPO: Scaffolded Group Relative Policy Optimization for Enhancing LLM Reasoning"
+   },
+   {
+    "key": "simplerl_zoo",
+    "title": "SimpleRL-Zoo: Investigating and Taming Zero RL for Open Base Models in the Wild"
+   },
+   {
+    "key": "skywork_or1",
+    "title": "Skywork Open Reasoner 1 Technical Report"
+   },
+   {
+    "key": "spurious_rewards",
+    "title": "Spurious Rewards: Rethinking Training Signals in RLVR"
+   }
+  ],
+  "L4": [
+   {
+    "key": "behavior_priming",
+    "title": "Beneficial Reasoning Behaviors in Agentic Search and Effective Post-training to Obtain Them"
+   },
+   {
+    "key": "chain_of_agents",
+    "title": "Chain-of-Agents: End-to-End Agent Foundation Models via Multi-Agent Distillation and Agentic RL"
+   },
+   {
+    "key": "deepdive",
+    "title": "DeepDive: Advancing Deep Search Agents with Knowledge Graphs and Multi-Turn RL"
+   },
+   {
+    "key": "distill_agent_tools",
+    "title": "Distilling LLM Agent into Small Models with Retrieval and Code Tools (Agent Distillation)"
+   },
+   {
+    "key": "gigpo",
+    "title": "Group-in-Group Policy Optimization for LLM Agent Training (GiGPO)"
+   },
+   {
+    "key": "icrl",
+    "title": "ICRL: Learning to Internalize Self-Critique with Reinforcement Learning"
+   },
+   {
+    "key": "latent_agents",
+    "title": "Latent Agents: A Post-Training Procedure for Internalized Multi-Agent Debate"
+   },
+   {
+    "key": "meow_tea_taro",
+    "title": "A Practitioner's Guide to Multi-turn Agentic Reinforcement Learning"
+   },
+   {
+    "key": "open_agentrl",
+    "title": "RLAnything: Forge Environment, Policy, and Reward Model in Completely Dynamic RL System"
+   },
+   {
+    "key": "openclaw_rl",
+    "title": "OpenClaw-RL: Train Any Agent Simply by Talking"
+   },
+   {
+    "key": "rstar2",
+    "title": "rStar2-Agent: Agentic Reasoning Technical Report"
+   },
+   {
+    "key": "score",
+    "title": "From Correction to Mastery: Reinforced Distillation of LLM Agents (SCoRe)"
+   },
+   {
+    "key": "search_dont_guess",
+    "title": "Search, Do not Guess: Teaching Small Language Models to Be Effective Search Agents"
+   },
+   {
+    "key": "search_r1",
+    "title": "Search-R1: Training LLMs to Reason and Leverage Search Engines with Reinforcement Learning"
+   },
+   {
+    "key": "spear",
+    "title": "SPEAR: Learn the Ropes, Then Trust the Wins — Self-imitation with Progressive Exploration for Agentic RL"
+   },
+   {
+    "key": "sweet_rl",
+    "title": "SWEET-RL: Training Multi-Turn LLM Agents on Collaborative Reasoning Tasks"
+   },
+   {
+    "key": "webagent_r1",
+    "title": "WebAgent-R1: Training Web Agents via End-to-End Multi-Turn Reinforcement Learning"
+   }
+  ],
+  "L5": [
+   {
+    "key": "eaft",
+    "title": "Entropy-Adaptive Fine-Tuning: Resolving Confident Conflicts to Mitigate Forgetting"
+   }
+  ],
+  "L6": [
+   {
+    "key": "adaspec",
+    "title": "AdaSPEC: Selective Knowledge Distillation for Efficient Speculative Decoders"
+   },
+   {
+    "key": "lightreasoner",
+    "title": "LightReasoner: Can Small Language Models Teach Large Language Models Reasoning?"
+   },
+   {
+    "key": "llm_future_mtp",
+    "title": "Your LLM Knows the Future: Uncovering Its Multi-Token Prediction Potential"
+   },
+   {
+    "key": "rho1",
+    "title": "RHO-1: Not All Tokens Are What You Need"
+   },
+   {
+    "key": "segment_attrib",
+    "title": "Segment-Level Attribution for Selective Learning of Long Reasoning Traces"
+   },
+   {
+    "key": "srgen",
+    "title": "Self-Reflective Generation at Test Time (SRGen)"
+   },
+   {
+    "key": "tip",
+    "title": "TIP: Token Importance in On-Policy Distillation"
    }
   ]
  }
