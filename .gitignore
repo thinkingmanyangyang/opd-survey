@@ -1,9 +1,9 @@
-# 中间产物 / 重资源,不发布
-_build/
-_state/
-figures/
-site/
-analysis/
+# 中间产物 / 重资源,不发布(仅匹配仓库根目录,避免误伤 site_src/figures)
+/_build/
+/_state/
+/figures/
+/site/
+/analysis/
 *.pdf
 *.log
-# 保留(会被提交):mkdocs.yml, site_src/, survey.html, SURVEY_on_policy_distillation.md, PLAN.md, README.md, .github/
+# 保留(会被提交):mkdocs.yml, site_src/(含 figures), survey.html, SURVEY_on_policy_distillation.md, PLAN.md, README.md, .github/

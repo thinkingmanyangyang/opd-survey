@@ -1,6 +1,7 @@
 site_name: On-Policy Distillation 调研手册
 docs_dir: site_src
 site_dir: site
+use_directory_urls: false
 theme:
   name: material
   language: zh
@@ -12,7 +13,6 @@ theme:
   features:
     - navigation.tracking
     - navigation.top
-    - navigation.indexes
     - search.suggest
     - search.highlight
     - content.code.copy
@@ -36,128 +36,7 @@ extra_javascript:
   - https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-svg.js
 nav:
   - 总览: index.md
-  - 'T1 · On-Policy Distillation 核心 / 自蒸馏':
-      - T1/index.md
-      - 'adaspec': T1/adaspec.md
-      - 'aligndistil': T1/aligndistil.md
-      - 'apple_ssd': T1/apple_ssd.md
-      - 'avsd': T1/avsd.md
-      - 'brts': T1/brts.md
-      - 'caopd': T1/caopd.md
-      - 'copsd': T1/copsd.md
-      - 'csd': T1/csd.md
-      - 'dasd': T1/dasd.md
-      - 'distillm': T1/distillm.md
-      - 'distillm2': T1/distillm2.md
-      - 'gad': T1/gad.md
-      - 'gemma2': T1/gemma2.md
-      - 'gkd': T1/gkd.md
-      - 'glm45': T1/glm45.md
-      - 'gopd': T1/gopd.md
-      - 'hpd': T1/hpd.md
-      - 'lightning_opd': T1/lightning_opd.md
-      - 'lightreasoner': T1/lightreasoner.md
-      - 'madopd': T1/madopd.md
-      - 'minillm': T1/minillm.md
-      - 'nemotron_cascade2': T1/nemotron_cascade2.md
-      - 'nemotron_nano2': T1/nemotron_nano2.md
-      - 'opd_blog': T1/opd_blog.md
-      - 'opd_survey': T1/opd_survey.md
-      - 'ophsd': T1/ophsd.md
-      - 'opsa': T1/opsa.md
-      - 'opsd': T1/opsd.md
-      - 'prism': T1/prism.md
-      - 'qwen3': T1/qwen3.md
-      - 'resd': T1/resd.md
-      - 'rethink_opd': T1/rethink_opd.md
-      - 'rock_tokens': T1/rock_tokens.md
-      - 'rosd': T1/rosd.md
-      - 'safesteer': T1/safesteer.md
-      - 'scope': T1/scope.md
-      - 'sdcl': T1/sdcl.md
-      - 'tip': T1/tip.md
-      - 'unisd': T1/unisd.md
-      - 'vla_opd': T1/vla_opd.md
-      - 'why_sd_degrade': T1/why_sd_degrade.md
-  - 'T2 · Tool-Agent / 多轮':
-      - T2/index.md
-      - 'chain_of_agents': T2/chain_of_agents.md
-      - 'deepdive': T2/deepdive.md
-      - 'distill_agent_tools': T2/distill_agent_tools.md
-      - 'gigpo': T2/gigpo.md
-      - 'icrl': T2/icrl.md
-      - 'latent_agents': T2/latent_agents.md
-      - 'meow_tea_taro': T2/meow_tea_taro.md
-      - 'open_agentrl': T2/open_agentrl.md
-      - 'openclaw_rl': T2/openclaw_rl.md
-      - 'pi_play': T2/pi_play.md
-      - 'rstar2': T2/rstar2.md
-      - 'score': T2/score.md
-      - 'search_dont_guess': T2/search_dont_guess.md
-      - 'search_r1': T2/search_r1.md
-      - 'sod_stepwise': T2/sod_stepwise.md
-      - 'spear': T2/spear.md
-      - 'sweet_rl': T2/sweet_rl.md
-      - 'tcod': T2/tcod.md
-      - 'webagent_r1': T2/webagent_r1.md
-  - 'T3 · GFT 统一 SFT-RL & GRPO-RLVR':
-      - T3/index.md
-      - 'amft': T3/amft.md
-      - 'ampo': T3/ampo.md
-      - 'asft': T3/asft.md
-      - 'bapo': T3/bapo.md
-      - 'behavior_priming': T3/behavior_priming.md
-      - 'ca_survey': T3/ca_survey.md
-      - 'cbrl': T3/cbrl.md
-      - 'cepo': T3/cepo.md
-      - 'chord': T3/chord.md
-      - 'dapo': T3/dapo.md
-      - 'deepseek_r1': T3/deepseek_r1.md
-      - 'deepseekmath': T3/deepseekmath.md
-      - 'denoiserl': T3/denoiserl.md
-      - 'dft_reweight': T3/dft_reweight.md
-      - 'dr_grpo': T3/dr_grpo.md
-      - 'eaft': T3/eaft.md
-      - 'entropy_mechanism': T3/entropy_mechanism.md
-      - 'fest': T3/fest.md
-      - 'gmpo': T3/gmpo.md
-      - 'gspo': T3/gspo.md
-      - 'hapo': T3/hapo.md
-      - 'holderpo': T3/holderpo.md
-      - 'hpt_upge': T3/hpt_upge.md
-      - 'limit_rlvr': T3/limit_rlvr.md
-      - 'lite_ppo': T3/lite_ppo.md
-      - 'lp_reg': T3/lp_reg.md
-      - 'luffy': T3/luffy.md
-      - 'magistral': T3/magistral.md
-      - 'minimax_m1': T3/minimax_m1.md
-      - 'negative_reinforce': T3/negative_reinforce.md
-      - 'nft': T3/nft.md
-      - 'on_policy_sft': T3/on_policy_sft.md
-      - 'one_shot_rlvr': T3/one_shot_rlvr.md
-      - 'orz': T3/orz.md
-      - 'prefix_rft': T3/prefix_rft.md
-      - 'prorl': T3/prorl.md
-      - 'psft': T3/psft.md
-      - 'raft_reinforce_rej': T3/raft_reinforce_rej.md
-      - 'revisit_entropy': T3/revisit_entropy.md
-      - 'rl_plus': T3/rl_plus.md
-      - 'rl_survey_lrm': T3/rl_survey_lrm.md
-      - 'scaf_grpo': T3/scaf_grpo.md
-      - 'sed_sft': T3/sed_sft.md
-      - 'simplerl_zoo': T3/simplerl_zoo.md
-      - 'skywork_or1': T3/skywork_or1.md
-      - 'spurious_rewards': T3/spurious_rewards.md
-      - 'srft': T3/srft.md
-      - 'superrl': T3/superrl.md
-      - 'trapo': T3/trapo.md
-      - 'trl_v1': T3/trl_v1.md
-  - 'T4 · 思维链-Token 级 / MTP':
-      - T4/index.md
-      - 'beyond_loglik': T4/beyond_loglik.md
-      - 'llm_future_mtp': T4/llm_future_mtp.md
-      - 'rho1': T4/rho1.md
-      - 'segment_attrib': T4/segment_attrib.md
-      - 'srgen': T4/srgen.md
-      - 'sstoken': T4/sstoken.md
-      - 'vcore': T4/vcore.md
+  - 'T1 · On-Policy Distillation 核心 / 自蒸馏': T1.md
+  - 'T2 · Tool-Agent / 多轮': T2.md
+  - 'T3 · GFT 统一 SFT-RL & GRPO-RLVR': T3.md
+  - 'T4 · 思维链-Token 级 / MTP': T4.md
