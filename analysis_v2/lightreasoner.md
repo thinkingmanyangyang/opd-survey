@@ -3,24 +3,49 @@ lightreasoner | LightReasoner: Can Small Language Models Teach Large Language Mo
 **原始论文**:https://arxiv.org/abs/2510.07962
 
 ## 一眼看懂
-- 🟦 TL;DR:反直觉地用"小模型(amateur)教大模型(expert)"。在 expert(已有数学能力的大模型)与 amateur(无数学专训的小模型 Qwen2.5-0.5B)的下一-token 分布分歧大(KL 高)处,正是 expert 推理强项发挥的"关键决策步";把这些步上的对比 log-prob 差(`v'_C = log πE − log πA`,即 contrastive-decoding 信号)softmax 成软标签,反过来 LoRA 微调 expert 自己(self-distillation)。卖点:极省(单 H200、0.5h、1000 步、每步 16 样本、99% 更少 token)、无需 ground-truth 标签、无需大模型当老师。
+- 🟦 TL;DR:反直觉地用"小模型(amateur)教大模型(expert)"。在 expert(已有数学能力的大模型)与 amateur(无数学专训的小模型 Qwen2.5-0.5B)的下一-token 分布分歧大(KL 高)处,正是 expert 推理强项发挥的"关键决策步";把这些步上的对比 log-prob 差 \(v'_C=\log\pi_E-\log\pi_A\)(即 contrastive-decoding 信号)softmax 成软标签,反过来 LoRA 微调 expert 自己(self-distillation)。卖点:极省(单 H200、0.5h、1000 步、每步 16 样本、99% 更少 token)、无需 ground-truth 标签、无需大模型当老师。
 - 最巧的一步:**用 expert-amateur KL 散度做"关键步筛选 + 对比软标签"两件事的耦合**(§2.2-2.3,Eq 3-6)。抽掉对比监督(只在筛出的步上拿 expert 自己的 one-hot/路径微调)→ 平均掉 9.2%;抽掉步筛选(在全 token 上做对比)→ 掉 0.2% 但与对比联用时贡献被放大;**两者同时去掉掉 12.4%(超加性,大于各自之和)**——证明二者是紧耦合系统:没筛选则对比信号被琐碎步稀释,没对比则高价值步无法转成有效信号(Table 6)。这一耦合是全篇支点。
 
 ## 为什么做
-- 研究背景:LLM 推理增强主流靠 SFT + rejection sampling(生成多候选→ground-truth 过滤→对全 token 统一微调)。CoT 类工作表明推理能力预训练中已潜伏、可被激发。本方法谱系属 contrastive decoding(CD,Li et al. 2022)的"训练化"——原 CD 推理时用 expert−amateur log-prob 差重排序,本文把同一信号转成微调监督。
-- 解决的具体痛点:① SFT/拒绝采样**资源密集**(大规模 curated 数据、生成多候选、依赖 GT 过滤);② 对轨迹**所有 token 统一优化**,琐碎步与关键推理步同等对待——而只有约 20% token 真正承载学习价值(§2.2:60% token KLD∈[0,0.1),仅 20% 超 0.4)。
-- 相关工作 & 各自不足:Contrastive Decoding(CD,Li 2022 / O'Brien&Lewis 2023)——靠**刚性参数规模差**(OPT-13B vs 125M)制造对比、且只在**推理时**用、不持久(Table 4);SFT(贵、依赖 GT、全 token);GT supervision(人工解,效果弱)。Δ:① 把对比信号从推理时搬到**训练**(持久改进、独立推理);② 用**领域专长差**而非规模差当对比轴(可同尺寸甚至小教大)。
-- 动机链:推理能力潜伏可激发(现状)→ SFT 贵+全 token+依赖 GT(缺陷)→ expert-amateur 分歧处=关键步,对比差=免标签教学信号,只在高价值步构样(所以这样)。
+- 研究背景与来龙去脉:LLM 推理增强有三条并行路线。① **SFT + rejection sampling(主流)**:生成多候选 → ground-truth 过滤留正确轨迹 → 对**全 token** 统一微调。② **CoT 激发**:大量工作表明推理能力在预训练中**已潜伏**、可被恰当信号激活(本文卖点之一就是激活 base 模型这层潜力)。③ **Contrastive Decoding(CD,Li 2022 / O'Brien & Lewis 2023)**:本文的直系谱系——CD 在**推理时**用 expert−amateur 的 log-prob 差重排序候选 token,靠的是**刚性参数规模差**(如 OPT-13B vs 125M)制造对比。本文把 CD 的同一对比信号从"推理时重排序"**训练化**成"微调监督"。
+- 三条路线各自的**具体**短板:SFT/拒绝采样 —— **资源密集**(大规模 curated 数据、生成多候选、依赖 GT 过滤),且对轨迹**所有 token 一视同仁**,琐碎步与关键推理步同权(§2.2 实测:~60% token 的 KLD∈[0,0.1)、只有约 20% 超 0.4,即多数 token 不承载学习价值);GT supervision(人工标准解)—— 效果弱;Contrastive Decoding —— ⓐ 靠**刚性规模差**(需一大一小两个模型),ⓑ 只活在**推理时**、改进**不持久**(关掉对比即恢复),ⓒ 推理时双模型前向、开销翻倍(Table 4 精确对照)。Δ:① 把对比信号从推理时搬到**训练**(持久改进、推理时独立单模型);② 用**领域专长差**(expert 会数学、amateur 不会)而非**规模差**当对比轴——于是可同尺寸甚至"小模型当 amateur 教大模型"。
+- 解决的具体痛点:① SFT/拒绝采样资源密集(curated 数据 + 多候选 + GT 过滤);② 全 token 统一优化,关键步被琐碎步稀释。
+- 动机链:推理能力潜伏可激发(现状)→ SFT 贵 + 全 token + 依赖 GT(缺陷)→ expert-amateur 分歧大处=关键决策步,对比 log-prob 差=免标签教学信号,**只在高价值步构样**(所以这样)。
 - 与最近邻工作的 Δ:vs Contrastive Decoding(最近邻直系):LightReasoner 把 CD 的 expert−amateur 对比从**推理时重排序**变成**训练时软标签自蒸馏**(改进持久、推理时独立);并用领域专长差替代规模差(Table 4/5)。关键有用点:免 GT、免大老师、极省,且能激活 base 模型潜伏推理(非 instruct 模型 GSM8K +28.1%)。
 
 ## 怎么做 + 靠不靠谱
-- 方法流水线(Algorithm 1,Fig.4):**采样阶段**——① expert/amateur 对同前缀各出分布 πE/πA;② 逐步算 KL(πE‖πA),β-filter 只留 KLD>β 的关键步(Eq 3)；③ 对留下的步构对比软标签:先 α-mask 掉 πE 低置信 token(Eq 4),对 mask 内 token 算 contrast score v'_C=log(πE/πA)(Eq 5),softmax 归一并扩回全词表得 vC(Eq 6)。**微调阶段**——④ LoRA 训 expert 使 πE 匹配 vC,最小化 KL(vC‖πE),等价对 vC 加权的交叉熵(Eq 7-8)。采样 rollout 截到 128 token(早步更稳、少级联错误)。
+- 方法流水线(Algorithm 1,Fig.4,具体到输入→输出):用两个能力悬殊的模型——expert \(\pi_E\)(待提升,如 Qwen2.5-Math-1.5B)与 amateur \(\pi_A\)(更弱基线,固定 Qwen2.5-0.5B、无数学专训)。
+  - **采样阶段**:① \(\pi_E\) 自己续写一条响应 \(a_{1:T}\),其前缀序列 \(s_{1:T}\);在**每个前缀** \(s_t\) 上同时取 \(\pi_E(\cdot\mid s_t)\) 与 \(\pi_A(\cdot\mid s_t)\)。② 逐步算 KL 散度(Eq 3 的判据),β-filter **只留 KLD>β 的关键步**(分歧大=expert 独特推理发挥处)。③ 对留下的每个关键步构对比软标签:先 α-mask 掉 \(\pi_E\) 低置信 token(Eq 4),对 mask 内 token 算 contrast score(Eq 5),softmax 归一并扩回全词表得软标签 \(v_C\)(Eq 6)。输出=一批 (关键步前缀 \(s_t\),软标签 \(v_C(\cdot\mid s_t)\))。
+  - **微调阶段**:④ LoRA 训 expert 使 \(\pi_E\) 匹配 \(v_C\),最小化 \(D_{\mathrm{KL}}(v_C\|\pi_E)\),等价对 \(v_C\) 加权的交叉熵(Eq 7-8)。
+  - 数据流细节:采样 rollout **截到 128 token**(早步更稳、避免级联错误污染监督集);监督题来自 GSM8K 训练集 + CoT 提示;1000 步 × 每步 16 样本。
+- 核心算法/损失(真实形式 + 直觉,符号从 PDF §2.2/§2.3 抄准):
+  - **关键步判据**(Eq 3,criticality = expert 偏离 amateur 倾向的程度):保留满足
+    \[
+    D_{\mathrm{KL}}\!\big(\pi_E(\cdot\mid s_t)\,\|\,\pi_A(\cdot\mid s_t)\big)=\sum_{a\in A}\pi_E(a\mid s_t)\log\frac{\pi_E(a\mid s_t)}{\pi_A(a\mid s_t)}>\beta
+    \]
+    的步;\(A\) 为词表。
+  - **α-mask 支撑集**(Eq 4,去尾部噪声 token,防低置信概率扭曲监督):
+    \[
+    A_{\mathrm{mask}}=\Big\{a\in A:\ \pi_E(a\mid s_t)\ge \alpha\cdot\max_{b\in A}\pi_E(b\mid s_t)\Big\},\quad \alpha\in(0,1].
+    \]
+  - **对比分数**(Eq 5,量化 expert 相对 amateur 的优势 margin):\(\ v'_C(a\mid s_t)=\log\dfrac{\pi_E(a\mid s_t)}{\pi_A(a\mid s_t)}\)。
+  - **软标签**(Eq 6):对 \(A_{\mathrm{mask}}\) 内的 \(v'_C\) 做 softmax 得 \(\tilde v_C\),再扩回全词表 \(v_C(a\mid s_t)=\tilde v_C(a\mid s_t)\cdot\mathbb 1[a\in A_{\mathrm{mask}}]\)。它把"expert 优于 amateur 的概率质量"编码成概率监督。
+  - **自蒸馏目标**(Eq 7→8,把 \(v_C\) 回灌 expert):
+    \[
+    \mathcal L(s_t)=D_{\mathrm{KL}}\!\big(v_C(\cdot\mid s_t)\,\|\,\pi_E(\cdot\mid s_t)\big)=\sum_{a\in A}v_C(a\mid s_t)\log\frac{v_C(a\mid s_t)}{\pi_E(a\mid s_t)},
+    \]
+    因第一项对 \(\pi_E\) 为常数,等价于对 \(v_C\) 加权的交叉熵
+    \[
+    \tilde{\mathcal L}(s_t)=-\sum_{a\in A}v_C(a\mid s_t)\log\pi_E(a\mid s_t).
+    \]
+- 模块如何咬合:Eq 3(β-filter)与 Eq 5(对比软标签)是**紧耦合系统**——KL 高的步先被选出(否则对比信号被琐碎步稀释),再在这些步上把"expert vs amateur 的对比 margin"转成监督(否则高价值步无法转成有效信号);两者在 Eq 7/8 的损失里合流,只训 expert 自己(self-distillation)。
+- 关键超参与默认值:masking 阈 \(\alpha=0.2\)、step-filter 阈 \(\beta=0.4\)、rollout 截断 128 token、1000 步 × 16 样本;amateur 固定 Qwen2.5-0.5B;LoRA 微调。
 - 逐组件必要性(均有消融,Table 6 / Fig 7):
   - **Informative step selection(β-filter)**:去掉 → GSM8K −3.0%、平均小降;证明多数步是噪声。
   - **Contrastive supervision(amateur 对比)**:去掉(只在筛出步上微调 expert 自己路径)→ 平均 −9.2%;证明对比是放大 expert 优势、远离 amateur 倾向的核心。
   - **二者联合(超加性)**:全去掉 → −12.4% > 9.2%+0.2%,说明紧耦合互依。
   - **对照基线**:GT supervision(人工解)弱;Rejection SFT(自生成正确轨迹)有增益但仍不及"仅对比监督"变体——印证"模型从自身行为信号学得最好"。
-- 关键机制/公式(直觉):KL 高=expert 偏离 amateur 倾向的程度=expert 独特推理发挥处;v'_C=log(πE/πA) 量化 expert 相对优势 margin;α-mask 去尾部噪声;最终把"expert 优于 amateur 的概率质量"当软监督回灌 expert。
+- 关键机制直觉:KL 高=expert 偏离 amateur 倾向的程度=expert 独特推理发挥处;\(v'_C=\log(\pi_E/\pi_A)\) 量化 expert 相对优势 margin;α-mask 去尾部噪声;最终把"expert 优于 amateur 的概率质量"当软监督回灌 expert。
 - 实验与证据:
   - 模型:Expert ∈ {Qwen2.5-Math-1.5B/7B + 各 Instruct、DeepSeek-R1-Distill-Qwen-1.5B};Amateur 固定 Qwen2.5-0.5B(无数学专训)。监督样本来自 GSM8K 训练集 + CoT 提示。α=0.2、β=0.4、rollout 128 token、1000 步×16 样本。
   - benchmark:GSM8K/MATH/SVAMP/ASDiv/Minerva/OlympiadBench/MMLU-STEM 7 个,zero-shot pass@1(MMLU 5-shot),Qwen2.5-Math toolkit 评测。
