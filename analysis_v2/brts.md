@@ -3,22 +3,52 @@ brts | On-Policy Distillation with Best-of-N Teacher Rollout Selection (BRTS) | 
 **原始论文**:https://arxiv.org/abs/2605.09725 （arXiv:2605.09725v2）
 
 ## 一眼看懂
-- 🟦 TL;DR:标准在线策略蒸馏(OPD,即"学生用自己采样的轨迹、由 teacher 逐 token 打 log-prob 当监督")有两个隐患——监督算在"学生自己跑出来、可能跑歪"的噪声前缀上,而且每道题通常只用**一条随机抽的 teacher 轨迹**,方差极大,抽到错的/不匹配的就会被放大。BRTS 的做法:每道题先采 N 条 teacher 轨迹,按"先看答对没(correctness)、再看像不像学生当前会走的(alignment)"挑一条;若 N 条全错,就把 ground-truth 答案当"静默校验"偷偷塞进 prompt 让 teacher 重新自然推导出一条对的(path-recovery);把选中的这条轨迹作为一条额外的 **teacher-context 蒸馏分支**,和标准 student-context OPD 一起训(总损失 \(L_{\mathrm{total}} = L_{\text{stu-ctx}} + \lambda\, L_{\text{tea-ctx}}\),\(\lambda=10\))。
-- 最巧的一步:**抽掉"correctness-first 选择 + Tier-2 ground-truth 恢复"这一层,方法就退化回普通 OPD**。因为 BRTS 真正新增的不是损失形式(teacher-context KL 本身很朴素),而是"在 OPD 内循环里把随机 teacher rollout 结构化成可靠监督"这个 curation 步骤——尤其是难题上全错时还能靠注答案"救"出一条对的轨迹(§3.2 Tier-2),保证最该给监督的地方分支不空转。为什么是它:论文全部增益(Table 1 候选池 0/2/4 递增、Table 2 Tier-2)都挂在"挑得准/救得回"上,损失形式不变(§3.3 明说 "BRTS does not replace OPD; it augments OPD")。
+
+> 一句话导读：标准 OPD 每道题只随机抽一条 teacher 轨迹当监督,方差大、还可能抽到错的。BRTS 在 OPD 内部加一个"挑轨迹 + 救轨迹"的步骤——先按"答对没 + 像不像学生"选一条好的,题太难全错时还能偷偷塞答案逼 teacher 推出一条对的;损失形式本身不变。
+
+- 🟦 TL;DR:先说什么是 OPD（在线策略蒸馏）——学生用自己采样的轨迹、由 teacher 逐 token 打 log-prob 当监督。标准 OPD 有两个隐患:
+  - 监督算在"学生自己跑出来、可能跑歪"的噪声前缀上;
+  - 每道题通常只用**一条随机抽的 teacher 轨迹**,方差极大,一旦抽到错的或不匹配的就会被放大。
+  - BRTS 的做法分三步:① 每道题先采 N 条 teacher 轨迹,按"先看答对没（correctness）、再看像不像学生当前会走的（alignment）"挑出一条;② 若 N 条全错,就把 ground-truth 答案当"静默校验"偷偷塞进 prompt,让 teacher 重新自然地推导出一条对的（这就是 path-recovery）;③ 把选中的这条轨迹当成一条额外的 **teacher-context 蒸馏分支**,和标准的 student-context OPD 一起训。总损失为 \(L_{\mathrm{total}} = L_{\text{stu-ctx}} + \lambda\, L_{\text{tea-ctx}}\)（\(\lambda=10\)）。
+- 最巧的一步:**把"correctness-first 选择 + Tier-2 ground-truth 恢复"这一层抽掉,方法就退化回普通 OPD**。因为 BRTS 真正新增的不是损失形式（teacher-context KL 本身很朴素）,而是"在 OPD 内循环里,把随机 teacher rollout 结构化成可靠监督"这个 curation（数据筛选/整理）步骤——尤其是难题上全错时,还能靠注入答案"救"出一条对的轨迹（§3.2 Tier-2）,保证最该给监督的地方不会空转。为什么是这一步:论文里全部增益（Table 1 候选池 0/2/4 递增、Table 2 Tier-2）都挂在"挑得准 / 救得回"上,损失形式始终不变（§3.3 明说 "BRTS does not replace OPD; it augments OPD"）。
 
 ## 为什么做
-- 研究背景:OPD 已成 LLM 后训练标准工具(§1 列 Qwen3[47]/MiMo-V2[44]/GLM-5[11] 等工业 pipeline 采用,以一小部分 RL 算力获可比增益,引 [29] Thinking Machines 的 OPD 博客)。配方很简单:学生从自己的策略 \(\pi_S\) 采 rollout,用 teacher \(\pi_T\) 在这些 rollout 上逐 token 的 log-prob 当稠密监督。相比在 teacher 文本上做 SFT 或序列级蒸馏(SeqKD[23]),OPD 因"监督定义在学生推理时真实访问的状态上"而更少 exposure bias([3] scheduled sampling、[33] DAgger、[45] imitation error bound 的经典论证)。
-- 解决的具体痛点:① 监督算在"不完美学生生成、可能漂到噪声推理态"的前缀上(student context 噪声,§1 + Fig.1a):难题上学生前缀会漂入噪声推理态,此处 teacher 的局部反馈信息量低,且学生可能**从头到尾没见过一条完整正确解**;② 每 prompt 通常只依赖**单条随机 teacher rollout**,而 teacher 本身随机——同题不同采样在正确性/推理风格/与学生接近度上差异大(尤其难题),单样本是对 teacher 该题能力的**高方差估计**,抽到错的/不匹配的就放大噪声(§1)。
-- 相关工作 & 各自不足(把这条线的来龙去脉摆清):
-  - **(a) off-policy → on-policy 蒸馏的演化(§2 第一段)**。经典 KD([12] survey、[17] Hinton、[20] TinyBERT、[34] DistilBERT、[42] MiniLM)在 teacher 生成文本上做监督。对自回归 LM,在固定 teacher 输出上做 off-policy 蒸馏会引入 **distribution mismatch**:训练时条件在 teacher 诱导的上下文、推理时却要条件在自己的前缀([3,33,45])。在固定 teacher 输出上优化监督目标还会**把学生过度约束到它够不着的轨迹**([46] speculative KD、[54] capacity-gap law),并诱发灾难性遗忘([30] continual FT 实证、[36] RL's Razor)。OPD 用"学生生成轨迹 + teacher 监督学生真实访问态"缓解之:MiniLLM[13]、GKD[1] 用 reverse-KL 及相关散度形式化;Qwen3[47]/MiMo[44]/GLM-5[11] 把蒸馏与 SFT、outcome-reward RL([15] R1、[35] DeepSeekMath、[52] DAPO)组合。近期变体把 OPD 推到黑盒([50] = 本survey 的 gad)、context([51])、entropy-aware([21])、reward-extrapolated([49])等设定。
-  - **(b) "理解 OPD 何时成功/失败"这条线(§2 第二段)**。[26]（Rethinking OPD,本 survey 的 rethink_opd）指出成功 OPD 需三条件:师生**思维模式兼容**、teacher 有**真正新的知识**、二者**高概率 token 集重叠随训练增大**;[10]（经验失败模式）、[19,21,22] 进一步把失败归因到噪声学生前缀、熵失配、不稳定 target、师生推理态对齐弱。这些发现指出 OPD 不只取决于散度形式,**还取决于施加监督的 context**。还牵出 token 级 loss 方向:经典 KD 强调 teacher-confident token([17]),而很多 OPD 实现监督的是 student 策略采样/高权重的 token([29,44])。小模型难模仿风格不匹配的强 reasoner([9] specializing small models、[14] OpenThoughts、[27] small models struggle)。
-  - **(c) rollout 选择 / privileged hint / 数据过滤(§2 第三段)**。best-of-N、拒绝采样、自训练([6] GSM8K verifier、[8] RAFT、[28] step verifier、[39] ReST、[41] summarization-RLHF、[43] self-consistency、[53] STaR)做的是 **outer-loop 离线过滤**保留高质量样本供推理/训练;privileged 信息族([7] HDPO、[18] RL via self-distillation、[32] privileged info distillation、[38] self-distillation continual、[40] learning by distilling context、[48] self-distilled RLVR、[55] self-distilled reasoner)用 ground-truth/示范/反馈增强监督。
-- 本文站在谁肩上 & 与最近邻工作的精确差异:BRTS 直接承接 [26][29] 的标准 OPD recipe(同样的 reverse-KL + top-K 近似),把上面 (c) 的"选 + 救"放进 **OPD 内循环**——选中轨迹**不是离线训练数据,而是为当前这步 OPD 更新定制的 teacher-context 信号**(§2 第三段原文:"used not as offline training data, but as a teacher-context signal tailored to the current OPD update")。与离线 best-of-N/拒绝采样的精确差:① 选择在训练步内、针对**当前学生分布**(alignment 用 student top-K 重叠);② 新增的是一条**反向条件**的 teacher-context 分支(在 teacher 自己可靠前缀上、用 teacher top-K 监督),而非把选中样本当 SFT 目标;③ 全错时还能用 ground-truth **静默校验**逼 teacher 自然推导,救回"最需要监督却没正确样本"的难题。为什么有用:teacher-context 分支让学生见到"完整、连贯、且选得贴近自己当前分布"的推理路径,补上 student-context 分支看不到的"完整正确解"(§3.3)。
+
+> 一句话导读：OPD 已是工业 post-training 标配,但它的监督有两个软肋——一是建在学生可能跑歪的前缀上,二是每题只押一条随机 teacher 轨迹、方差大。BRTS 就是冲这两点去的。
+
+- 研究背景:OPD 已经是 LLM 后训练的标准工具（§1 列了 Qwen3[47]/MiMo-V2[44]/GLM-5[11] 等工业 pipeline 都在用,只花一小部分 RL 算力就能拿到可比的增益,引 [29] Thinking Machines 的 OPD 博客）。配方很简单:学生从自己的策略 \(\pi_S\) 采 rollout,再用 teacher \(\pi_T\) 在这些 rollout 上逐 token 的 log-prob 当稠密监督。相比在 teacher 文本上做 SFT、或序列级蒸馏（SeqKD[23]）,OPD 的好处是"监督定义在学生推理时真正访问到的状态上",因此 exposure bias（训练/推理分布不一致带来的偏差）更小（[3] scheduled sampling、[33] DAgger、[45] imitation error bound 都是这套经典论证）。
+- 解决的具体痛点,有两条:
+  - ① **student context 噪声**（§1 + Fig.1a）:监督算在"学生自己生成、还不完美、可能漂到噪声推理态"的前缀上。难题上,学生前缀容易漂进噪声推理态;在这种地方,teacher 的局部反馈信息量很低,而且学生可能**从头到尾就没见过一条完整的正确解**。
+  - ② **单条 teacher rollout 的高方差**:每个 prompt 通常只依赖**一条随机抽的 teacher rollout**,而 teacher 本身是随机的——同一道题、不同采样,在正确性、推理风格、与学生的接近度上差异都很大（难题尤甚）。所以单样本其实是对"teacher 在这道题上的能力"的一个**高方差估计**,抽到错的或不匹配的就会放大噪声（§1）。
+- 相关工作 & 各自不足(把这条线的来龙去脉摆清),分三条线:
+  - **(a) 从 off-policy 蒸馏到 on-policy 蒸馏的演化(§2 第一段)**。
+    - 经典 KD（知识蒸馏:[12] survey、[17] Hinton、[20] TinyBERT、[34] DistilBERT、[42] MiniLM）在 teacher 生成的文本上做监督。
+    - 但对自回归 LM,在固定 teacher 输出上做 off-policy 蒸馏会引入 **distribution mismatch（分布失配）**:训练时条件在 teacher 诱导的上下文上,推理时却要条件在自己的前缀上（[3,33,45]）。
+    - 在固定 teacher 输出上优化监督目标,还有两个副作用:一是**把学生过度约束到它根本够不着的轨迹**（[46] speculative KD、[54] capacity-gap law）;二是诱发灾难性遗忘（[30] continual FT 实证、[36] RL's Razor）。
+    - OPD 的缓解办法是"学生生成轨迹 + teacher 监督学生真正访问到的状态":MiniLLM[13]、GKD[1] 用 reverse-KL 及相关散度把它形式化;Qwen3[47]/MiMo[44]/GLM-5[11] 则把蒸馏与 SFT、outcome-reward RL（[15] R1、[35] DeepSeekMath、[52] DAPO）组合起来用。
+    - 近期还有一批变体把 OPD 推到各种新设定:黑盒（[50],即本 survey 的 gad）、context（[51]）、entropy-aware（[21]）、reward-extrapolated（[49]）。
+  - **(b) "理解 OPD 何时成功/何时失败"这条线(§2 第二段)**。
+    - [26]（Rethinking OPD,本 survey 的 rethink_opd）指出成功的 OPD 需要三个条件:师生**思维模式兼容**、teacher 有**真正新的知识**、二者**高概率 token 集合的重叠随训练增大**。
+    - [10]（经验失败模式）及 [19,21,22] 进一步把失败归因到:噪声学生前缀、熵失配、不稳定的 target、师生推理态对齐弱。
+    - 这些发现共同说明:OPD 不只取决于散度形式,**还取决于施加监督的 context**。
+    - 由此还牵出 token 级 loss 的方向问题:经典 KD 强调 teacher-confident 的 token（[17]）,而很多 OPD 实现监督的却是 student 策略采样到/高权重的 token（[29,44]）。
+    - 另外,小模型本就难以模仿风格不匹配的强 reasoner（[9] specializing small models、[14] OpenThoughts、[27] small models struggle）。
+  - **(c) rollout 选择 / privileged hint / 数据过滤(§2 第三段)**。
+    - 一类是 best-of-N、拒绝采样、自训练（[6] GSM8K verifier、[8] RAFT、[28] step verifier、[39] ReST、[41] summarization-RLHF、[43] self-consistency、[53] STaR）——它们做的是 **outer-loop 离线过滤**,保留高质量样本供推理或训练。
+    - 另一类是 privileged 信息族（[7] HDPO、[18] RL via self-distillation、[32] privileged info distillation、[38] self-distillation continual、[40] learning by distilling context、[48] self-distilled RLVR、[55] self-distilled reasoner）——用 ground-truth / 示范 / 反馈来增强监督。
+- 本文站在谁肩上 & 与最近邻工作的精确差异:BRTS 直接承接 [26][29] 的标准 OPD recipe（同样的 reverse-KL + top-K 近似）,把上面 (c) 的"选 + 救"放进 **OPD 的内循环**——选中的轨迹**不是离线训练数据,而是为当前这一步 OPD 更新定制的 teacher-context 信号**（§2 第三段原文 "used not as offline training data, but as a teacher-context signal tailored to the current OPD update"）。与离线 best-of-N / 拒绝采样的精确差别有三:
+  - ① 选择是在训练步内进行、且针对**当前的学生分布**（alignment 用 student top-K 重叠来衡量）;
+  - ② 新增的是一条**反向条件**的 teacher-context 分支（在 teacher 自己可靠的前缀上、用 teacher top-K 做监督）,而不是把选中样本当成 SFT 目标;
+  - ③ 全错时还能用 ground-truth **静默校验**逼 teacher 自然推导,把"最需要监督、却没有正确样本"的难题救回来。
+  - 为什么有用:teacher-context 分支让学生见到一条"完整、连贯、又选得贴近自己当前分布"的推理路径,正好补上 student-context 分支看不到的那条"完整正确解"（§3.3）。
 
 ## 怎么做 + 靠不靠谱
-- **符号与 OPD 基线(§3.1)**:prompt \(x\)、ground-truth \(y^\star\);student/teacher 策略 \(\pi_S,\pi_T\),各自定义词表 \(V\) 上的自回归分布。轨迹 \(y=(y_1,\dots,y_T)\) 的概率分解 \(\pi(y\mid x)=\prod_{t=1}^{T}\pi(y_t\mid x,y_{<t})\)(Eq.1)。记学生 rollout \(\hat y_S\sim\pi_S(\cdot\mid x)\)、teacher rollout \(y_T\sim\pi_T(\cdot\mid x)\)。标准 OPD 最小化序列级 reverse-KL(Eq.2):
+
+> 一句话导读：整个流程就是在标准 OPD 的一步更新里,插进一个"采 N 条 teacher 轨迹 → 三层优先级挑/救一条 → 拿它再算一支损失"的环节。下面 7 步可复现,关键超参（\(\lambda=10\)、teacher top-K=16 等）都列在末尾。
+
+- **符号与 OPD 基线(§3.1)**:给定 prompt \(x\)、ground-truth 答案 \(y^\star\);student/teacher 策略分别为 \(\pi_S,\pi_T\),各自在词表 \(V\) 上定义一个自回归分布。一条轨迹 \(y=(y_1,\dots,y_T)\) 的概率按自回归分解 \(\pi(y\mid x)=\prod_{t=1}^{T}\pi(y_t\mid x,y_{<t})\)（Eq.1）。记学生 rollout 为 \(\hat y_S\sim\pi_S(\cdot\mid x)\)、teacher rollout 为 \(y_T\sim\pi_T(\cdot\mid x)\)。标准 OPD 最小化序列级的 reverse-KL（Eq.2）:
   \(\displaystyle L_{\mathrm{OPD}}(S)=\mathbb{E}_{x,\,\hat y_S\sim\pi_S}\!\left[\sum_{t=1}^{T} D_{\mathrm{KL}}\!\big(\pi_S(\cdot\mid x,\hat y_S^{<t})\,\big\|\,\pi_T(\cdot\mid x,\hat y_S^{<t})\big)\right].\)
-  实现里每步 KL 用**采样的 / top-K token 集**近似,该集合**默认取自 student 当前前缀下 student 分布的 top-K**([29,44])——即"在学生真实访问的态上纠正学生"。BRTS 在此之上加一条 correctness-/alignment-aware 的 **teacher-context 分支**。论文分三块讲(§3.2 轨迹 curation、§3.3 teacher-context 监督、§3.4 各分支 top-K 方向),Algorithm 1 给出单训练步。
+  实现里,每一步的 KL 都用**采样的 / top-K token 集**来近似;这个集合**默认取自"student 在当前前缀下、student 分布的 top-K"**（[29,44]）——也就是"在学生真正访问到的状态上去纠正学生"。BRTS 就是在此之上,再加一条带 correctness/alignment 意识的 **teacher-context 分支**。论文分三块讲清楚:§3.2 讲轨迹 curation、§3.3 讲 teacher-context 监督、§3.4 讲各分支的 top-K 方向;Algorithm 1 给出完整的单训练步。
 
 - **方法流水线(逐步 输入→输出,Algorithm 1 + §3.2~3.4,具体到可复现)**:
   - **输入**:prompt \(x\)、ground-truth \(y^\star\)、teacher \(\pi_T\)、student \(\pi_S\)、Tier-1 采样数 \(N\)、辅助权重 \(\lambda\)。
@@ -31,13 +61,20 @@ brts | On-Policy Distillation with Best-of-N Teacher Rollout Selection (BRTS) | 
   - **Step 7 两支损失 + 一步梯度(§3.3)**:在 \(\hat y_S\) 上算 student-context 损失(用 **student top-K**)、在选中 \(y'\) 上算 teacher-context 损失(用 **teacher top-K**),合成 \(L_{\mathrm{total}}=L_{\text{stu-ctx}}+\lambda L_{\text{tea-ctx}}\),对 \(\pi_S\) 参数走一步梯度。→ 输出更新后的学生。
   - 关键默认超参(附录 A,复现必备):AdamW(betas (0.9,0.999)、weight decay 0.01、grad clip 1.0)、**常数 lr 1e-6 无 warmup**、token-mean loss 聚合、mini-batch 64、PPO micro-batch 1/GPU 动态批、bf16;**关闭对 frozen reference 的 KL**(故目标里只剩 student-context 蒸馏 KL 与 teacher-context 辅助 KL 两项);**teacher top-K=16**;\(\lambda=10\) 全程固定;8×B200 单节点;验证每 10 步一次、k=4、temp 0.7、top-p 0.95、max validation response 31744。
 
-- **两支损失的真实形式与直觉(§3.3,Eq.3/4/5)**:两支都在"匹配的条件 context"下比 teacher 与 student 分布。student-context 分支两个分布都条件在学生前缀 \(\hat y_S^{<t}\);teacher-context 分支两个分布都条件在选中 teacher 前缀 \(y'^{<t}\)。
+- **两支损失的真实形式与直觉(§3.3,Eq.3/4/5)**:两支都是"在匹配的条件 context 下,比较 teacher 与 student 的分布"。区别在条件的前缀:student-context 分支,两个分布都条件在学生前缀 \(\hat y_S^{<t}\);teacher-context 分支,两个分布都条件在选中的 teacher 前缀 \(y'^{<t}\)。
   \(\displaystyle L_{\text{stu-ctx}}=\mathbb{E}\!\left[\sum_t D_{\mathrm{KL}}\!\big(\pi_S(\cdot\mid x,\hat y_S^{<t})\,\big\|\,\pi_T(\cdot\mid x,\hat y_S^{<t})\big)\right],\)
   \(\displaystyle L_{\text{tea-ctx}}=\mathbb{E}\!\left[\sum_t D_{\mathrm{KL}}\!\big(\pi_T(\cdot\mid x,y'^{<t})\,\big\|\,\pi_S(\cdot\mid x,y'^{<t})\big)\right], \qquad L_{\mathrm{total}}=L_{\text{stu-ctx}}+\lambda\,L_{\text{tea-ctx}}.\)
-  - **两条 KL 方向相反**(本文一个被低调处理、但很重要的设计):student-context(Eq.3)是 **reverse 形式** \(D_{\mathrm{KL}}(\pi_S\|\pi_T)\)(\(\pi_S\) 在前),"在学生访问态上把学生拉向 teacher";teacher-context(Eq.4)是 **forward 形式** \(D_{\mathrm{KL}}(\pi_T\|\pi_S)\)(\(\pi_T\) 在前),"在 teacher 可靠前缀上把学生分布拉去覆盖 teacher"。直觉:reverse-KL 是 mode-seeking(让学生在自己态上别犯错),forward-KL 是 mode-covering(让学生别漏掉 teacher 在好路径上偏好的 token)。**论文未论证为何两支取相反方向**——逻辑链上一个未解释的设计选择〔推断〕。
-  - **\(\lambda\) 的标度直觉(§3.3 原文)**:teacher-context 分支评在"通常比噪声学生 rollout 更连贯"的选中轨迹上,故其原始贡献在 \(\lambda=1\) 时太小;经验取 \(\lambda=10\) 给它"有意义的尺度且仍稳定",全实验用此值。**未给 \(\lambda\) 敏感性扫描**〔推断:仅单值,无 5/10/20 对照〕。
+  - **两条 KL 方向是相反的**（本文一个被低调处理、但其实很重要的设计）:
+    - student-context（Eq.3）是 **reverse 形式** \(D_{\mathrm{KL}}(\pi_S\|\pi_T)\)（\(\pi_S\) 在前）,作用是"在学生访问的状态上,把学生拉向 teacher";
+    - teacher-context（Eq.4）是 **forward 形式** \(D_{\mathrm{KL}}(\pi_T\|\pi_S)\)（\(\pi_T\) 在前）,作用是"在 teacher 可靠的前缀上,把学生分布拉去覆盖 teacher"。
+    - 直觉:reverse-KL 是 mode-seeking（让学生在自己的状态上别犯错）,forward-KL 是 mode-covering（让学生别漏掉 teacher 在好路径上偏好的 token）。
+    - 不过**论文没有论证为什么两支要取相反方向**——这是逻辑链上一个没解释清楚的设计选择〔推断〕。
+  - **\(\lambda\) 的标度直觉（§3.3 原文）**:teacher-context 分支评在"通常比噪声学生 rollout 更连贯"的选中轨迹上,所以它的原始贡献在 \(\lambda=1\) 时太小;经验上取 \(\lambda=10\),既给它一个"有意义的尺度"又仍然稳定,全实验都用这个值。**没有给 \(\lambda\) 的敏感性扫描**〔推断:只用了单一值,没有 5/10/20 的对照〕。
 
-- **top-K 方向:student- vs teacher-confident(§3.4,"注入新能力"的载体)**:两支都实现为 top-K 聚合损失,差在候选 token 集怎么定义。student-context 分支候选集 = student 前缀下 **student 的 top-K**(监督学生自认为合理的 token,做定向纠错);teacher-context 分支候选集 = 选中 teacher 前缀下 **teacher 的 top-K**(反映 teacher 在高质量轨迹上的局部分布,**会引入学生当前 top 之外、teacher 偏好的 token**——这正是"注入超出学生探索范围新能力"的机制),同时仍把监督集中在紧凑 top-K 上。**未单独消融**"teacher-context 也改用 student top-K"〔推断〕。
+- **top-K 方向:student-confident vs teacher-confident（§3.4,这是"注入新能力"的载体）**:两支都实现成 top-K 聚合损失,差别在"候选 token 集怎么定义"。
+  - student-context 分支的候选集 = student 前缀下 **student 自己的 top-K**——监督的是"学生自认为合理的 token",做定向纠错。
+  - teacher-context 分支的候选集 = 选中 teacher 前缀下 **teacher 的 top-K**——它反映 teacher 在高质量轨迹上的局部分布,**会引入学生当前 top-K 之外、但 teacher 偏好的 token**。这正是"注入超出学生探索范围的新能力"的机制;同时监督仍集中在一个紧凑的 top-K 上。
+  - **没有单独消融过**"如果 teacher-context 也改用 student top-K 会怎样"〔推断〕。
 
 - **逐组件必要性(消融证据 + 缺口)**:
   - **Tier-1 候选池 \(N\)**:降"抽到错轨迹"的方差。Table 1 候选 0/2/4 递增,AIME24 mean 0.3917 →(1cand)0.3750 →(2cand)0.3750 →(4cand)**0.4000**、majority 0.4146→**0.4306**;Fig.6(e) Tier-1 命中率 2 候选 52.73% → 4 候选 66.70%。没它就退化回单样本高方差。

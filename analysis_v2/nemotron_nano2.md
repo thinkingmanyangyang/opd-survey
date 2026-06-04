@@ -3,22 +3,44 @@ nemotron_nano2 | NVIDIA Nemotron Nano 2: An Accurate and Efficient Hybrid Mamba-
 **原始论文**：https://arxiv.org/abs/2508.14444
 
 ## 一眼看懂
-- 🟦 TL;DR：造一个能在**单张 A10G(22GiB)上做 128k 推理**的紧凑推理模型。先预训练 12B 混合 Mamba-Transformer base(20T tokens, FP8)→ 多阶段 SFT + 多分支对齐(IFeval RL / on-policy DPO 工具 / GRPO-RLHF + 模型合并)得对齐 12B → 用 **Minitron(剪枝 + 仅 forward-KL 的 logit 蒸馏)** 压到 9B 恢复精度。结果:在 8k 输入/16k 输出等生成密集场景，吞吐比 Qwen3-8B 高 **3×-6×**，同时精度相当或更优。【原文 §Abstract/§1/§4.4/Fig.1】
-- 最巧的一步：从工程系统看，是**"先训大(12B)再剪小(9B)再 forward-KL 蒸馏恢复"** 这条 Minitron 路线(§4.3:logit 蒸馏在精度恢复阶段优于普通微调)。从"可控推理"看，最巧的是**训练时混入"突然截断到 1-2k token 的推理轨迹"**(§3.4)——抽掉它,模型在短 thinking budget 下就会停不下来、生成多余 `</think>`、well-formedness 暴跌(Fig.5a vs 5b)。两者都是"对症的工程一刀",非新算法。【原文 §3.4/§4.3/Fig.5】
+> 一句话导读:目标是把推理模型塞进单张 22GiB 显卡还能跑 128k 上下文——先训 12B 大模型,再用 Minitron(剪枝 + forward-KL logit 蒸馏)压到 9B 恢复精度,关键是它的"蒸馏"是固定教师 logits 的 off-policy KD,跟本课题的 on-policy 蒸馏不是一回事。
+
+- 🟦 TL;DR:造一个能在**单张 A10G(22GiB)上做 128k 推理**的紧凑推理模型。路线分三步:
+  - 预训练 12B 混合 Mamba-Transformer base(20T tokens, FP8);
+  - 多阶段 SFT + 多分支对齐(IFeval RL / on-policy DPO 工具 / GRPO-RLHF + 模型合并)得对齐 12B;
+  - 用 **Minitron(剪枝 + 仅 forward-KL 的 logit 蒸馏)** 压到 9B 恢复精度。
+  - 结果:在 8k 输入/16k 输出等生成密集场景,吞吐比 Qwen3-8B 高 **3×-6×**,同时精度相当或更优。【原文 §Abstract/§1/§4.4/Fig.1】
+- 最巧的一步(两个,都是"对症工程一刀"非新算法):
+  - 从工程系统看:**"先训大(12B)再剪小(9B)再 forward-KL 蒸馏恢复"** 这条 Minitron 路线(§4.3:logit 蒸馏在精度恢复阶段优于普通微调);
+  - 从"可控推理"看:**训练时混入"突然截断到 1-2k token 的推理轨迹"**(§3.4)——抽掉它,模型在短 thinking budget(思考预算)下就会停不下来、生成多余 `</think>`、well-formedness(格式良好率)暴跌(Fig.5a vs 5b)。【原文 §3.4/§4.3/Fig.5】
 
 ## 为什么做
-- 研究背景：推理模型要生成长 thinking 轨迹，对吞吐压力大。Nemotron-H 提出把多数自注意力层替换为 Mamba-2 的混合架构提升长序列生成速度;压缩侧承袭 Minitron(剪枝 + 知识蒸馏)。【原文 §1/§2/§4.1】
-- 解决的具体痛点：① 12B bf16 权重 **22.9GiB > A10G 22GiB**，**必须压缩**才能单卡 128k 推理;② 推理模型在不同 thinking budget 下**鲁棒性差**(budget 截断后仍停在 thinking 模式、生成多余 `</think>`、well-formedness 下降);③ Stage-1 SFT 的 128k 拼接**损害工具调用学习**;④ 推理能力与 chat 能力存在**权衡**。【原文 §1/§3.1-3.4/Fig.5】
-- 相关工作 & 各自不足(站谁肩上 + 精确差异)：
+> 一句话导读:推理模型又大又慢,12B 权重塞不进 22GiB 显卡,而且短思考预算下停不下来、几种对齐能力还互相打架——所以要压缩 + 控 budget + 多分支合并一起解决。
+
+- 研究背景:推理模型要生成长 thinking 轨迹,对吞吐压力大。Nemotron-H 提出把多数自注意力层替换为 Mamba-2 的混合架构提升长序列生成速度;压缩侧承袭 Minitron(剪枝 + 知识蒸馏)。【原文 §1/§2/§4.1】
+- 解决的具体痛点:
+  - ① 12B bf16 权重 **22.9GiB > A10G 22GiB**,**必须压缩**才能单卡 128k 推理;
+  - ② 推理模型在不同 thinking budget 下**鲁棒性差**(budget 截断后仍停在 thinking 模式、生成多余 `</think>`、well-formedness 下降);
+  - ③ Stage-1 SFT 的 128k 拼接**损害工具调用学习**;
+  - ④ 推理能力与 chat 能力存在**权衡**。【原文 §1/§3.1-3.4/Fig.5】
+- 相关工作 & 各自不足(站谁肩上 + 精确差异):
   - **Nemotron-H**(混合 Mamba-Transformer):提供架构基座,但**未做推理模型的压缩 + budget 控制**。
   - **Minitron / Muralidharan 2024 / Sreenivas 2024 / Taghibakhshi 2025**(剪枝 + KD 框架):本文直接复用其重要性估计与 forward-KL 蒸馏配方,但原框架为压缩 **base 模型**、未含推理模型的 budget/RL 恢复;本文扩展到压缩**推理**模型、并在剪枝-蒸馏链里嵌 DPO/GRPO/RLHF + post-RL KD + 合并。与 Minitron 的精确差异:① 加 Mamba head 剪枝轴的消融(发现本工作压缩比小、剪 Mamba 收益有限故弃);② 把 KD 恢复与多分支对齐缝成一条链。
   - **Qwen3-8B**(对照模型):同精度下生成密集场景吞吐 3×-6×(混合 Mamba 架构之功)。
   - **各对齐算法 SFT/GRPO/DPO/RLHF**:各管一摊、彼此干扰(Fig.6)——本文用模型合并(Wortsman 2022 model soups)缓解。
   - 共性缺口:没人把"混合架构 + 推理模型压缩 + 可控 budget + 多能力不打架"在单卡内存约束下整合成一条产线。【原文 §1/§4.1】
-- 动机链：现状(推理模型又大又慢、budget 不可控、多能力相互干扰)→ 约束(目标单 A10G 22GiB 跑 128k)→ 所以(混合架构提吞吐 + Minitron 压到 9B 进内存 + 截断训练控 budget + 多分支独立对齐再合并缓解干扰)。【原文 §1/§3/§4】
-- 与最近邻工作的 Δ：相对 **Minitron**——把它从"压 base 模型"扩展到"压**推理**模型"，并在剪枝-蒸馏链里**嵌入 DPO/GRPO/RLHF + post-RL KD 恢复 + 模型合并**(§4.3 步骤 1-7)。相对 **Qwen3-8B**——同精度下生成密集场景吞吐 3×-6×。差在"把工业级多能力对齐 + 激进内存压缩"做成可复现 recipe 并开源大量数据/权重。【原文 §4.3/§4.4/Fig.1】
+- 动机链(逐步推):
+  - 现状:推理模型又大又慢、budget 不可控、多能力相互干扰;
+  - 约束:目标单 A10G 22GiB 跑 128k;
+  - 所以:混合架构提吞吐 + Minitron 压到 9B 进内存 + 截断训练控 budget + 多分支独立对齐再合并缓解干扰。【原文 §1/§3/§4】
+- 与最近邻工作的 Δ：
+  - 相对 **Minitron**——把它从"压 base 模型"扩展到"压**推理**模型",并在剪枝-蒸馏链里**嵌入 DPO/GRPO/RLHF + post-RL KD 恢复 + 模型合并**(§4.3 步骤 1-7)。
+  - 相对 **Qwen3-8B**——同精度下生成密集场景吞吐 3×-6×。
+  - 差在"把工业级多能力对齐 + 激进内存压缩"做成可复现 recipe 并开源大量数据/权重。【原文 §4.3/§4.4/Fig.1】
 
 ## 怎么做(到可复现)
+> 一句话导读:三大块——预训练 12B、多分支对齐成 12B、再 Minitron 压成 9B;压缩里剪枝只用前向传播估重要性,精度靠 forward-KL logit 蒸馏恢复,中途夹 DPO/GRPO/RLHF 并用 0.5 线性插值合并模型来防能力回退。
+
 ### 总体流水线
 ① **预训练** 12B 混合 Mamba-Transformer base(20T tokens,FP8,DeepSeek FP8 recipe;约 5% 数据含刻意截断推理轨迹) → ② **对齐**(Base→3 阶段 SFT→DPO/GRPO/RLHF 分支→Merged 12B) → ③ **Minitron 压缩**(剪枝→架构搜索→forward-KL logit KD 恢复→分阶段 DPO/GRPO/post-RL KD/RLHF/合并)得最终 9B。
 
@@ -53,10 +75,14 @@ nemotron_nano2 | NVIDIA Nemotron Nano 2: An Accurate and Efficient Hybrid Mamba-
 - **模型合并(checkpoint 插值)**：\((1-\alpha)\cdot w_{\text{model1}}+\alpha\cdot w_{\text{model2}}\),把推理强/chat 强两个 RL checkpoint 调和;\(\alpha\) 在 0.1-0.9 扫(步长 0.1),**\(\alpha\approx0.5\) 最佳折中**——缓解 RLHF 引入的回退(Fig.6)。
 
 ### budget 控制机制(§3.4,可复现细节)
-推理时从生成 `<think>` 起计 token;到 budget 后**不立即插 `</think>`,而是让模型把当前句子写完、在下一个换行处插**;极端情况无换行则在 **(budget+500)** 处强插。两种失效模式:① compensation(thinking 受限→在 final answer 里补)→ 截断训练消除;② 强插后仍停在 thinking 模式(再吐一个 `</think>`)→ 用 "Well-Formedness"(只含单个闭合标签为良)度量,截断训练后短 budget 也稳定良形(Fig.5b)。
+推理时从生成 `<think>` 起计 token;到 budget 后**不立即插 `</think>`,而是让模型把当前句子写完、在下一个换行处插**;极端情况无换行则在 **(budget+500)** 处强插。两种失效模式:
+- ① compensation(thinking 受限→在 final answer 里补)→ 截断训练消除;
+- ② 强插后仍停在 thinking 模式(再吐一个 `</think>`)→ 用 "Well-Formedness"(只含单个闭合标签为良)度量,截断训练后短 budget 也稳定良形(Fig.5b)。
 - **直觉一句话**:"forward-KL 拽精度、分支合并调能力、截断训练驯 budget。"
 
 ## 靠不靠谱
+> 一句话导读:作为产线报告,吞吐/内存/budget 三目标都给了直接证据、消融到位;但完整训练代码闭源、外部难复现,且它的"蒸馏"是 off-policy KD,与本课题的 on-policy 范式相反。
+
 - 实验与证据:
   - **吞吐(Fig.1/Table 5-6)**：Nemotron-Nano-9B-v2 在生成密集场景(8k 输入/16k 输出)吞吐比 Qwen3-8B 高 **3×-6×**;推理基准相当或更优。【原文 §4.4/Fig.1】
   - **12B 对齐模型(Table 8,reasoning ON)**：AIME-2024 85.42、AIME-2025 76.25、MATH-500 97.75、RULER@128k 83.36 等多项超 Qwen3-8B,但 SciCode/ArenaHard 略低(ArenaHard 74 < Qwen3-8B 78.4、Qwen3-14B 87.7)——chat 是相对弱项。
@@ -70,8 +96,12 @@ nemotron_nano2 | NVIDIA Nemotron Nano 2: An Accurate and Efficient Hybrid Mamba-
   - 【推断】**这是模型/数据发布而非可复现方法论**——完整训练代码(NeMo/Megatron 内部栈)闭源,超参/阶段多为工程经验选择,缺替代方案系统对照。
   - 【原文 §3.2/§4.3】模型合并固定 \(\alpha\approx0.5\)——为经验做法,虽扫了 0.1-0.9 但**缺合并方式(非线性/任务向量等)的系统对照**。
 - 祛魅总结【推断】：
-  - 真贡献：一条**完整、消融到位的工业级产线**(混合架构 + 推理模型压缩 + budget 控制 + 多分支对齐合并)，且开源大量预/后训练数据与权重;Fig.6 把各对齐/恢复阶段作用拆开、Table 11 给数据配比,工程透明度高。
-  - 与本课题(on-policy 蒸馏)的关系**被高估的风险**:① 它的"蒸馏"是 **forward-KL logit 蒸馏 + 固定教师 logits/数据**,本质是 **off-policy KD**(教师不在学生轨迹上打分),与 on-policy distillation **不是同一范式**;② 真正 on-policy 的只有"iterative on-policy DPO(工具)"那一支——且那是偏好优化不是蒸馏;③ reverse vs forward KL 的取舍、on-policy 蒸馏的分布真实性收益均未讨论。所以它对本课题更多是**背景/对照**(工业如何混用 SFT+RL+KD),而非方法直接对标。
+  - 真贡献：一条**完整、消融到位的工业级产线**(混合架构 + 推理模型压缩 + budget 控制 + 多分支对齐合并),且开源大量预/后训练数据与权重;Fig.6 把各对齐/恢复阶段作用拆开、Table 11 给数据配比,工程透明度高。
+  - 与本课题(on-policy 蒸馏)的关系**被高估的风险**:
+    - ① 它的"蒸馏"是 **forward-KL logit 蒸馏 + 固定教师 logits/数据**,本质是 **off-policy KD**(教师不在学生轨迹上打分),与 on-policy distillation **不是同一范式**;
+    - ② 真正 on-policy 的只有"iterative on-policy DPO(工具)"那一支——且那是偏好优化不是蒸馏;
+    - ③ reverse vs forward KL 的取舍、on-policy 蒸馏的分布真实性收益均未讨论。
+    - 所以它对本课题更多是**背景/对照**(工业如何混用 SFT+RL+KD),而非方法直接对标。
 
 ## 结构化抽取
 - 🎯 机制速览6轴：
@@ -83,7 +113,12 @@ nemotron_nano2 | NVIDIA Nemotron Nano 2: An Accurate and Efficient Hybrid Mamba-
   - **防遗忘机制**：**模型合并(0.5 线性插值)** 是其防"对齐回退/能力相互覆盖"的主要手段;post-RL KD(步骤5)恢复 RL 造成的退步;无针对持续学习的显式防遗忘。
 - ⑦ 开源代码+框架/harness：**无完整训练代码**(属模型/数据发布,CloneTier=B,本地未 clone)。权重 HF nvidia(Nemotron-Nano-9B-v2、12B-v2-Base、9B-v2-Base);数据 Nemotron-Post-Training-Dataset-v1、Nemotron-Personas、Nemotron-Pretraining-Code/SFT-v1、Aegis Content-Safety v2 等多数开源;训练栈 **NVIDIA NeMo / Megatron**(FP8 预训练);评测用 NeMo-Skills、lm-evaluation-harness、math-verify。**未完整克隆——见 CLAUDE.md 决策①(大厂技术报告仅记链接不 clone 巨型权重仓);需手动从 HF 获取权重/数据。** 【原文 §1.1 发布物清单 + v1 核】
 - 💰 资源/成本与可扩展性：预训练 20T tokens(FP8);后训练总计约 90B tokens;压缩 KD 总量约 60B+50B+25B+1B+0.4B(推理模型)/120B+360B+2.5B(base);目标硬件单 A10G(22GiB, bf16)跑 128k。响应多由 DeepSeek-R1-0528 与 Qwen3-235B-A22B 生成(蒸馏式数据合成)。【原文 §2/§3/§4.3】
-- 🎯 对"探索-巩固"对标：**弱-中支撑(仅工业混用 SFT+RL+KD 的背景对照 + on-policy DPO 一支);非 on-policy 蒸馏方法**。判定依据：① **唯一直接相关点是 iterative on-policy DPO**——在 WorkBench 多步工具环境用**当前 checkpoint** 生成正/负样本迭代 DPO,与本课题"student on-policy 自选轨迹 + 从成功/失败中学"在**数据来源上**同构(on-policy 正=成功调用、负=失败生成),弱对应"探索(尝试工具调用)+巩固(把成功固化)"。② **模型合并防能力回退** 提供一个朴素"巩固不遗忘"工程范式。③ **截断训练教模型在 budget 内收尾** 与 MTP"前瞻/在有限步内规划"弱相关。**缺口**:① **压缩蒸馏是 forward-KL off-policy KD**(固定教师 logits),**不是学生轨迹上的 on-policy 蒸馏**——与本课题核心范式相反;② **无 teacher 稀疏脚手架、无 path-recovery 单点接管、无 MTP 前瞻探针**;③ 是产线整合而非机制创新。一句话:**它是"工业如何把 SFT/RL/KD/合并拼成产线"的背景样本,其 on-policy DPO 一支可作"on-policy 正负样本"对照,但整体非 OPD 范式、无脚手架/前瞻可借。**
+- 🎯 对"探索-巩固"对标：**弱-中支撑(仅工业混用 SFT+RL+KD 的背景对照 + on-policy DPO 一支);非 on-policy 蒸馏方法**。判定依据：
+  - ① **唯一直接相关点是 iterative on-policy DPO**——在 WorkBench 多步工具环境用**当前 checkpoint** 生成正/负样本迭代 DPO,与本课题"student on-policy 自选轨迹 + 从成功/失败中学"在**数据来源上**同构(on-policy 正=成功调用、负=失败生成),弱对应"探索(尝试工具调用)+巩固(把成功固化)";
+  - ② **模型合并防能力回退** 提供一个朴素"巩固不遗忘"工程范式;
+  - ③ **截断训练教模型在 budget 内收尾** 与 MTP"前瞻/在有限步内规划"弱相关。
+  - **缺口**:① **压缩蒸馏是 forward-KL off-policy KD**(固定教师 logits),**不是学生轨迹上的 on-policy 蒸馏**——与本课题核心范式相反;② **无 teacher 稀疏脚手架、无 path-recovery 单点接管、无 MTP 前瞻探针**;③ 是产线整合而非机制创新。
+  - 一句话:**它是"工业如何把 SFT/RL/KD/合并拼成产线"的背景样本,其 on-policy DPO 一支可作"on-policy 正负样本"对照,但整体非 OPD 范式、无脚手架/前瞻可借。**
 - 🔭 开放问题/未来方向：
   - 【原文】把 budget 控制做到更短预算仍鲁棒;更系统地选合并系数/方式;把压缩-对齐链推到更激进压缩比。
   - 【推断】把压缩阶段的 forward-KL **off-policy** KD 换成"学生剪枝后在自身轨迹上的 on-policy 蒸馏",看能否更省 token 地恢复精度(把本报告与 opd_blog/opd_survey 的 on-policy 范式缝合);把 on-policy DPO(工具)的"成功/失败正负样本"扩展为"走偏后自选恢复分支"的 path-recovery 数据。

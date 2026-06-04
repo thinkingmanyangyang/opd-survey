@@ -3,47 +3,80 @@ holderpo | Hölder Policy Optimisation (HölderPO) | UCL / 上海交大 / 港科
 **原始论文**：https://arxiv.org/abs/2605.12058
 
 ## 一眼看懂
-- 🟦 TL;DR：GRPO 系算法把「序列内 token 级重要性比 r_{i,t}=πθ/πθold 聚合成序列级标量」这一步用了**固定算子**——GRPO=算术平均(p=1)、GMPO/GSPO=几何平均(p→0)。HölderPO 把这步统一成 **Hölder p-mean**（p-范数，p∈ℝ 连续谱），用单参数 p 调控「梯度集中(放大稀疏信号) vs 梯度方差(训练稳定)」这对无法被任何固定算子同时兼得的 trade-off；再沿训练时间把 p 从高正值**退火**到负值，无额外开销地兼顾两端。五数学基准平均 54.9%(比 GRPO 相对 +7.2%)，ALFWorld 93.8%(比 GRPO 72.8% 相对 +28.8%)【原文 摘要, 图1, 表2】。
-- 最巧的一步：**把 p 扩到全实轴并发现 p<0 是一个先前未被探索的「逆向集中(inverse-concentration / downward concentration)」相位**——它把梯度权重集中到**比值最小**的 token（即模型「犹豫处」），「迫使模型巩固那些非常规但有效的决策点、提升推理多样性」(§3.2 Downward Concentration)。抽掉「p 可负 + 时间轴退火」这步，框架就退化成「在 GRPO 与 GSPO 间选一个静态点」(=PMPO 等并发工作)，失去其独特卖点。承重墙是 **Theorem 1+2 揭示的双向 trade-off**：定理1 证明权重分布的 Shannon 熵在 p=0 最大、|p| 越大越集中(p→+∞ 集中到最大比 token、p→−∞ 集中到最小比 token)；定理2 证明方差界随 p 单调增 → 故「大 p 放大稀疏信号但方差松、小/负 p 收紧方差但削弱稀疏响应」无法两全，逼出动态调度。
+> 一句话导读：GRPO 这类算法要把序列里每个 token 的重要性比「汇总成一个标量」，过去都用固定的求平均方式。本文把这步换成一个带参数 p 的广义平均(Hölder p-mean)，并让 p 沿训练从大到小变化，用一个旋钮兼顾「放大关键信号」和「训练稳定」。
+
+- 🟦 TL;DR：GRPO 系算法里有这么一步——把序列内每个 token 的重要性比 r_{i,t}=πθ/πθold **聚合成一个序列级标量**。过去这步用的都是**固定算子**：GRPO 用算术平均(对应 p=1)、GMPO/GSPO 用几何平均(对应 p→0)。
+- HölderPO 把这步统一成 **Hölder p-mean**（即 p-范数，p∈ℝ 是连续谱）。这样就有了单参数 p，可以调控一对 trade-off——「梯度集中(放大稀疏信号) vs 梯度方差(训练稳定)」；而这对 trade-off 是任何固定算子都无法同时兼得的。再沿训练时间把 p 从高正值**退火**到负值，就能不加额外开销地兼顾两端。
+- 效果：五个数学基准平均 54.9%(比 GRPO 相对 +7.2%)，ALFWorld 93.8%(比 GRPO 72.8% 相对 +28.8%)【原文 摘要, 图1, 表2】。
+- 最巧的一步：**把 p 扩到整个实轴，并发现 p<0 是一个先前没人探索过的「逆向集中(inverse-concentration / downward concentration)」相位**。
+  - 它把梯度权重集中到**比值最小**的那些 token（也就是模型「犹豫」的地方），从而「迫使模型巩固那些非常规但有效的决策点、提升推理多样性」(§3.2 Downward Concentration)。
+  - 为什么关键：抽掉「p 可为负 + 沿时间轴退火」这一步，框架就退化成「在 GRPO 与 GSPO 之间选一个静态点」(等于 PMPO 那类并发工作)，独特卖点就没了。
+  - 承重墙是 **Theorem 1+2 揭示的双向 trade-off**：
+    - 定理1 证明，权重分布的 Shannon 熵在 p=0 时最大、|p| 越大越集中(p→+∞ 集中到比值最大的 token、p→−∞ 集中到比值最小的 token)；
+    - 定理2 证明，方差界随 p 单调增。
+    - 合起来：「大 p 放大稀疏信号但方差松、小/负 p 收紧方差但削弱稀疏响应」——两头无法兼顾，于是逼出了动态调度。
 
 ## 为什么做
-- 研究背景：RLVR(GRPO 系)是 LLM 复杂推理后训练基石(o-series/R1)；GRPO 免 critic、靠组内相对优势，但「轨迹级优势→策略更新」必须先把 token 级比值聚合成序列级标量，这步的固定算子近来受质疑(§1, 引 Liu 2025)。
-- 解决的具体痛点：**固定聚合算子施加静态 optimisation landscape**，在不同信号密度的长程任务上出现临界 trade-off——(a) 稠密信号任务(监督分散在大量 token，如 MATH)下 GRPO(p=1)过度放大微小 token 误差→高方差→训练坍塌;(b) 稀疏信号任务(正确性集中在罕见高幅 token，如 AIME)下 GSPO(p→0)过度平滑、压制罕见「aha moment」。实测 AIME24 峰值在 p=3、MATH500 峰值在 p=−1——**无单一静态 p 兼得**(图1, 表1)。
+> 一句话导读：把 token 比聚合成标量用固定算子，等于给优化施加了一个「不变的地形」；但不同任务、不同训练阶段需要的「集中程度」其实不一样——没有哪个固定的 p 能通吃。
+
+- 研究背景：RLVR(GRPO 系)是 LLM 复杂推理后训练的基石(o-series/R1)。GRPO 免 critic、靠组内相对优势，但从「轨迹级优势」走到「策略更新」时，必须先把 token 级比值聚合成一个序列级标量——这一步用的固定算子，近来受到质疑(§1, 引 Liu 2025)。
+- 解决的具体痛点：**固定聚合算子施加的是一个静态的 optimisation landscape**，在不同信号密度的长程任务上会暴露出临界 trade-off：
+  - (a) 稠密信号任务(监督分散在大量 token，如 MATH)下，GRPO(p=1)会过度放大微小的 token 误差 → 高方差 → 训练坍塌；
+  - (b) 稀疏信号任务(正确性集中在罕见的高幅 token，如 AIME)下，GSPO(p→0)又过度平滑、压制了罕见的「aha moment」。
+  - 实测：AIME24 的峰值在 p=3、MATH500 的峰值在 p=−1——**没有单一的静态 p 能兼得**(图1, 表1)。
 
 - 相关工作 & 各自不足（§2 三类 + 附录A 的 GRPO 改良生态）:
-  1. **token 级聚合算子(最直接对照)**:GRPO(算术均 p=1)/GMPO(Zhao 2025, 几何均)/GSPO(Zheng 2025, 几何均 p→0)——只是连续谱上的**孤立静态点**;**并发 PMPO**(Zhao 2026, 最近邻)——也参数化 power-mean，但两点关键差异:(i) p 只在 **[0,1]**(没碰 p<0 逆向集中相位)、(ii) 按**轨迹**自适应(clip-aware ESS matching)而非沿时间轴。HölderPO 把 p 扩到**全实轴**(含 p<0) + 沿**训练 step** 退火。
-  2. **辅助信号 token 重加权(正交,可组合)**:token 熵(Wang 2025a Beyond-80/20、Yu & Li 2026、Simoni 2025 GTPO)、token 概率(Yang 2025b)、隐藏置信贡献(Deng 2025 token hidden reward)、选择性 KL mask(Lin 2025)。这些用**重要性比之外**的信号重加权，与 HölderPO 的 power-mean 聚合**正交**、原则上可叠加(§2 明示)。
-  3. **GRPO 改良生态(附录A)**:Dr.GRPO(只 re-center 不除 std)、BNPO(Xiao 2025)、AAPO(Xiong 2025)、SEED-GRPO(语义熵)等——多在优势/裁剪/baseline 上动，不触聚合算子。
-  - 共性:固定聚合算子施加**静态优化 landscape**，跨信号密度/训练阶段不适配。
+  1. **token 级聚合算子(最直接对照)**：
+     - GRPO(算术均 p=1)/GMPO(Zhao 2025, 几何均)/GSPO(Zheng 2025, 几何均 p→0)——它们只是连续谱上的**孤立静态点**；
+     - **并发的 PMPO**(Zhao 2026, 最近邻)——也把 power-mean 参数化了，但有两点关键差异：(i) p 只在 **[0,1]** 范围(没碰 p<0 的逆向集中相位)；(ii) 它按**轨迹**自适应(clip-aware ESS matching)，而不是沿时间轴。
+     - HölderPO 的不同：把 p 扩到**全实轴**(含 p<0) + 沿**训练 step** 退火。
+  2. **辅助信号的 token 重加权(与本文正交,可组合)**：用的是**重要性比之外**的信号来重加权——token 熵(Wang 2025a Beyond-80/20、Yu & Li 2026、Simoni 2025 GTPO)、token 概率(Yang 2025b)、隐藏置信贡献(Deng 2025 token hidden reward)、选择性 KL mask(Lin 2025)。这些与 HölderPO 的 power-mean 聚合**正交**、原则上可以叠加(§2 明示)。
+  3. **GRPO 改良生态(附录A)**：Dr.GRPO(只 re-center、不除 std)、BNPO(Xiao 2025)、AAPO(Xiong 2025)、SEED-GRPO(语义熵)等——大多在优势/裁剪/baseline 上动手，不碰聚合算子。
+  - 共性缺陷：固定聚合算子施加**静态的优化 landscape**，无法适配不同的信号密度/训练阶段。
 
-- 动机链：聚合算子是固定的 → 固定算子施加静态 landscape → 不同信号密度/训练阶段需不同集中度 → 用 Hölder p 统一为连续谱 → 发现 p<0 新相位 + 沿时间退火 p → 兼顾早期放大稀疏信号、后期收紧方差。
-- 与最近邻工作的精确Δ：vs **GRPO/GMPO/GSPO**——它们是 p=1 与 p→0 两个特例(附录G.2/G.3)，HölderPO 是母框架(图1 顶式);vs **PMPO(最近邻)**——(i) p 扩到全实轴含 p<0(PMPO 限 [0,1]);(ii) 沿训练 step 退火 p 而非按轨迹自适应——让「早期集中放大、后期收紧方差」成为互补的时间分工。表2 中 HölderPO 动态调度 54.9 > PMPO 54.2(7B)、R1-Distill 上 66.4 > PMPO 64.6。
+- 动机链（一步步推）：
+  1. 聚合算子是固定的。
+  2. 固定算子施加了一个静态 landscape。
+  3. 但不同信号密度/训练阶段需要不同的集中度。
+  4. 那就用 Hölder p 把它统一成连续谱。
+  5. 进而发现 p<0 这个新相位，并沿时间退火 p。
+  6. 最终兼顾早期放大稀疏信号、后期收紧方差。
+- 与最近邻工作的精确Δ：
+  - vs **GRPO/GMPO/GSPO**：它们是 p=1 与 p→0 两个特例(附录G.2/G.3)，HölderPO 是它们的母框架(图1 顶部的式子)；
+  - vs **PMPO(最近邻)**：(i) p 扩到全实轴、含 p<0(PMPO 限在 [0,1])；(ii) 沿训练 step 退火 p，而非按轨迹自适应——让「早期集中放大、后期收紧方差」变成互补的时间分工。表2 里 HölderPO 动态调度 54.9 > PMPO 54.2(7B)，R1-Distill 上 66.4 > PMPO 64.6。
 
 ## 怎么做 + 靠不靠谱
+> 一句话导读：实现上只改两处——第 2 步把「平均」换成带 p 的 Hölder p-mean，第 4 步让 p 沿训练从 +2 退火到 −2；其余跟 GRPO 一样。p 只重新分配各 token 的梯度权重，不改梯度方向。
+
 ### 方法流水线（读完可复现，§3 + 式1-3 + Thm1-3）
-**符号**：x=prompt；yi~πθold=rollout；\(r_{i,t}(\theta)=\dfrac{\pi_\theta(y_{i,t}\mid x,y_{i,<t})}{\pi_{\theta_{\text{old}}}(y_{i,t}\mid x,y_{i,<t})}\)=token 级重要性比；\(\hat A_i\)=组内相对优势(同 GRPO，免 critic)；p=Hölder 阶(标量超参，沿训练退火)。
+**符号**：x=prompt；yi~πθold=rollout 出来的响应；\(r_{i,t}(\theta)=\dfrac{\pi_\theta(y_{i,t}\mid x,y_{i,<t})}{\pi_{\theta_{\text{old}}}(y_{i,t}\mid x,y_{i,<t})}\)=token 级重要性比；\(\hat A_i\)=组内相对优势(同 GRPO，免 critic)；p=Hölder 阶(一个标量超参，沿训练退火)。
 
 1. **组采样 + 组相对优势**(同 GRPO)。
 2. **Hölder p-mean 聚合**(式1，承重公式)——把 token 比聚合成序列级标量 \(\rho_{i,p}(\theta)\)：
    \(\displaystyle \rho_{i,p}(\theta)=\begin{cases}\Big(\dfrac{1}{|y_i|}\sum_{t=1}^{|y_i|}r_{i,t}(\theta)^p\Big)^{1/p}, & p\neq0,\\[6pt]\exp\Big(\dfrac{1}{|y_i|}\sum_{t=1}^{|y_i|}\log r_{i,t}(\theta)\Big), & p=0\ (\text{几何均,p→0 极限,附录G.4}).\end{cases}\)
-3. **PPO 式序列级 clip 目标**(式2)：
+3. **PPO 式的序列级 clip 目标**(式2)：
    \(\displaystyle J_{H_s}(\theta)=\mathbb{E}_{x,\{y_i\}}\Big[\frac{1}{G}\sum_{i=1}^{G}\min\big(\rho_{i,p}(\theta)\hat A_i,\ \mathrm{clip}(\rho_{i,p}(\theta),1-\epsilon,1+\epsilon)\hat A_i\big)\Big].\)
-   选序列级 clip 是为控梯度方差(附录D/I.2)。p=1 恢复 GRPO、p→0 恢复 GSPO。
-4. **按调度 p(t) 退火**(§3.4)：默认 **linear 2→−2**(也提供 constant/sin/cos/quad/cubic)。单调递减:\(p(0)=p_{\text{high}},\ p(T)=p_{\text{low}},\ p(t_1)\ge p(t_2)\)。
-5. **梯度**(式3)：变 p **不改 per-token 对数梯度方向，只重分配权重**：
+   这里选序列级 clip 是为了控梯度方差(附录D/I.2)。p=1 时恢复 GRPO、p→0 时恢复 GSPO。
+4. **按调度 p(t) 退火**(§3.4)：默认 **linear 2→−2**(也提供 constant/sin/cos/quad/cubic)。要求单调递减：\(p(0)=p_{\text{high}},\ p(T)=p_{\text{low}},\ p(t_1)\ge p(t_2)\)。
+5. **梯度**(式3)：变 p **不改每个 token 的对数梯度方向，只重新分配它们的权重**：
    \(\displaystyle \nabla_\theta\rho_{i,p}(\theta)=\rho_{i,p}(\theta)\sum_{t=1}^{|y_i|}W_{i,t}(p)\,\nabla_\theta\log\pi_\theta(y_{i,t}\mid x,y_{i,<t}),\qquad W_{i,t}(p):=\frac{r_{i,t}(\theta)^p}{\sum_{k=1}^{|y_i|}r_{i,k}(\theta)^p}.\)
-   \(W_{i,t}(p)\) 是 token 上的概率分布(权重)。
+   其中 \(W_{i,t}(p)\) 是 token 上的一个概率分布(即各 token 的权重)。
 
 ### 关键理论（直觉 + 真实陈述，§3.2-3.4）
-- **Thm 1（梯度集中，Shannon 熵）**：设 yi 至少含两个不同比值 token。则 \(W_i^p\) 的 Shannon 熵在 **p=0 取全局最大**(\(W_i^0=\)Unif/|y|)，随 |p| 增**严格递减**；p→+∞ 集中到 \(T^+=\arg\max_t r_{i,t}\)、p→−∞ 集中到 \(T^-=\arg\min_t r_{i,t}\)。三相位:
-  - **Upward Concentration (p>0)**：集中到**高比值** token(置信信号、关键瓶颈步)。长程任务里这类 high-confidence token 稀疏，p>0 放大它们防被均值稀释。
-  - **Uniform Dispersion (p→0)**：每 token 等权。
-  - **Downward Concentration (p<0)**：反转——集中到**比值<1** 的 token(模型「犹豫」、非常规但有效的决策点)，「迫使模型 consolidate alternative pathways、促推理多样性」(§3.2 原话)。
-- **Thm 2（方差界，§3.3）**：设 token 对数梯度有界 \(\|\nabla_\theta\log\pi_\theta\|\le M\)，则
+> 一句话导读：三个定理串成一条逻辑——定理1 说 p 控制「权重集中到哪些 token」(三种相位)、定理2 说 p 越大方差越松、定理3 说任何固定 p 都得牺牲一头，所以必须让 p 随时间变。
+
+- **Thm 1（梯度集中，用 Shannon 熵刻画）**：设 yi 至少含两个比值不同的 token。则 \(W_i^p\) 的 Shannon 熵在 **p=0 时取全局最大**(\(W_i^0=\)Unif/|y|，即均匀)，并随 |p| 增大而**严格递减**；p→+∞ 集中到 \(T^+=\arg\max_t r_{i,t}\)、p→−∞ 集中到 \(T^-=\arg\min_t r_{i,t}\)。由此分出三个相位：
+  - **Upward Concentration (p>0)**：集中到**高比值** token(置信信号、关键瓶颈步)。长程任务里这类 high-confidence token 很稀疏，p>0 放大它们、防止被平均稀释掉。
+  - **Uniform Dispersion (p→0)**：每个 token 等权。
+  - **Downward Concentration (p<0)**：反过来——集中到**比值<1** 的 token(即模型「犹豫」、非常规但有效的决策点)，「迫使模型 consolidate alternative pathways(巩固替代路径)、促进推理多样性」(§3.2 原话)。
+- **Thm 2（方差界，§3.3）**：设 token 的对数梯度有界 \(\|\nabla_\theta\log\pi_\theta\|\le M\)，则
   \(\displaystyle \big\|\mathrm{Var}(\hat\nabla_\theta J_{H_s})\big\|\le\frac{M^2}{B}\,\mathbb{E}\big[\hat A_i^2\,\rho_{i,p}^2(\theta)\big],\)
-  该界**随 p 单调增**。又(Cor.7，假设 token 梯度近似正交)方差本身在某 \(p^*\le0\) 取全局最小(非 −∞)——故 plow 不能太负。
-- **集中 vs 稳定的结构性 trade-off**：Thm1+2 ⇒ 大 p 放大稀疏信号但方差界松、小/负 p 收紧方差但削弱稀疏响应，**无固定 p 两全**。
-- **Thm 3（动态调度优越性，§3.4）**：任何静态 \(p_{\text{stat}}\) 必牺牲其一——① 早期信号放大:若 yi 有高比值 token \(t^*\)(\(r_{i,t^*}\gg1\))且其余比值常数有界，在 pre-saturation 条件 \(r_{i,t^*}^{p_{\text{high}}}\ll n-1\) 下，从 \(p_{\text{stat}}\) 移到 \(p_{\text{high}}\) 指数放大其梯度权重:\(\dfrac{W_{i,t^*}(p_{\text{high}})}{W_{i,t^*}(p_{\text{stat}})}\ge C\cdot r_{i,t}^{\,p_{\text{high}}-p_{\text{stat}}}\)(式5)；② 后期方差收缩:\(V(p_{\text{low}})<V(p_{\text{stat}})\)(式6，\(V(p):=\mathbb{E}[\hat A_i^2\rho_{i,p}^2]\))。动态 schedule 早期继承 p=+2 的集中、后期收敛到 p=−2 的受控方差，绕过两难。
+  该界**随 p 单调增**。另外(Cor.7，假设 token 梯度近似正交)方差本身在某个 \(p^*\le0\) 处取全局最小(注意不是 −∞)——所以 plow 不能调得太负。
+- **集中 vs 稳定的结构性 trade-off**：Thm1+2 合起来说明——大 p 放大稀疏信号但方差界松、小/负 p 收紧方差但削弱稀疏响应，**没有哪个固定 p 能两全**。
+- **Thm 3（动态调度更优，§3.4）**：任何静态 \(p_{\text{stat}}\) 都必然牺牲一头——
+  - ① 早期信号放大：若 yi 含一个高比值 token \(t^*\)(\(r_{i,t^*}\gg1\))且其余比值有界常数，在 pre-saturation 条件 \(r_{i,t^*}^{p_{\text{high}}}\ll n-1\) 下，把 p 从 \(p_{\text{stat}}\) 移到 \(p_{\text{high}}\) 会指数级放大它的梯度权重：\(\dfrac{W_{i,t^*}(p_{\text{high}})}{W_{i,t^*}(p_{\text{stat}})}\ge C\cdot r_{i,t}^{\,p_{\text{high}}-p_{\text{stat}}}\)(式5)；
+  - ② 后期方差收缩：\(V(p_{\text{low}})<V(p_{\text{stat}})\)(式6，其中 \(V(p):=\mathbb{E}[\hat A_i^2\rho_{i,p}^2]\))。
+  - 结论：动态 schedule 早期继承 p=+2 的集中、后期收敛到 p=−2 的受控方差，从而绕过这个两难。
 
 ### 逐组件必要性（消融与证据）
 - **Hölder p 聚合(连续谱)**：核心。消融=静态 p 扫描(表1/2)，确证任务敏感性：稀疏任务偏好高 p(AIME24 p=3→46.7%，破 43.3% 上限)、稠密任务偏好低/负 p(MATH500 p=−1→85.0%)。

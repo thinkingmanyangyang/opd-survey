@@ -3,62 +3,98 @@ dasd | Distribution-Aligned Sequence Distillation for Superior Long-CoT Reasonin
 **原始论文**:https://arxiv.org/abs/2601.09088
 
 ## 一眼看懂
-- 🟦 TL;DR:主流"在 teacher 生成的响应上做 SFT"(序列级蒸馏)只把它当数据过滤问题,忽视了蒸馏本质——让 student 学到 teacher 完整序列分布。DASD 从"分布对齐"视角补回师生交互三件套:温度调度学习(先低温学一致模式再高温扩覆盖)、散度感知采样(优先喂"teacher 高置信+student 低概率"的句子)、混合策略蒸馏(student 自生成前缀→teacher 续写,缓解 exposure bias),只用 448K 样本就让 Qwen3-4B 在 AIME24/25、LCB、GPQA 上达同量级 SOTA,部分基准超 32B 模型【原文 Abstract, §1, Table 6】。
-- 最巧的一步:**散度感知采样(Divergence-aware Sampling, DAS)**。抽掉它,整套就退回"随机采样+质量过滤"的旧范式,核心论点(分布对齐比堆数据重要)就垮——Table 3 显示 DAS(50K)在 AIME25 上(79.2)甚至超过随机采样翻倍数据(100K RS,78.9)【原文 §4 Table 3】。为什么:它把"哪些 teacher 句子最该学"从启发式规则升级为"按师生概率差(teacher 高/student 低=高散度)筛选",直接对齐 student 学习能力、规避 SFT 的误导梯度(对 teacher 低概率但 student 已高概率的 token 继续抬高的反向梯度)【原文 §4】。
+
+> 一句话导读:大家都在"拿老师写的答案做 SFT"来蒸馏推理能力,但这只是把它当成"挑好数据"的活;本文换个视角——蒸馏的本质是让学生学到老师的整条输出分布,于是补回三件师生互动的工具,只用很少数据就把 4B 小模型推到同级别最强。
+
+- 🟦 TL;DR:主流做法是"在 teacher 生成的响应上做 SFT"(即序列级蒸馏)。但这种做法只把蒸馏当成一个数据过滤问题,忽视了蒸馏的本质——让 student 学到 teacher 的完整序列分布。DASD 改从"分布对齐"视角出发,补回三件师生交互工具:
+  - **温度调度学习**:先用低温样本学一致的模式,再用高温样本扩大覆盖面;
+  - **散度感知采样**:优先喂那些"teacher 很有把握、但 student 概率很低"的句子;
+  - **混合策略蒸馏**:让 student 先自己生成一段前缀,再由 teacher 续写,以缓解 exposure bias(训练时喂的都是标准答案、推理时却要靠自己一路生成,二者不一致带来的偏差)。
+  - 效果:只用 448K 样本,就让 Qwen3-4B 在 AIME24/25、LCB、GPQA 上达到同量级 SOTA,部分基准甚至超过 32B 模型【原文 Abstract, §1, Table 6】。
+- 最巧的一步:**散度感知采样(Divergence-aware Sampling, DAS)**。它把"哪些 teacher 句子最该学"从拍脑袋的启发式规则,升级为"按师生概率差来筛选"——teacher 概率高、student 概率低,就是高散度、最值得学的句子。这样做有两个好处:一是直接对齐 student 当前的学习能力;二是规避 SFT 的误导梯度(对那些 teacher 概率低、但 student 已经概率很高的 token,SFT 还在继续抬高它,这个反向梯度是有害的)【原文 §4】。
+  - 抽掉 DAS,整套方法就退回"随机采样+质量过滤"的旧范式,"分布对齐比堆数据更重要"这个核心论点也就垮了。证据:Table 3 显示 DAS(50K 数据)在 AIME25 上拿到 79.2,甚至超过把数据翻倍的随机采样(100K RS,78.9)【原文 §4 Table 3】。
 
 ## 为什么做
-- 研究背景:DeepSeek-R1 首次证明从强 teacher 蒸馏可大幅赋能小模型推理,引发社区大量复刻;主流范式即"SFT on teacher responses = 序列级蒸馏(Kim&Rush 2016)",简单高效、不限师生架构、不需 token 级 logits【原文 §1, §2】。
-- 解决的具体痛点:现有工作只停留在 SFT 视角、专注设计启发式数据过滤规则,**忽视蒸馏本质(继承 teacher 泛化能力)**,根因是全程缺乏显式师生交互,导致三大缺陷:(i)teacher 序列分布表征不足(随机采样覆盖窄、或过度表征低概率噪声序列);(ii)teacher 分布与 student 学习能力错配(SFT 只抬 ground-truth token 概率→误导梯度);(iii)exposure bias(teacher-forced 训练 vs 自回归推理不一致)【原文 §1, §2】。
-- 相关工作 & 各自不足(来龙去脉 + 三条并行路线 + 精确差异):
-  - **路线 ①——序列级蒸馏(本文改进对象,Kim&Rush 2016)**【原文 §1, §2】:把 teacher 生成响应当 SFT 数据;社区复刻潮(OpenR1 / OpenThoughts / a-m-team / AceReason / LIMO / s1 / Light-R1)全属此族,优势是简单、不限架构、不需 logits。**精确短板**:全都把问题简化为"过滤高质量 SFT 数据",缺师生交互,落入上述三缺陷。DASD 站在它肩上(保留序列级简单性),但把"采样+选数据"从启发式升级为分布对齐。
-  - **路线 ②——logit 蒸馏(Hinton 2015)+ 其 on-policy 变体(Qwen3、Gemma、Thinking Machines Lab)**【原文 §1 line 173–182】:对齐师生**逐位置 next-token 分布**(最小化 token 级 KL);其 on-policy 变体先用 student 自生成序列、再对齐 logit。**精确短板**:(a)需 teacher 全词表 logits;(b)师生不同 tokenizer 时输出空间错位、难对齐;(c)即便简化到 token-level 概率,on-policy 蒸馏仍需"对 student 自生成的每个 token 拿到师生双方概率",而 **teacher 对 student 输出的概率对闭源模型通常不可得**(§4 line 55–58)。DASD 用**句子级**(几何均值)分析规避这些约束——只需 teacher 对**自己生成**响应的 token 概率(采样时天然得到,且很多闭源 API 也暴露)+ student 本地算。
-  - **路线 ③——on-policy distillation(token 级监督)**【原文 §4 line 626/831】:要求师生**同 tokenizer/词表**(token 对齐的硬约束)。DASD 的句子级分解(只比概率大小、不要求 token 对齐)正是为绕开此约束而设计。
-- 动机链:现状(序列级蒸馏火但只当 SFT 数据问题)→缺陷(缺师生交互→三大问题)→所以必须(不改用 logit 蒸馏、保留序列级简单性,但从分布对齐角度补回师生交互:更好覆盖+更优目标分布+缓解 exposure bias)【原文 §1, §3】。
-- 与最近邻工作的Δ:相对纯 SFT 蒸馏(OpenR1/LIMO 等),差在"把采样策略和数据选择从启发式提升为分布对齐(温度调度+DAS)+ 加一个轻量 on-policy 混合阶段";相对 on-policy/logit 蒸馏,差在"只需师生对每个 teacher token 的概率(句子级 geo-mean),不需全词表 logits、不要求同 tokenizer"。有用点:用极少(448K)数据达 SOTA,且 DAS 数据可跨 student 复用(§4 line 830:为 4B 筛的数据可迁移到 30B-A3B)。
+
+> 一句话导读:DeepSeek-R1 证明"小模型抄强老师的答案"就能大幅涨推理,于是全社区都在这么干;但大家只把它当"挑好数据",没人认真对待蒸馏的本质,结果留下三个老毛病——本文就是来补这三个洞的。
+
+- 研究背景:DeepSeek-R1 首次证明,从强 teacher 蒸馏可以大幅赋能小模型推理,因此引发社区大量复刻。主流范式就是"SFT on teacher responses",也叫序列级蒸馏(Kim&Rush 2016):它简单高效、不限师生架构、也不需要 token 级 logits【原文 §1, §2】。
+- 解决的具体痛点:现有工作只停留在 SFT 视角,专注于设计各种启发式数据过滤规则,**却忽视了蒸馏的本质(继承 teacher 的泛化能力)**。根因是全程缺乏显式的师生交互,由此带来三大缺陷:
+  - (i)**teacher 序列分布表征不足**:随机采样覆盖太窄,或反过来过度表征了低概率的噪声序列;
+  - (ii)**teacher 分布与 student 学习能力错配**:SFT 只会抬高 ground-truth token 的概率,带来误导梯度;
+  - (iii)**exposure bias**:训练时一路喂标准答案(teacher-forced),推理时却要自回归地靠自己生成,两种状态不一致【原文 §1, §2】。
+- 相关工作 & 各自不足(三条并行路线,各自的精确差异):
+  - **路线 ①——序列级蒸馏(本文的改进对象,Kim&Rush 2016)**【原文 §1, §2】:把 teacher 生成的响应直接当 SFT 数据。社区复刻潮(OpenR1 / OpenThoughts / a-m-team / AceReason / LIMO / s1 / Light-R1)全属此族,优势是简单、不限架构、不需要 logits。**精确短板**:全都把问题简化为"过滤出高质量的 SFT 数据",缺师生交互,落入上述三缺陷。DASD 站在它肩上——保留序列级的简单性,但把"采样+选数据"从启发式升级为分布对齐。
+  - **路线 ②——logit 蒸馏(Hinton 2015)及其 on-policy 变体(Qwen3、Gemma、Thinking Machines Lab)**【原文 §1 line 173–182】:对齐师生在**每个位置上的 next-token 分布**(即最小化 token 级 KL)。它的 on-policy 变体会先用 student 自己生成的序列,再去对齐 logit。**精确短板**有三条:(a)需要 teacher 的全词表 logits;(b)师生用不同 tokenizer 时输出空间错位、很难对齐;(c)即便简化到 token-level 概率,on-policy 蒸馏仍要"对 student 自生成的每个 token 都拿到师生双方的概率",而 **teacher 对 student 输出打出的概率,对闭源模型通常拿不到**(§4 line 55–58)。DASD 改用**句子级**(几何均值)分析来规避这些约束——它只需要 teacher 对**自己生成**那条响应的 token 概率(采样时天然就有,且很多闭源 API 也暴露),student 这边本地算即可。
+  - **路线 ③——on-policy distillation(token 级监督)**【原文 §4 line 626/831】:硬性要求师生**同 tokenizer / 同词表**(token 必须对齐)。DASD 的句子级分解只比概率大小、不要求 token 对齐,正是为绕开这个约束而设计。
+- 动机链:现状是序列级蒸馏很火,但大家只把它当 SFT 数据问题。缺陷在于缺师生交互,引出上述三大问题。所以本文的选择是:不改用 logit 蒸馏、保留序列级的简单性,但从分布对齐的角度补回师生交互——同时改善覆盖、给出更优的目标分布、并缓解 exposure bias【原文 §1, §3】。
+- 与最近邻工作的Δ:
+  - 相对纯 SFT 蒸馏(OpenR1/LIMO 等):差在把采样策略和数据选择从启发式提升为分布对齐(温度调度 + DAS),再加一个轻量的 on-policy 混合阶段。
+  - 相对 on-policy / logit 蒸馏:差在只需要师生对每个 teacher token 的概率(句子级几何均值),不需要全词表 logits、也不要求同 tokenizer。
+  - 有用点:用极少(448K)数据达到 SOTA,且 DAS 筛出的数据可以跨 student 复用(§4 line 830:为 4B 筛的数据可迁移到 30B-A3B)。
 
 ## 怎么做 + 靠不靠谱
 
+> 一句话导读:先用几行公式说明"为什么拿老师答案做 SFT 其实就是在做蒸馏"(立论),再据此推出三件套——先低温后高温地学(温度调度)、专挑师生概率差大的句子学(DAS)、让学生先自己走一半再让老师接(混合策略)。
+
 ### 0. 理论锚点:为什么"SFT on teacher data"本身就是蒸馏(Eq.1-5,本文立论基石)
-给输入 \(x\),序列级蒸馏让 student \(p_S\) 在**整条响应**层面逼近 teacher \(p_T\)【原文 §2, Eq.1-5】:
+给定输入 \(x\),序列级蒸馏让 student \(p_S\) 在**整条响应**层面逼近 teacher \(p_T\)【原文 §2, Eq.1-5】:
 \(\displaystyle \min_{\theta}\;D_{\mathrm{KL}}\!\big(p_T(y\in\mathcal Y\mid x)\,\|\,p_S(y\in\mathcal Y\mid x)\big),\qquad \mathcal Y=\text{teacher 对 }x\text{ 所有可能响应} \tag{1}\)
 展开 KL 并丢掉与 \(\theta\) 无关的常数项 \(p_T\log p_T\):
 \(\displaystyle \mathcal L_{\mathrm{SEQ}}=\sum_{y\in\mathcal Y}p_T(y\mid x)\big[\log p_T(y\mid x)-\log p_S(y\mid x)\big] \;\;\longrightarrow\;\; \mathcal L_{\mathrm{SEQ}}=-\sum_{y\in\mathcal Y}p_T(y\mid x)\log p_S(y\mid x) \tag{2,3}\)
 \(\mathcal Y\) 指数大、不可枚举,故用**采样响应 \(\hat y\) 的点质量**近似 teacher 分布:
 \(\displaystyle p_T(y\mid x)\approx \mathbf 1\{y=\hat y\}\;\Longrightarrow\;\mathcal L_{\mathrm{SEQ}}\sim-\sum_{y\in\mathcal Y}\mathbf 1\{y=\hat y\}\log p_S(y\mid x)=-\log p_S(\hat y\mid x) \tag{4,5}\)
-Eq.5 **正好就是 teacher 数据上的标准 SFT loss**——这一步是全文的"立论"：它解释了为何"SFT on teacher 数据"有效(本质是用单样本点质量近似 teacher 序列分布),也直接推出"**怎么选 \(\hat y\)(采样策略)决定了对 \(p_T\) 的近似质量**"——这是温度调度与 DAS 的出发点。Kim&Rush 用 beam search 取 \(\hat y\)≈众数,近期工作用随机采样;两者都只覆盖 \(p_T\) 的窄子集。
+Eq.5 **正好就是 teacher 数据上的标准 SFT loss**。这一步是全文的"立论",它说清了两件事:第一,为何"SFT on teacher 数据"有效——本质是用单个采样样本的点质量去近似 teacher 的整条序列分布;第二,**怎么选 \(\hat y\)(即采样策略)直接决定了对 \(p_T\) 近似得好不好**——这正是温度调度与 DAS 的出发点。对比一下:Kim&Rush 用 beam search 取的 \(\hat y\) 约等于分布众数,近期工作则用随机采样;但两者都只覆盖了 \(p_T\) 的一个窄子集。
 
 ### 1. 温度调度学习(Temperature-scheduled Learning,补"覆盖不足")
-- 干什么:teacher 用低温 \(T=0.6\) 和高温 \(T=1.0\) 各采多响应;**两阶段 SFT**——先在低温样本上 cold-start(50K,T=0.6),再在高温样本上续训(50K,T=1.0)【原文 §3, §6】。
-- 直觉与证据:低温分布尖锐、质量集中、易学(loss 平滑下降),但覆盖窄;高温分布平展、覆盖广、数据多样,但引入大量罕见 teacher 模式/噪声样本,小 student 难学(loss 居高)。先低温稳住早期学习、再高温扩覆盖。Table 1:静态单温度对比中 T=1.0 一致优于 T=0.6(AIME24 +1.4 / AIME25 +4.2),但纯高温堆数据边际递减(100K T=1.0 相对 50K 在 AIME24 零增益、AIME25 仅 +2.8)→说明 student 吸收多样 teacher 行为的能力是瓶颈,故需调度而非单纯加量。
-- 表征工具:为刻画一条响应的整体似然,用其 **token 概率的几何均值**(§3 Fig.3 注、§4 line 615)。
+> 一句话导读:采样温度高低各有利弊——低温答案干净好学但太单一,高温答案多样但夹带噪声;所以先用低温稳住开局,再用高温扩大见识面。
+- 干什么:teacher 分别用低温 \(T=0.6\) 和高温 \(T=1.0\) 各采多条响应,然后做**两阶段 SFT**——先在低温样本上 cold-start(50K,T=0.6),再在高温样本上续训(50K,T=1.0)【原文 §3, §6】。
+- 直觉:低温分布尖锐、质量集中、容易学(loss 平滑下降),但覆盖太窄;高温分布平展、覆盖广、数据多样,但会引入大量罕见的 teacher 模式和噪声样本,小 student 学不动(loss 居高不下)。所以策略是先低温稳住早期学习,再高温扩覆盖。
+- 证据:Table 1 在静态单温度对比中,T=1.0 一致优于 T=0.6(AIME24 +1.4 / AIME25 +4.2);但纯高温堆数据存在边际递减(100K T=1.0 相对 50K,在 AIME24 上零增益、AIME25 仅 +2.8)。这说明瓶颈在于 student 吸收多样 teacher 行为的能力,所以要靠调度而非单纯加量。
+- 表征工具:为了刻画一条响应的整体似然,用它的 **token 概率的几何均值**(§3 Fig.3 注、§4 line 615)。
 
 ### 2. 散度感知采样(DAS,补"师生能力错配"——最核心)
-- 前置发现:**四类句子分解**【原文 §4, Fig.5/6】。把每条响应切成句子,算 teacher/原始 student/蒸馏后 distilled 三模型对每句的概率(几何均值)\(p_T,p_S,p_D\),按相对大小分四类:
-  - **Teacher Sentence**:\(p_T\gg p_S\) 且 distilled 仍输出该句 → 主要源自 teacher;此时 student 可在 SFT 下**放心抬高概率而无误导梯度之虞**。
+> 一句话导读:把答案切成句子,看哪些句子是"老师特有、学生还不会"的(高散度),优先喂这些;这样既学到了真本事,又不会去强化那些学生本来就会的 token(那只会带来误导梯度)。
+- 前置发现:**四类句子分解**【原文 §4, Fig.5/6】。做法是把每条响应切成句子,算出 teacher / 原始 student / 蒸馏后 distilled 三个模型对每句话的概率(几何均值)\(p_T,p_S,p_D\),再按相对大小分成四类:
+  - **Teacher Sentence**:\(p_T\gg p_S\),且 distilled 仍会输出该句 → 主要源自 teacher。此时 student 在 SFT 下可以**放心抬高概率,不用担心误导梯度**。
   - **Student Sentence**:\(p_S\gg p_T\) → 主要源自 student。
-  - **Shared Sentence**:三模型概率相近 → 师生本就共有、蒸馏未改变。
-  - **Boosted Sentence**:\(p_T\approx p_S\) 但 \(p_D\) 显著(通常更高)→ 师生本有但被蒸馏放大。
-- 关键实证(Fig.6):按句位置统计各类句子概率与答案正确性的相关。**Teacher Sentence 在正确答案中概率持续更高**(浅绿实线恒高于虚线,面积差 \(\Delta\) 为正);**Boosted Sentence 反而负相关**(\(\Delta<0\),作者推测源自次优误导梯度);Shared/Student Sentence 概率低、影响小。结论:**优先学 Teacher Sentence**。
-- 可前置识别(DAS 之所以可行):虽然完整四类分解需要 distilled 模型(训练后才有),但 Teacher/Student Sentence **训练前即可识别**——只看 teacher 是否对该句赋显著高于/低于 student 的概率即可【原文 §4 line 793–798】。
-- DAS 机制:优先选**Teacher Sentence 丰富**的训练样本,从而隐式逼近一个"更契合 student 学习能力"的 teacher 派生序列分布,天然规避误导梯度。**资源足迹极小**:每个 teacher token 只需师生双方概率(teacher 侧采样时即得、闭源 API 多暴露;student 侧本地算),不需全词表 logits、不需 teacher 对 student 输出打分(后者闭源不可得)。
-- 证据(Table 3/4):同采样预算 DAS 一致优于随机采样(50K DAS T=1.0 AIME25=79.2 vs 50K RS=76.1,且超 100K RS=78.9);换 teacher(Qwen3-Next-80B-A3B-Thinking)、跨域(数学/代码/科学)均成立;且 DAS 数据**跨 student 复用**(为 4B 筛的数据迁到 30B-A3B 仍有效,§4 line 830)。
+  - **Shared Sentence**:三模型概率相近 → 师生本来就共有、蒸馏没改变它。
+  - **Boosted Sentence**:\(p_T\approx p_S\),但 \(p_D\) 明显(通常更高)→ 师生本有、被蒸馏放大了。
+- 关键实证(Fig.6):按句子位置统计各类句子的概率与答案正确性的相关。
+  - **Teacher Sentence 在正确答案里概率持续更高**(浅绿实线恒在虚线之上,面积差 \(\Delta\) 为正);
+  - **Boosted Sentence 反而负相关**(\(\Delta<0\),作者推测来自次优的误导梯度);
+  - Shared / Student Sentence 概率低、影响小。
+  - 结论:**优先学 Teacher Sentence**。
+- 可前置识别(这是 DAS 能落地的关键):完整的四类分解需要 distilled 模型(训练完才有),但 Teacher / Student Sentence **训练前就能识别**——只看 teacher 给这句话的概率是否明显高于 / 低于 student 即可【原文 §4 line 793–798】。
+- DAS 机制:优先挑选**Teacher Sentence 丰富**的训练样本,从而隐式逼近一个"更贴合 student 学习能力"的 teacher 派生序列分布,天然规避误导梯度。它的**资源足迹极小**:每个 teacher token 只需要师生双方的概率(teacher 侧在采样时就得到、闭源 API 多半也暴露;student 侧本地算),不需要全词表 logits,也不需要 teacher 对 student 输出打分(后者闭源拿不到)。
+- 证据(Table 3/4):同样的采样预算下,DAS 一致优于随机采样(50K DAS T=1.0 的 AIME25=79.2,高于 50K RS 的 76.1,甚至超过 100K RS 的 78.9);换 teacher(Qwen3-Next-80B-A3B-Thinking)、跨域(数学 / 代码 / 科学)都成立;且 DAS 数据可**跨 student 复用**(为 4B 筛的数据迁到 30B-A3B 仍有效,§4 line 830)。
 
 ### 3. 混合策略蒸馏(Mixed-policy Distillation,补"exposure bias"——迷你 path-recovery)
-- 协议(§5, §6.3 line 1071–1078,可复现):从 DAS 集采 50K 题让 **student 自己生成**解 → 在**超过总长一半的随机位置截断**、丢弃后半 → **teacher 把丢弃部分重写(续写)** → 通过质量过滤的 teacher 续写保留 → 得 **12.7K** 混合策略样本,加入 student 进一步微调。
-- 直觉:student 在长响应上会逐渐偏离 teacher(Fig.7 cut-off 率随长度上升),纯 teacher-forced SFT 训练态与自回归推理态不一致(exposure bias)。让 student 先在自生成(on-policy)前缀上"走到一半",再由 teacher 在 student 真实落点处给出修正续写,使训练直面 student 自己的分布。
-- **关键消融(Table 5,有价值的负结果)**:仅 7.7K 混合数据(no-mask)即提升(baseline 83.3/74.2 → 83.3/74.8);但若**把 student 自生成段 mask 掉、只在 teacher 续写段算 loss,反而更差(80.8/72.3)**——证明训练时**保留 on-policy student 段不可去**(去掉就丢了 exposure bias 的纠正价值)。
+> 一句话导读:让学生先自己写一半,卡在它真实会到达的位置上,再由老师从那个点接着往下写——这样训练面对的就是学生自己的分布,而不是永远只看标准答案。
+- 协议(§5, §6.3 line 1071–1078,可复现),分四步:
+  1. 从 DAS 集里采 50K 道题,让 **student 自己生成**解;
+  2. 在**超过总长一半的某个随机位置**截断,丢掉后半段;
+  3. 让 **teacher 把丢掉的部分重写(续写)**;
+  4. 只保留通过质量过滤的 teacher 续写,得到 **12.7K** 混合策略样本,加进去给 student 进一步微调。
+- 直觉:student 在长响应上会逐渐偏离 teacher(Fig.7 显示 cut-off 率随长度上升)。纯 teacher-forced 的 SFT 让训练态与自回归推理态不一致,这就是 exposure bias。做法是让 student 先在自生成(on-policy)的前缀上"走到一半",再由 teacher 在 student 真实落点处给出修正续写,使训练直接面对 student 自己的分布。
+- **关键消融(Table 5,一个有价值的负结果)**:只加 7.7K 混合数据(no-mask)就有提升(baseline 83.3/74.2 → 83.3/74.8);但若**把 student 自生成那段 mask 掉、只在 teacher 续写段算 loss,反而更差(80.8/72.3)**。这证明训练时**必须保留 on-policy 的 student 段**——去掉它就丢了纠正 exposure bias 的价值。
 
 ### 训练流程与关键超参(复现锚点)【原文 §6, §7】
-- 数据(总 ≈448K):跨域难题(数学 105K + 代码 + 科学 + 指令);teacher 在 T=0.6/T=1.0 各采多响应 → DAS 筛 → 结构/长度/重复过滤(显式剔除含 function call 的响应,§6.3 line 1035)→ 105K 低温 + 330K 高温 + 12.7K 混合策略。
-- 师生:teacher **gpt-oss-120b**(另验 Qwen3-Next-80B-A3B-Thinking);student **Qwen3-4B-Instruct-2507**(MoE 版另用 Qwen3-30B-A3B-Instruct-2507)。〔v1 待核 RESOLVED:正文 §6.1 line 937 与 Table 1/3/4 一致写 student=Qwen3-4B-Instruct-2507,以此为准;"-Thinking-2507" 系发布命名,非训练 base〕
+- 数据(总 ≈448K):跨域难题(数学 105K + 代码 + 科学 + 指令)。流程是 teacher 在 T=0.6 / T=1.0 各采多条响应,经 DAS 筛选,再做结构 / 长度 / 重复过滤(其中显式剔除了含 function call 的响应,§6.3 line 1035),最终得到 105K 低温 + 330K 高温 + 12.7K 混合策略。
+- 师生:teacher 用 **gpt-oss-120b**(另验过 Qwen3-Next-80B-A3B-Thinking);student 用 **Qwen3-4B-Instruct-2507**(MoE 版另用 Qwen3-30B-A3B-Instruct-2507)。〔v1 待核 RESOLVED:正文 §6.1 line 937 与 Table 1/3/4 一致写 student=Qwen3-4B-Instruct-2507,以此为准;"-Thinking-2507" 系发布命名,非训练 base〕
 - 训练:full SFT、cutoff length **64K**、greedy packing、**ZeRO-3 + Liger kernels**、global batch **64**、**6 epochs**、lr **5e-5→1e-5**(cosine)。
 - 评测:统一 temperature 1.0 / top-p 1.0、每题采 64 报均值、AIME 最大生成 102400 token、LCB/GPQA 81920。
 - 主结果(Table 6):DASD-4B = AIME24 88.5 / AIME25 83.3 / LCB v5 69.3 / LCB v6 67.5 / GPQA-D 68.4,超 Qwen3-4B-Thinking-2507(AIME25 81.3)、Qwen3-32B(72.9)、AM-thinking-v1-32B(74.4,且用 2.9M 数据 vs 本文 448K)。
 
 ### 靠不靠谱
-- baseline 公平性:对照分"开权重"与"开权重+开数据"两族,数据规模对比突出(448K vs 2.9M/30M),较公平;但**三件套多为逐项独立消融(各在不同小规模子集),缺少在最终 448K full pipeline 上的逐项可加性消融**,无法判定三者叠加时各自净贡献【推断,据 §3-5 消融均为独立子实验】。
-- 假设与失效边界:【原文】DAS 需拿到师生对每个 teacher token 的概率(发布了 -Logprob 数据集);结构过滤显式剔除含 function call 的 teacher 响应(§6.3,工具调用留给未来工作)——故当前不适用于工具/agent 蒸馏。【推断】"Teacher Sentence 与正确性正相关"为观测性结论(Fig.6 面积差 \(\Delta\)),因果未隔离;四类句子分解依赖句子切分,跨语言/无明确句界的输出可能失效;teacher 概率对闭源 API 不总可得(虽作者称 many closed-source APIs 也暴露 teacher 概率)。
-- 祛魅总结:真贡献=把序列级蒸馏从"数据过滤"重新框定为"分布对齐"(Eq.1-5 立论 + 四类句子分解 + DAS),给出可操作的 DAS(只需师生 token 概率,跨 tokenizer 可用)+ 数据效率惊人(448K 达 SOTA)+ mixed-policy 的 mask 消融是有价值的负结果(证明 on-policy 段不可去)。包装/高估处:title/abstract 的"distribution-aligned"听起来像理论对齐,实际 DAS 是基于经验观测(Teacher Sentence 正相关)的启发式采样,无理论保证;"SOTA 超 32B"成立但基于 4B-Instruct 这一强 base + 强 teacher gpt-oss-120b,蒸馏增益与 base/teacher 质量耦合,论文未拆分【推断】。
+> 一句话导读:核心贡献(把蒸馏当分布对齐 + DAS + 极高数据效率)站得住,但要打个折——所谓"分布对齐"其实是基于经验观测的启发式、没有理论保证,而且三件套没在最终 448K 完整流程上做过逐项叠加消融。
+- baseline 公平性:对照分成"开权重"和"开权重+开数据"两族,数据规模对比很突出(448K vs 2.9M/30M),整体较公平。但**三件套大多是各自独立的消融(各在不同的小规模子集上做),缺少在最终 448K 完整流程上的逐项可加性消融**,因此判断不出三者叠加时各自的净贡献【推断,据 §3-5 消融均为独立子实验】。
+- 假设与失效边界:
+  - 【原文】DAS 需要拿到师生对每个 teacher token 的概率(为此发布了 -Logprob 数据集);结构过滤显式剔除了含 function call 的 teacher 响应(§6.3,工具调用留给未来工作)——所以当前**不适用于工具 / agent 蒸馏**。
+  - 【推断】"Teacher Sentence 与正确性正相关"只是观测性结论(Fig.6 的面积差 \(\Delta\)),因果未隔离;四类句子分解依赖句子切分,在跨语言或无明确句界的输出上可能失效;teacher 概率对闭源 API 也不总能拿到(尽管作者称很多闭源 API 也暴露 teacher 概率)。
+- 祛魅总结:
+  - 真贡献:把序列级蒸馏从"数据过滤"重新框定为"分布对齐"(Eq.1-5 立论 + 四类句子分解 + DAS);给出可操作的 DAS(只需师生 token 概率、跨 tokenizer 可用);数据效率惊人(448K 即达 SOTA);mixed-policy 的 mask 消融是个有价值的负结果(证明 on-policy 段不可去)。
+  - 包装 / 高估处:title 和 abstract 里的"distribution-aligned"听起来像理论对齐,但 DAS 实际是基于经验观测(Teacher Sentence 正相关)的启发式采样,没有理论保证;"SOTA 超 32B"成立,但这是建立在 4B-Instruct 这个强 base + gpt-oss-120b 这个强 teacher 之上的,蒸馏增益与 base / teacher 的质量耦合在一起,论文没有拆分【推断】。
 
 ## 结构化抽取
 - 🎯 机制速览6轴:**学什么信号**=teacher 序列级输出分布(经 DAS 筛的 Teacher Sentence 丰富响应)+ mixed-policy 阶段的 teacher 对 student 错误前缀的续写修正 | **改什么**=student 全参数(full SFT)| **何时改**=离线两阶段 SFT + 一个轻量 mixed-policy 阶段(均为训练期)| **免梯度?**=否(SFT 梯度训练)| **记忆-技能生命周期**=不涉及显式记忆/技能库,推理能力固化进权重 | **防遗忘机制**=无专门防遗忘;温度调度的低温 cold-start 可视为稳定早期学习(弱相关)【原文 §6.4】。
