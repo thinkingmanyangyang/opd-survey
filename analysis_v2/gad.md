@@ -17,9 +17,7 @@ gad | Black-Box On-Policy Distillation of Large Language Models (GAD) | 微软�
 
 ## 怎么做 + 靠不靠谱
 - **形式化与 minimax 价值函数(§2.1,Eq.1)**：条件文本生成,学生分布 \(q_\theta(y\mid x)\) 逼近教师分布 \(p(y\mid x)\)。构数据 \(\mathcal{T}=\{(x,y_t)\}\):遍历 prompt \(x\)、为每个采一条教师响应 \(y_t\)。生成器 \(G\)=学生模型,产出 \(G(x)\);判别器 \(D\) 给 \([x,y]\) 打一个**序列级标量分** \(D([x,y])\)(下文简写 \(D(y)\))。两玩家极大极小博弈:
-  \[
-  \max_{G}\ \min_{D}\ V(G,D)=\mathbb{E}_{(x,y_t)\sim\mathcal{T}}\big[-\log\sigma\big(D(y_t)-D(G(x))\big)\big],
-  \]
+  \(\displaystyle \max_{G}\ \min_{D}\ V(G,D)=\mathbb{E}_{(x,y_t)\sim\mathcal{T}}\big[-\log\sigma\big(D(y_t)-D(G(x))\big)\big],\)
   其中 \(\sigma(\cdot)\) 是 sigmoid;用 **Bradley-Terry 模型**([BT52])刻画"教师响应分应高于学生响应"的成对偏好。
 - **判别器结构(§2.1,复现关键)**：\(D\) **由生成器参数初始化** + 一个额外**标量预测头**;该 head 把序列**最后一个 token 的末层隐状态**投影成标量,作为整条序列的分数。→ 即 \(D\) 与 \(G\) 同架构同尺寸(消融 Table 5 证同尺寸最优)。
 - **方法流水线(5 步,Algorithm 1 + §2.2):每步标输入→输出**：
@@ -33,18 +31,12 @@ gad | Black-Box On-Policy Distillation of Large Language Models (GAD) | 微软�
 - **生成器/判别器的真实目标形式(§2.2 + 附录 A.1)**：
   - 生成器目标(Eq.2):\(\displaystyle \max_{G}\ \mathbb{E}_{(x,y_t)\sim\mathcal{T}}\big[D(G(x))\big]\)。由于 \(G(x)\) 的**采样操作对 \(\theta\) 不可微**,把 \(D(G(x))\) 当 reward、用 **policy gradient**([SMSM99])经 **GRPO**([SWZ+24])优化。
   - GRPO 实现(附录 A.1):对每个 \(x\) 采一组 \(N\) 条响应 \(\{y_s^i\}\),奖励 \(r_s^i=D(y_s^i)\)(Eq.5);组内归一算 advantage(Eq.6):
-    \[
-    A_i=\frac{r_s^i-\operatorname{mean}\big(\{r_s^j\}_{j=1}^{N}\big)}{\operatorname{std}\big(\{r_s^j\}_{j=1}^{N}\big)};
-    \]
+    \(\displaystyle A_i=\frac{r_s^i-\operatorname{mean}\big(\{r_s^j\}_{j=1}^{N}\big)}{\operatorname{std}\big(\{r_s^j\}_{j=1}^{N}\big)};\)
     目标(Eq.7,**省略 KL 与 clip 表述**,但实现里 KL \(\beta=0.001\)):\(\displaystyle \max_{G}\ \mathbb{E}_{x,\,\{y_s^i\}\sim q_G}\Big[\tfrac{1}{N}\sum_{i=1}^{N}A_i\Big]\)。
   - 判别器目标(Eq.3 / 组内 Eq.8):默认 **Bradley-Terry**,把组内每条学生响应 \(y_s^i\) 与同一教师响应 \(y_t\) 配对,最小化组内平均
-    \[
-    \min_{D}\ \mathbb{E}_{x,\,\{y_s^i\}\sim q_G}\Big[\tfrac{1}{N}\sum_{i=1}^{N}-\log\sigma\big(D(y_t)-D(y_s^i)\big)\Big],
-    \]
+    \(\displaystyle \min_{D}\ \mathbb{E}_{x,\,\{y_s^i\}\sim q_G}\Big[\tfrac{1}{N}\sum_{i=1}^{N}-\log\sigma\big(D(y_t)-D(y_s^i)\big)\Big],\)
     其中 \(D(y_t)\) 在组内共享。**消融对照的 CE loss**(Eq.4,二分类判别器损失)为
-    \[
-    \min_{D}\ \mathbb{E}_{(x,y_t)\sim\mathcal{T}}\big[-\log\sigma(D(y_t))-\log\big(1-\sigma(D(G(x)))\big)\big].
-    \]
+    \(\displaystyle \min_{D}\ \mathbb{E}_{(x,y_t)\sim\mathcal{T}}\big[-\log\sigma(D(y_t))-\log\big(1-\sigma(D(G(x)))\big)\big].\)
 - **训练-推理数据怎么流动**:训练时教师响应是**离线一次性收好**的固定 \(y_t\)(只查一次 GPT-5),学生响应每步**在线现采**;reward 不来自教师而来自**与学生共更的 \(D\)**;推理时**只留 \(G\)**(贪心、max response 1536),\(D\) 丢弃。这就是"黑盒(教师只给文本)+ on-policy(学生学自生成,反馈来自在线 \(D\))"的实现。
 - 逐组件必要性(消融均以 GPT-4o 评分衡量)：
   - **Warmup(生成器侧)**:去掉(直接用未 SFT 的 instruct 模型当 \(G/D\) 初始化)→ \(D\) 早期太易区分二者、分布鸿沟大、对抗失效,掉点(Qwen2.5-7B：LMSYS 50.8→49.7)【Table 3】。

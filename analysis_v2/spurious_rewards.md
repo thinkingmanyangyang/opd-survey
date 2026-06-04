@@ -31,35 +31,16 @@ spurious_rewards | Spurious Rewards: Rethinking Training Signals in RLVR | Unive
   - **code reasoning 干预**:prompt("Let's solve this using Python.")与 RL("含 python 字符串即 +1")两路显式抬高 code reasoning→Qwen 涨分,反向印证中介机理。
 - 关键机制/公式(本轮据 PDF 正文 Eq.1/2 + Appendix B 全推导补全,真符号 MathJax):
   - **GRPO 目标(Eq.1,省略 KL,因实验关闭 KL)**:
-    \[
-    J(\theta)=\mathbb{E}_{x\sim D,\,y\sim\pi_{\text{old}}(\cdot|x)}\!\left[\sum_{t=1}^{|y|}\min\!\Big(\rho_t(y;\theta)\,\hat A(x,y),\ \mathrm{clip}\big(\rho_t(y;\theta),\,1-\epsilon_c,\,1+\epsilon_c\big)\hat A(x,y)\Big)\right]
-    \]
+    \(\displaystyle J(\theta)=\mathbb{E}_{x\sim D,\,y\sim\pi_{\text{old}}(\cdot|x)}\!\left[\sum_{t=1}^{|y|}\min\!\Big(\rho_t(y;\theta)\,\hat A(x,y),\ \mathrm{clip}\big(\rho_t(y;\theta),\,1-\epsilon_c,\,1+\epsilon_c\big)\hat A(x,y)\Big)\right]\)
     其中 \(\rho_t(y;\theta)=\dfrac{\pi_\theta(y_t\mid x,y_{<t})}{\pi_{\text{old}}(y_t\mid x,y_{<t})}\) 是 token 级重要性比,优势 \(\hat A(x,y)=\dfrac{r(x,y)-\bar r_x}{\sigma_x}\)(组内均值 \(\bar r_x\)、组内标准差 \(\sigma_x\))。
   - **随机奖励下期望优势为零(Appendix B.1.1)**:对随机 Bernoulli(γ) 奖励,组内归一化优势之和恒为 0(构造性),且奖励独立于样本 ⇒ \(\mathbb{E}[\hat A]=0\)。
   - **clipping bias 定义(Appendix B.1.2)**:把 clip 引入的额外梯度定义为
-    \[
-    \mathrm{Bias}(\nabla_\theta J(\theta))=\mathbb{E}_{x,y}[\nabla_\theta J(\theta)]-\mathbb{E}_{x,y}[\nabla_\theta L_{\text{unclipped}}(\theta)]
-    \]
+    \(\displaystyle \mathrm{Bias}(\nabla_\theta J(\theta))=\mathbb{E}_{x,y}[\nabla_\theta J(\theta)]-\mathbb{E}_{x,y}[\nabla_\theta L_{\text{unclipped}}(\theta)]\)
     因 \(\mathbb{E}[\hat A]=0\) 且 \(\hat A\) 独立于其它项,**无 clip 项的期望梯度恒为 0**:\(\mathbb{E}_{x,y}[\nabla_\theta L_{\text{unclipped}}]=\mathbb{E}[\hat A]\cdot\mathbb{E}_{x,y}[\tfrac{1}{|y|}\sum_t\nabla_\theta\rho_t]=0\)。故 \(\mathrm{Bias}=\mathbb{E}[\nabla_\theta J]\) 本身。
   - **按 \(\hat A\) 符号分情形求梯度(Appendix B.1.2 核心,记 \(R_\theta=\rho_t\))**:
-    \[
-    \nabla_\theta J(\theta)=\hat A\cdot
-    \begin{cases}
-    \nabla_\theta R_\theta, & \hat A\ge 0\ \text{且}\ R_\theta<1+\epsilon_c,\\
-    0, & \hat A\ge 0\ \text{且}\ R_\theta>1+\epsilon_c,\\
-    0, & \hat A<0\ \text{且}\ R_\theta<1-\epsilon_c,\\
-    \nabla_\theta R_\theta, & \hat A<0\ \text{且}\ R_\theta>1-\epsilon_c.
-    \end{cases}
-    \]
+    \(\displaystyle \nabla_\theta J(\theta)=\hat A\cdot \begin{cases} \nabla_\theta R_\theta, & \hat A\ge 0\ \text{且}\ R_\theta<1+\epsilon_c,\\ 0, & \hat A\ge 0\ \text{且}\ R_\theta>1+\epsilon_c,\\ 0, & \hat A<0\ \text{且}\ R_\theta<1-\epsilon_c,\\ \nabla_\theta R_\theta, & \hat A<0\ \text{且}\ R_\theta>1-\epsilon_c. \end{cases}\)
     令 \(\mu=P(\hat A\ge0)\,\mathbb{E}[\hat A\mid\hat A\ge0]=-P(\hat A<0)\,\mathbb{E}[\hat A\mid\hat A<0]>0\)(由 \(\mathbb{E}[\hat A]=0\) 推出此式且 \(\mu\) 恒正)。代回并把不可导点梯度置 0,得**最终 clip 偏置(Eq.2)**:
-    \[
-    \mathrm{Bias}(\nabla_\theta J)=\mu\cdot\mathbb{E}_{x,y}
-    \begin{cases}
-    \nabla_\theta R_\theta, & \pi_{\theta,x}(y_t)<\pi_{\text{old},x}(y_t)(1-\epsilon_c),\\
-    0, & |R_\theta-1|\le\epsilon_c,\\
-    -\nabla_\theta R_\theta, & \pi_{\theta,x}(y_t)>\pi_{\text{old},x}(y_t)(1+\epsilon_c).
-    \end{cases}
-    \]
+    \(\displaystyle \mathrm{Bias}(\nabla_\theta J)=\mu\cdot\mathbb{E}_{x,y} \begin{cases} \nabla_\theta R_\theta, & \pi_{\theta,x}(y_t)<\pi_{\text{old},x}(y_t)(1-\epsilon_c),\\ 0, & |R_\theta-1|\le\epsilon_c,\\ -\nabla_\theta R_\theta, & \pi_{\theta,x}(y_t)>\pi_{\text{old},x}(y_t)(1+\epsilon_c). \end{cases}\)
   - **直觉(论文 Example,\(\epsilon_c=0.2\))**:相对 clip 阈值在 \([0,1]\) 概率区间内对高/低概率 token 造成**非对称的绝对 clip 范围**。高先验 token(\(\pi_{\text{old}}=0.85\)):上界 \(0.85\times1.02\approx1.02>1\),因 \(\pi_\theta\le1\) **永不可达**→只受非负梯度偏置→持续被推高;低先验 token(\(\pi_{\text{old}}=0.02\)):上界 \(0.02\times1.2=0.024\),稍增即越界→受负偏置被压。**净效果:无论奖励是否有信息,系统性放大已高先验的 token、压低低先验 token**——这就是随机奖励仍能涨分的数学根源。
 - 实验与证据:
   - 数据集/设置:训练 DeepScaleR(及其多数投票伪标注/错误标注派生集);评测 MATH-500(pass@1)、AMC(avg@8)、AIME2024/2025;模型见上述 10 个【原文§2.1+§3】。评测沿用 **OpenRLHF 默认评测设置**(原文§2.1 明引 "default evaluation setup in the popular RL framework OpenRLHF")。

@@ -28,9 +28,7 @@ cbrl | Context Bootstrapped Reinforcement Learning (CBRL) | UC Santa Barbara + C
   5. **推理时** \(p=0\)、不注入、零额外开销【§2 L67-68】。
 - 关键公式（直觉 + 真实形式）：
   - **线性退火调度**（论文唯一显式公式，eq.1）：
-    \[
-    p_i \;=\; p_{\text{start}} \;+\; \frac{t-1}{T-1}\,\bigl(p_{\text{end}}-p_{\text{start}}\bigr)
-    \]
+    \(\displaystyle p_i \;=\; p_{\text{start}} \;+\; \frac{t-1}{T-1}\,\bigl(p_{\text{end}}-p_{\text{start}}\bigr)\)
     其中 \(p_{\text{start}}\) 为初始注入概率（典型 0.5~1.0），\(p_{\text{end}}\) 为终值（典型 0.0），\(T\) 为总训练步数，\(t\) 为当前步【原文 §2.3 L103-107】。直觉：一条从 \(p_{\text{start}}\) 线性降到 \(p_{\text{end}}\) 的直线；**退火率随 \(T\) 自动适配任意训练预算**（"automatically adjusts to any training budget \(T\)"）【§2.3 L115-116】。
   - **底层 RL 目标未被改动**（论文不写 GRPO 公式，明示"without altering the underlying RL objective, loss functions, or optimization procedure"【§2.4 L141-143】）；【推断】GRPO 优势仍是组内归一化 \(\hat A_i=(r_i-\text{mean}(\mathbf r))/\text{std}(\mathbf r)\)，CBRL 只换了产生 \(r_i\) 的 prompt 分布——这正是"算法无关"的技术根据。
   - 核心直觉一句话：示范提供的不是"照抄目标"而是"怎么开始尝试"的引导，所以保持 on-policy 探索动力学不被破坏。

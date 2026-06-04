@@ -12,7 +12,7 @@ ca_survey | From Reasoning to Agentic: Credit Assignment in Reinforcement Learni
 - 研究背景：LLM RL 两波——**reasoning RL**（DeepSeek-R1/o1,单条 CoT \(L\sim10^3\)–\(3\times10^4\) token,1 turn,纯 outcome 奖励）→ **agentic RL**（多轮环境交互,\(T\sim10\)–\(100+\) turn,\(L\sim10^5\)–\(10^6\) token,稀疏 terminal 奖励）。经典 RL 已有 CA 工具箱（TD/GAE、return decomposition RUDDER、hindsight HCA、counterfactual/difference reward）,是 LLM 方法的基础（§2.5）。
 - 解决的具体痛点（survey 要填的 gap）：
   - ① **Episode 级方法（GRPO/REINFORCE）给每 token 同一 advantage**,轨迹一长就失效。多粒度动作层级(§2.2 Eq.1):\(\tau=[\text{Turn}_1,\dots,\text{Turn}_T]=[\text{Seg}_{1,1},\dots]=[a_{1,1,1},\dots]\)（Episode⊃Turn⊃Segment⊃Token）。GRPO advantage（§2.3 Eq.2）:
-    \[ \hat A^{\text{GRPO}}_i=R(\tau_i)-\frac1G\sum_{j=1}^G R(\tau_j), \]
+    \(\displaystyle \hat A^{\text{GRPO}}_i=R(\tau_i)-\frac1G\sum_{j=1}^G R(\tau_j),\)
     每 token 同一 \(\hat A_i\)。reasoning RL（\(L\sim10^3\)，1 turn）尚可（关键决策少）;agentic RL（\(L\sim10^5\)，100+ turn）把"选对 API"和"格式化输出"赋同样信用 → 信噪比崩。形式化:REINFORCE 梯度方差 \(\propto(R(\tau)-b)^2\)，同一 baseline 用于全 \(T\) 动作时总方差 \(O(T\cdot\mathrm{Var}[R])\)，**\(T=100\) 时每动作信噪比约差 100×** → "echo trap"（Wang 2025d:agentic 模型在 episode 级信用下收敛到重复行为）。
   - ② **agentic 使 CA 双层级化**（先判哪个 turn 关键,再判 turn 内哪些 token 重要）+ 随机转移/部分可观测/超长 horizon。
   - ③ **现有相邻综述不够**（Pignatelli 2023 只覆盖经典 RL;Zhang 2025a agentic 100 页综述把 CA 当子话题）——**无人系统覆盖 reasoning+agentic 两个 regime 的 CA**。

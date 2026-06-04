@@ -17,20 +17,14 @@ chain_of_agents | Chain-of-Agents: End-to-End Agent Foundation Models via Multi-
 - 方法流水线（读完可复现）【原文 §3, Fig.4】：①agentic 任务生成+过滤（沿用 Shi et al. 程序，depth/width 扩展增复杂度）→②让 OAgents（SOTA 开源 MAS）执行，录制成 CoA 兼容轨迹 \(\tau=\{(S_t,\phi_t,o_t)\}\)→③四阶段渐进质量过滤→④用 LLaMA-Factory 做 agentic SFT（observation masking）冷启动→⑤在 SFT 未用过的 QA 上 tool-aware rollout，用 veRL 跑 DAPO，outcome 二元奖励，只选难题（\(r_q\le0.3\)）训练。
 - 关键公式（真实形式 + 直觉）：
   - **CoA 动态编排状态转移**（式4，Thinking Agent 当总调度）：
-    \[
-    S_t=f_\theta(S_{t-1},\phi_{t-1},o_{t-1}),\qquad \phi_t\sim P(\phi\mid S_t)
-    \]
+    \(\displaystyle S_t=f_\theta(S_{t-1},\phi_{t-1},o_{t-1}),\qquad \phi_t\sim P(\phi\mid S_t)\)
     \(S_t\) 维持持久推理状态，\(\phi_t\in\{\phi_{\text{think}},\phi_{\text{plan}},\phi_{\text{search}},\dots\}\) 是被激活的角色——看当前状态决定下一步激活哪个角色/工具【§3.1 L342-345】。
   - **蒸馏轨迹定义**（式5，agent-level / sequence-level KD 目标）：
-    \[
-    \tau=\{(S_t,\phi_t,o_t)\}_{t=1}^{T}
-    \]
+    \(\displaystyle \tau=\{(S_t,\phi_t,o_t)\}_{t=1}^{T}\)
     \(S_t\) 推理状态、\(\phi_t\sim P(\phi\mid S_t)\) 激活的 agent、\(o_t\) 该 agent 的观测——把 OAgents 执行过程的"agent 激活序列 + 推理状态"录成可学序列（非 word 分布）【§3.2.1 L448-454】。
   - **轨迹构造迭代循环**（式6）：\(S_t=\Gamma(S_{t-1},o_{t-1})\)，\(a_t\sim\pi(\cdot\mid S_t)\)，\(o_t=\Phi(a_t)\)（\(\Gamma\) 状态转移、\(\pi\) 动作策略、\(\Phi\) agent 执行环境）【§3.2.1 L459-463】。
   - **SFT 目标 + observation masking**（式7，核心训练损失）：
-    \[
-    \mathcal{L}_{\text{SFT}}=-\sum_{t\notin O}\log\pi_\theta(\tau_t\mid\tau_{<t},q)
-    \]
+    \(\displaystyle \mathcal{L}_{\text{SFT}}=-\sum_{t\notin O}\log\pi_\theta(\tau_t\mid\tau_{<t},q)\)
     其中 \(O\) 为工具观测 token 集——**观测不计入 loss，防环境噪声反传**（"prevent environmental noise propagation"）；训练轨迹格式 `<think>C_cot</think><tools>α_m(α_p)</tools><observation>O_t</observation><reflection>F_t</reflection>...<answer>A_t</answer>`【§3.2.1 L541-549】。
   - **RL 难题选择信号**（式8-9，web agent）：\(r_q=\frac1N\sum_{i=1}^N\mathbb{I}[\text{EM}(a_i,y_{gt})=1]\)（\(N=32\) 次预测的无工具通过率，量化"参数知识污染风险"），剔除 \(r_q>0.3\)（易/被污染），只在 \(Q_{\text{RL}}=\{q_j\mid r_{q_j}\le0.3\}\) 上 RL【§3.3.1 L562-583】。
   - **奖励函数**（式10-11）：\(R_{\text{web}}(\tau)=\text{score}_{\text{answer}}\)（LLM-as-Judge 二元，免格式奖励因 SFT 已保证格式）；\(R_{\text{code}}(\tau)=\text{score}_{\text{answer}}\cdot\text{score}_{\text{format}}\)（沙箱过全部测例 + math 用 Math-Verify；format 检查 `<code>```py...```</code>`，**两者都满足才得满分**）【§3.3.2 L600-616】。

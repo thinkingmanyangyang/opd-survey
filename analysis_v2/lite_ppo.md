@@ -19,9 +19,7 @@ lite_ppo | Part I: Tricks or Traps? A Deep Dive into RL for LLM Reasoning (Lite 
   - **PPO clipped 目标**(Eq.1):\(\ J_{\mathrm{PPO}}(\theta)=\mathbb E_{q,\,o\sim\pi_{\theta_{\mathrm{old}}}}\frac{1}{|o|}\sum_{t=1}^{|o|}\min\!\big(r_t(\theta)A_t,\ \mathrm{clip}(r_t(\theta),1-\epsilon,1+\epsilon)A_t\big)\),其中 \(r_t(\theta)=\dfrac{\pi_\theta(o_t\mid q,o_{<t})}{\pi_{\theta_{\mathrm{old}}}(o_t\mid q,o_{<t})}\)。
   - **GRPO 组内优势**(Eq.2,critic-free 基准):对 prompt \(x\) 的 \(G\) 条响应、奖励 \(\{r_i\}_{i=1}^{G}\),\(\ \hat A_{i,t}=\dfrac{r_i-\mathrm{mean}(\{r_i\}_{i=1}^{G})}{\mathrm{std}(\{r_i\}_{i=1}^{G})}\)。
   - **GRPO 总目标**(Eq.3,含显式 KL):
-    \[
-    J_{\mathrm{GRPO}}(\theta)=\mathbb E\Big[\tfrac{1}{G}\!\sum_{i=1}^{G}\tfrac{1}{|o_i|}\!\sum_{t=1}^{|o_i|}\min\!\big(r_{i,t}\hat A_{i,t},\,\mathrm{clip}(r_{i,t},1-\epsilon,1+\epsilon)\hat A_{i,t}\big)-\beta D_{\mathrm{KL}}[\pi_\theta\|\pi_{\mathrm{ref}}]\Big].
-    \]
+    \(\displaystyle J_{\mathrm{GRPO}}(\theta)=\mathbb E\Big[\tfrac{1}{G}\!\sum_{i=1}^{G}\tfrac{1}{|o_i|}\!\sum_{t=1}^{|o_i|}\min\!\big(r_{i,t}\hat A_{i,t},\,\mathrm{clip}(r_{i,t},1-\epsilon,1+\epsilon)\hat A_{i,t}\big)-\beta D_{\mathrm{KL}}[\pi_\theta\|\pi_{\mathrm{ref}}]\Big].\)
   - **Lite PPO 的两项配方**(本文核心产出):① **优势归一化改 group 均值 + batch 标准差**——把 Eq.2 分母从组内 std 换成整 batch 的 std:\(\ \hat A_{i,t}=\dfrac{r_i-\mathrm{mean}_{\mathrm{group}}(\{r_i\})}{\mathrm{std}_{\mathrm{batch}}(\{r\})}\)。直觉:group 均值消 prompt 难度偏置,batch 标准差给更稳全局尺度、压低梯度幅度防过大更新(纯 group-std 小组方差估计噪声大);奖励高度集中时甚至可去 std。② **token-level loss 聚合**——每 token 当独立单位求和(减 length bias),而非序列内先平均。
 - 模块如何咬合:Lite PPO = vanilla PPO clipped 目标 + critic-free 组内优势(Eq.2)但**分母改 batch-std、分子用 group-mean**,loss 按 token-level 聚合,**去掉 Clip-Higher / Overlong filtering / Dynamic Sampling**。相对 GRPO 是"换归一化尺度 + 换聚合粒度",相对 DAPO 是"砍掉 3 个组件"。
 - 关键超参与默认值:global batch 1024(rollout 128 × 每 prompt 8 响应)、max length 8192、lr 1e-6、top_p 0.99 / top_k 100 / temp 0.99;每难度档 5000 题;规模 4B/8B(各含 Base 与 aligned)。

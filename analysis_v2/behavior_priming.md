@@ -20,7 +20,7 @@ behavior_priming | Beneficial Reasoning Behaviors in Agentic Search and Effectiv
 
 **【第一部分:识别行为（§3）——可复现的方法论】**
 1. **标准 agentic search 框架（§3.1）**：迭代式。第 \(k\) 步给定历史 \(\mathrm{ctx}_k\)，模型输出 \(y_k=\langle t_k,a_k\rangle\)（\(t_k\)=reasoning、\(a_k\)=action）。动作 \(\in\{\)search 检索, answer 终止, **summary 压缩历史管上下文**\(\}\)。历史更新规则:
-   \[ \mathrm{ctx}_{k+1}=\begin{cases}\mathrm{ctx}_k+y_k+\mathrm{info}_k, & a_k=\text{search}\\ a_k, & a_k=\text{summary}\end{cases} \]
+   \(\displaystyle \mathrm{ctx}_{k+1}=\begin{cases}\mathrm{ctx}_k+y_k+\mathrm{info}_k, & a_k=\text{search}\\ a_k, & a_k=\text{summary}\end{cases}\)
    （search 把检索结果 \(\mathrm{info}_k\) 追加;summary 把累积历史替换为压缩版,支撑有限上下文模型。完整 prompt 见 Appendix B.1。）
 2. **配对轨迹**：Gemini 2.5 Flash（强）成功 而 Qwen3-1.7B（弱）失败 的 **500 题**,各自的正确轨迹 vs 错误轨迹。数据来自 Li 2025c（Chain-of-Agents）的 web agent SFT 集（后续造语料同源）。
 3. **三阶段 LLM pipeline（§3.2,受 AutoRule-Wang&Xiong 2025 启发）**：① **轨迹比较**（详析"为何一成一败",用 Gemini 2.5 Flash）→ ② **行为抽取**（提炼贡献成功的关键行为,Gemini 2.5 Flash）→ ③ **行为合并**（去重/合并相似/留普适,Gemini 2.5 **Pro**）+ 人工复核 → 得**四行为**:
@@ -32,10 +32,10 @@ behavior_priming | Beneficial Reasoning Behaviors in Agentic Search and Effectiv
 
 **【第二部分:Behavior Priming 训练（§4）——读完可复现】**
 5. **SFT 种行为（§4.1）**：web/QA 两类任务各从 Gemini 2.5 Flash **每题采 10 条**轨迹（问/答来自 Li 2025c）;用 LLM 判每条是否**同时展现全部四行为**,只留全展现的;**把轨迹每一步当独立训练样本**:
-   \[ \mathcal D_{\text{SFT}}=\{\langle x^i_k,y^i_k\rangle\mid 1\le k\le L_i\},\quad T_i=(\langle x^i_1,y^i_1\rangle,\dots,\langle x^i_{L_i},y^i_{L_i}\rangle). \]
+   \(\displaystyle \mathcal D_{\text{SFT}}=\{\langle x^i_k,y^i_k\rangle\mid 1\le k\le L_i\},\quad T_i=(\langle x^i_1,y^i_1\rangle,\dots,\langle x^i_{L_i},y^i_{L_i}\rangle).\)
    数据统计（Table 1）:web Behavior Prime 2.9k 轨迹×平均 6.8 步=20k step 样本（accuracy 49.8%）、Incorrect 2.6k×7.6 步（acc 0%）、Correct 3.4k×5.9 步（acc 100%）;QA 2.2k×4.6 步=10k。注意:Behavior Prime 轨迹**更长**（步数多 → 探索更充分）。
 6. **RL 精炼（§4.2）**：primed 模型上跑 **GRPO**,**按 step 聚合**更新:
-   \[ J_{\text{GRPO}}(\theta)=\mathbb E_{q\sim\mathcal D,\{T_i\}_{i=1}^G\sim\pi_{\theta_{\text{old}}}}\Big[\sum_{i=1}^G\sum_{k=1}^{L_i}\sum_{t=1}^{|y_k|}\frac{1}{|y_k|}\min\big(r_{i,k,t}(\theta)\hat A_i,\ \mathrm{clip}(r_{i,k,t}(\theta),1\pm\varepsilon)\hat A_i\big)\Big], \]
+   \(\displaystyle J_{\text{GRPO}}(\theta)=\mathbb E_{q\sim\mathcal D,\{T_i\}_{i=1}^G\sim\pi_{\theta_{\text{old}}}}\Big[\sum_{i=1}^G\sum_{k=1}^{L_i}\sum_{t=1}^{|y_k|}\frac{1}{|y_k|}\min\big(r_{i,k,t}(\theta)\hat A_i,\ \mathrm{clip}(r_{i,k,t}(\theta),1\pm\varepsilon)\hat A_i\big)\Big],\)
    其中 \(r_{i,k,t}\) 是 importance ratio。**outcome 二值奖励**:LLM-judge 判最终答案对/错给 \(R_i\in\{0,1\}\)，且 **\(R_i\) 和 \(\hat A_i\) 对轨迹内所有 step/token 恒定**（这是与"path 重要"主张的内部张力所在——RL 阶段退回 outcome 级）。
 - **逐组件必要性（消融较完整）**：
   - **四行为 vs 单行为（§5.4 Table 5）**——IV-Only-10k（只筛 Information Verification）比 Direct RL 好（Overall 17.4 vs 13.9）但**一致被全四行为 Behavior Prime-10k 超过（19.7）**,证复合行为协同必要。

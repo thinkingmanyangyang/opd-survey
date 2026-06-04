@@ -17,9 +17,7 @@ brts | On-Policy Distillation with Best-of-N Teacher Rollout Selection (BRTS) | 
 
 ## 怎么做 + 靠不靠谱
 - **符号与 OPD 基线(§3.1)**:prompt \(x\)、ground-truth \(y^\star\);student/teacher 策略 \(\pi_S,\pi_T\),各自定义词表 \(V\) 上的自回归分布。轨迹 \(y=(y_1,\dots,y_T)\) 的概率分解 \(\pi(y\mid x)=\prod_{t=1}^{T}\pi(y_t\mid x,y_{<t})\)(Eq.1)。记学生 rollout \(\hat y_S\sim\pi_S(\cdot\mid x)\)、teacher rollout \(y_T\sim\pi_T(\cdot\mid x)\)。标准 OPD 最小化序列级 reverse-KL(Eq.2):
-  \[
-  L_{\mathrm{OPD}}(S)=\mathbb{E}_{x,\,\hat y_S\sim\pi_S}\!\left[\sum_{t=1}^{T} D_{\mathrm{KL}}\!\big(\pi_S(\cdot\mid x,\hat y_S^{<t})\,\big\|\,\pi_T(\cdot\mid x,\hat y_S^{<t})\big)\right].
-  \]
+  \(\displaystyle L_{\mathrm{OPD}}(S)=\mathbb{E}_{x,\,\hat y_S\sim\pi_S}\!\left[\sum_{t=1}^{T} D_{\mathrm{KL}}\!\big(\pi_S(\cdot\mid x,\hat y_S^{<t})\,\big\|\,\pi_T(\cdot\mid x,\hat y_S^{<t})\big)\right].\)
   实现里每步 KL 用**采样的 / top-K token 集**近似,该集合**默认取自 student 当前前缀下 student 分布的 top-K**([29,44])——即"在学生真实访问的态上纠正学生"。BRTS 在此之上加一条 correctness-/alignment-aware 的 **teacher-context 分支**。论文分三块讲(§3.2 轨迹 curation、§3.3 teacher-context 监督、§3.4 各分支 top-K 方向),Algorithm 1 给出单训练步。
 
 - **方法流水线(逐步 输入→输出,Algorithm 1 + §3.2~3.4,具体到可复现)**:
@@ -34,14 +32,8 @@ brts | On-Policy Distillation with Best-of-N Teacher Rollout Selection (BRTS) | 
   - 关键默认超参(附录 A,复现必备):AdamW(betas (0.9,0.999)、weight decay 0.01、grad clip 1.0)、**常数 lr 1e-6 无 warmup**、token-mean loss 聚合、mini-batch 64、PPO micro-batch 1/GPU 动态批、bf16;**关闭对 frozen reference 的 KL**(故目标里只剩 student-context 蒸馏 KL 与 teacher-context 辅助 KL 两项);**teacher top-K=16**;\(\lambda=10\) 全程固定;8×B200 单节点;验证每 10 步一次、k=4、temp 0.7、top-p 0.95、max validation response 31744。
 
 - **两支损失的真实形式与直觉(§3.3,Eq.3/4/5)**:两支都在"匹配的条件 context"下比 teacher 与 student 分布。student-context 分支两个分布都条件在学生前缀 \(\hat y_S^{<t}\);teacher-context 分支两个分布都条件在选中 teacher 前缀 \(y'^{<t}\)。
-  \[
-  L_{\text{stu-ctx}}=\mathbb{E}\!\left[\sum_t D_{\mathrm{KL}}\!\big(\pi_S(\cdot\mid x,\hat y_S^{<t})\,\big\|\,\pi_T(\cdot\mid x,\hat y_S^{<t})\big)\right],
-  \]
-  \[
-  L_{\text{tea-ctx}}=\mathbb{E}\!\left[\sum_t D_{\mathrm{KL}}\!\big(\pi_T(\cdot\mid x,y'^{<t})\,\big\|\,\pi_S(\cdot\mid x,y'^{<t})\big)\right],
-  \qquad
-  L_{\mathrm{total}}=L_{\text{stu-ctx}}+\lambda\,L_{\text{tea-ctx}}.
-  \]
+  \(\displaystyle L_{\text{stu-ctx}}=\mathbb{E}\!\left[\sum_t D_{\mathrm{KL}}\!\big(\pi_S(\cdot\mid x,\hat y_S^{<t})\,\big\|\,\pi_T(\cdot\mid x,\hat y_S^{<t})\big)\right],\)
+  \(\displaystyle L_{\text{tea-ctx}}=\mathbb{E}\!\left[\sum_t D_{\mathrm{KL}}\!\big(\pi_T(\cdot\mid x,y'^{<t})\,\big\|\,\pi_S(\cdot\mid x,y'^{<t})\big)\right], \qquad L_{\mathrm{total}}=L_{\text{stu-ctx}}+\lambda\,L_{\text{tea-ctx}}.\)
   - **两条 KL 方向相反**(本文一个被低调处理、但很重要的设计):student-context(Eq.3)是 **reverse 形式** \(D_{\mathrm{KL}}(\pi_S\|\pi_T)\)(\(\pi_S\) 在前),"在学生访问态上把学生拉向 teacher";teacher-context(Eq.4)是 **forward 形式** \(D_{\mathrm{KL}}(\pi_T\|\pi_S)\)(\(\pi_T\) 在前),"在 teacher 可靠前缀上把学生分布拉去覆盖 teacher"。直觉:reverse-KL 是 mode-seeking(让学生在自己态上别犯错),forward-KL 是 mode-covering(让学生别漏掉 teacher 在好路径上偏好的 token)。**论文未论证为何两支取相反方向**——逻辑链上一个未解释的设计选择〔推断〕。
   - **\(\lambda\) 的标度直觉(§3.3 原文)**:teacher-context 分支评在"通常比噪声学生 rollout 更连贯"的选中轨迹上,故其原始贡献在 \(\lambda=1\) 时太小;经验取 \(\lambda=10\) 给它"有意义的尺度且仍稳定",全实验用此值。**未给 \(\lambda\) 敏感性扫描**〔推断:仅单值,无 5/10/20 对照〕。
 

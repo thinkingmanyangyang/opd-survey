@@ -23,17 +23,17 @@ beyond_loglik | Beyond Log Likelihood: Probability-Based Objectives for Supervis
 **【统一框架（§3）——可复现的目标族】**
 1. **标准 SFT = NLL/交叉熵**：\(\mathcal L_{\log(p)}(\theta)=\mathbb E_{(x,\tilde y)\sim\mathcal T}\big[-\sum_{t=1}^N\log p_\theta(y_t\mid y_{<t},x)\big]\)。
 2. **通用概率目标族**：对任意可微非增 \(f:[0,1]\to\mathbb R\)，
-   \[ \mathcal L_{f(p)}(\theta)=\mathbb E_{(x,\tilde y)\sim\mathcal T}\Big[\sum_{t=1}^N f\big(p_\theta(y_t\mid y_{<t},x)\big)\Big]. \]
+   \(\displaystyle \mathcal L_{f(p)}(\theta)=\mathbb E_{(x,\tilde y)\sim\mathcal T}\Big[\sum_{t=1}^N f\big(p_\theta(y_t\mid y_{<t},x)\big)\Big].\)
    一个有用实例:\(f^\alpha(p)=\dfrac{1-p^\alpha}{\alpha}\)。**\(\alpha\to0\) 退化 NLL**（\(f^\alpha\to-\log p\)）;**\(\alpha=1\) 即 \(-p\)（plain-p，=最大化期望平均预测准确率,因 \(1-p\) 对应 0-1 loss 期望）**;**\(\alpha\ge1\) 凹 / \(0\le\alpha\le1\) 凸**。
 3. **梯度形状（Lemma 3.1,理论核心）**：对 logits 的梯度为
-   \[ \frac{\partial \mathcal L_f}{\partial z_{t,i}}=s_f(p_{t,y})\,(\delta_{i,y}-p_{t,i}),\qquad s_f(p):=-f'(p)\,p\ \ge0, \]
+   \(\displaystyle \frac{\partial \mathcal L_f}{\partial z_{t,i}}=s_f(p_{t,y})\,(\delta_{i,y}-p_{t,i}),\qquad s_f(p):=-f'(p)\,p\ \ge0,\)
    其中 \(\delta_{i,y}=\mathbb 1\{i=y\}\)。对正确类 \(i=y\)：
-   \[ \frac{\partial \mathcal L_f}{\partial z_{t,y}}=s_f(p_{t,y})(1-p_{t,y})=W_f(p_{t,y}),\qquad \boxed{W_f(p):=-f'(p)\,p\,(1-p)}. \]
+   \(\displaystyle \frac{\partial \mathcal L_f}{\partial z_{t,y}}=s_f(p_{t,y})(1-p_{t,y})=W_f(p_{t,y}),\qquad \boxed{W_f(p):=-f'(p)\,p\,(1-p)}.\)
    \(W_f(p)\) **决定每个 token 按其当前预测概率贡献多少正确类梯度**。
 4. **凸凹归类（Prop 3.2）**：设 \(f\in C^2[0,1]\)，\(f'(p)<0\)。**\(f\) 凹 ⇒ \(W_f\) 的极大点落在 \([\tfrac12,1]\)（强调高概率 token = prior-leaning）;\(f\) 凸 ⇒ 极大点落在 \([0,\tfrac12]\)（强调低概率 token = prior-averse）**。对参数族 \(W_f(p)=p^\alpha(1-p)\):\(\alpha\to0\)（NLL）得 \(W_f\to(1-p)\) 强压低概率 token;\(\alpha\ge1\)（\(-p\)）低概率信号迅速衰减;特例 \(f(p)=-\log(1-p)\) 得 \(W_f=p\) 完全偏高概率。
 5. **prior-leaning vs prior-averse（Def 3.3）**：按 \(W_f\) 把梯度质量集中在阈值 \(\tau\) 之上（中-高概率 token,leverage 先验精炼已可信预测）还是之下（低概率 token,逼模型从不可信预测学习）来分类。边界 \(\tau\) 非唯一、随任务变,但 \(-\log p\) vs \(-p\) 有明确对比。
 6. **hard-thresholding 变体（Eq.4,关键消融工具）**：只在概率区间 \(I\subseteq[0,1]\) 内更新——
-   \[ \mathcal L_{HT(I),f(p)}(\theta)=\mathbb E_{(x,\tilde y)\sim\mathcal T}\Big[\sum_t f\big(p(y_t\mid\cdot)\big)\,\mathbb 1\{p(y_t\mid\cdot)\in I\}\Big]. \]
+   \(\displaystyle \mathcal L_{HT(I),f(p)}(\theta)=\mathbb E_{(x,\tilde y)\sim\mathcal T}\Big[\sum_t f\big(p(y_t\mid\cdot)\big)\,\mathbb 1\{p(y_t\mid\cdot)\in I\}\Big].\)
    用于隔离各概率段 token 的贡献（分位阈值由**训练前**的 base 模型预测概率算出）。
 7. **能力连续谱定位（§3 末）**：两视角——**数据侧**（语料相关 token 占比:LLaMA-3 报告 ~25% 数学 token → 数学 MS;figfont 完全不在语料 → MW;医疗部分覆盖 → MI）+ **模型侧**（用**训练集平均预测概率**作先验强度代理:数学 0.76–0.81、医疗 ~0.50、figfont ~0.01,类比 lm-eval 用 log-likelihood 评 base）。MS 端用 prior-leaning、MW 端用 prior-averse(NLL)、MI 端两者皆可。
 - **逐组件必要性**：

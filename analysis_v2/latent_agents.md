@@ -22,14 +22,10 @@ latent_agents | Latent Agents: A Post-Training Procedure for Internalized Multi-
 - 核心算法/损失(真实形式 + 直觉,符号从 PDF §2.3/§3 抄准):
   - **复合奖励**(Eq.1):\(\ r(x,y)=w_{\mathrm{fmt}}R_{\mathrm{fmt}}+w_{\mathrm{clip}}R(y;l)\)。\(R_{\mathrm{fmt}}\)=结构标签 token-matching 命中给正分(随训练靠 \(w_{\mathrm{fmt}}\to 0\) 淡出);\(R(y;l)\)=长度裁剪正确性奖励。
   - **长度裁剪正确性奖励**(Eq.2,直觉=逼模型把正确答案**尽早**放出):
-    \[
-    R(y;l)=\begin{cases}1, & \text{若 } y^\ast\in \mathrm{clip}(y,l),\\[2pt] 0, & \text{否则},\end{cases}
-    \]
+    \(\displaystyle R(y;l)=\begin{cases}1, & \text{若 } y^\ast\in \mathrm{clip}(y,l),\\[2pt] 0, & \text{否则},\end{cases}\)
     其中 \(\mathrm{clip}(y,l)\) 把输出 \(y\) 截到前 \(l\) 个 token,\(y^\ast\) 是正确终答;只有正确答案落在前 \(l\) token 内才给 1。length annealing \(l_0\to l_1\to\cdots\to l^\ast\) 防一开始就限死、扼杀对推理空间的探索。
   - **CAA / difference-in-means steering 向量**(Eq.3,§3,仅用于内化后分析/控制,**不参与训练**):对 agent \(i\),固定上下文(题 + 到该 agent 标签前的辩论历史),正激活=接该 agent 的原始回应、负激活=接其余两 agent 回应的平均;向量为均值差
-    \[
-    v_i=\frac{1}{|D|}\sum_{p,c\in D}\Big(h_\ell(p,c_i)-h_\ell(p,c_{\neg i})\Big),
-    \]
+    \(\displaystyle v_i=\frac{1}{|D|}\sum_{p,c\in D}\Big(h_\ell(p,c_i)-h_\ell(p,c_{\neg i})\Big),\)
     \(h_\ell\) 为第 \(\ell\) 层激活,\(D\) 为辩论数据集。推理时 \(\ h_\ell\leftarrow h_\ell+\alpha\cdot v_i\):\(\alpha>0\) 放大、\(\alpha<0\) 抑制该 agent 特质。向量**从 SFT 模型(RL 前)提取**,以隔离"学到的表示"与"RL 优化伪影"。
 - 关键超参与默认值:\(n=3\) agents、\(m=2\) rounds;数据 944 trace;\(w_{\mathrm{fmt}}\) 1.0→0.05;\(l\) 2000→500;SFT 3–6 epoch + GRPO 2 epoch(LoRA);backbone LLaMA-3.1-8B / Qwen2.5-7B / Mistral-Nemo-12B。
 - 逐组件必要性:

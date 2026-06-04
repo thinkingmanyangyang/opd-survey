@@ -23,9 +23,7 @@ prorl | ProRL: Prolonged Reinforcement Learning Expands Reasoning Boundaries in 
 - 方法流水线(§2,输入→输出讲清):
   - **输入**:良好初始化 base \(\pi_\theta\)(DeepSeek-R1-Distill-Qwen-1.5B,已能产连贯 CoT);136K 五域可验证数据(每域配二值或连续奖励)。**输出**:Nemotron-Research-Reasoning-Qwen-1.5B,一个跨域 generalist。
   - **① 基座 GRPO(去 critic)**:
-    \[
-    L_{\text{GRPO}}(\theta)=\mathbb{E}_{\tau\sim\pi_\theta}\!\left[\min\!\Big(r_\theta(\tau)A(\tau),\ \operatorname{clip}(r_\theta(\tau),1-\epsilon,1+\epsilon)A(\tau)\Big)\right],\quad r_\theta(\tau)=\frac{\pi_\theta(\tau)}{\pi_{\text{old}}(\tau)}
-    \]
+    \(\displaystyle L_{\text{GRPO}}(\theta)=\mathbb{E}_{\tau\sim\pi_\theta}\!\left[\min\!\Big(r_\theta(\tau)A(\tau),\ \operatorname{clip}(r_\theta(\tau),1-\epsilon,1+\epsilon)A(\tau)\Big)\right],\quad r_\theta(\tau)=\frac{\pi_\theta(\tau)}{\pi_{\text{old}}(\tau)}\)
     优势用组内标准化(去 PPO 的 critic):\(A(\tau)=\dfrac{R_\tau-\operatorname{mean}(\{R_i\}_{i\in G(\tau)})}{\operatorname{std}(\{R_i\}_{i\in G(\tau)})}\)(Eq.2)。
   - **② 叠 DAPO 两组件**(§2.3,抗熵坍缩):
     - **解耦 clip**(Eq.3):上下界拆成独立超参 \(\operatorname{clip}(r_\theta(\tau),1-\epsilon_{\text{low}},1+\epsilon_{\text{high}})\);调高 \(\epsilon_{\text{high}}\)="clip-higher",**抬升低概率 token 的上行空间**、保熵、减 mode collapse(实测有效,行 200-202)。本文取 \(\epsilon_{\text{low}}=0.2,\ \epsilon_{\text{high}}=0.4\)。

@@ -25,14 +25,10 @@ luffy | Learning to Reason under Off-Policy Guidance (LUFFY) | 上海AI实验室
   - **\(\pi_\phi=1\) 计算简化**:论文为计算效率取 \(\pi_\phi=1\),故 \(\hat r_{j,t}=\exp(\log\pi_\theta)=\pi_\theta\)(代码 `mix_core_alg.py`)。好处:避开师生不同 tokenization、可直接吃现成数据集无需重算 \(\pi_\phi\)、且收敛保证仍成立(Theorem 1 对任意良定义 \(\pi_\phi\) 都给 \(O(1/\sqrt K)\) 速率)。属工程近似,论文承认 off-policy clip 在 \(\pi_\phi=1\) 时会失衡故省去;无单独消融。
 - 关键机制/公式(真实符号 + 直觉):
   - **标准 GRPO**(§2,作为起点):组内归一优势 \(A_i=\dfrac{R(\tau_i)-\mathrm{mean}(\{R(\tau_i)\})}{\mathrm{std}(\{R(\tau_i)\})}\)(Eq.2);目标
-  \[
-  J_{\text{GRPO}}(\theta)=\frac{1}{\sum_i|\tau_i|}\sum_{i=1}^{N}\sum_{t=1}^{|\tau_i|}\mathrm{CLIP}\big(r_{i,t}(\theta),A_i,\epsilon\big)-\beta\, D_{\mathrm{KL}}[\pi_\theta\|\pi_{\text{ref}}],
-  \]
+  \(\displaystyle J_{\text{GRPO}}(\theta)=\frac{1}{\sum_i|\tau_i|}\sum_{i=1}^{N}\sum_{t=1}^{|\tau_i|}\mathrm{CLIP}\big(r_{i,t}(\theta),A_i,\epsilon\big)-\beta\, D_{\mathrm{KL}}[\pi_\theta\|\pi_{\text{ref}}],\)
   其中 \(\mathrm{CLIP}(r,A,\epsilon)=\min[\,r A,\ \mathrm{clip}(r;1-\epsilon,1+\epsilon)A\,]\)(Eq.3)。
   - **Mixed-Policy 优势**(§3.1,Eq.4):把 off-policy 组 \(G_{\text{off}}\) 与 on-policy 组 \(G_{\text{on}}\) 合并再归一,
-  \[
-  \hat A_i=\frac{R(\tau_i)-\mathrm{mean}(G_{\text{on}}\cup G_{\text{off}})}{\mathrm{std}(G_{\text{on}}\cup G_{\text{off}})}.
-  \]
+  \(\displaystyle \hat A_i=\frac{R(\tau_i)-\mathrm{mean}(G_{\text{on}}\cup G_{\text{off}})}{\mathrm{std}(G_{\text{on}}\cup G_{\text{off}})}.\)
   直觉:off-policy 轨迹奖励高,当模型自己难解(on-policy 全错)时它在组里**自然拿到高优势主导更新**;一旦模型开始解对,on-policy 轨迹优势升高、teacher 退居其次——"会就探索、不会就模仿"的开关由归一化自动给出,无需手调。
   - **Mixed-Policy 目标**(§3.1,Eq.5):\(J_{\text{Mixed}}=\frac{1}{Z}\big(\sum_{j}\sum_t \mathrm{CLIP}(\hat r_{j,t},\hat A_j,\epsilon)+\sum_i\sum_t \mathrm{CLIP}(r_{i,t},\hat A_i,\epsilon)\big)\),off-policy IS 比 \(\hat r_{j,t}=\pi_\theta(\tau_{j,t}|\cdot)/\pi_\phi(\tau_{j,t}|\cdot)\),归一因子 \(Z=\sum_j|\tau_j|+\sum_i|\tau_i|\)。
   - **Policy shaping**(§3.2,Eq.6):用 \(f(\hat r_{j,t})\) 替换 off-policy IS 比并省 clip:\(J_{\text{SHAPING}}=\frac{1}{Z}\big(\sum_j\sum_t f(\hat r_{j,t})\hat A_j+\sum_i\sum_t \mathrm{CLIP}(r_{i,t},\hat A_i,\epsilon)\big)\)。off-policy 项梯度(Eq.7)\(\nabla_\theta J_{\text{SHAPING-OFF}}=\mathbb{E}_{\tau\sim\pi_\phi}\big[f'(\pi_\theta)\tfrac{\pi_\theta}{\pi_\phi}\nabla_\theta\log\pi_\theta\cdot\hat A_j\big]\),可见 \(f'(\pi_\theta)\) 是**逐 logit 的梯度权重**。

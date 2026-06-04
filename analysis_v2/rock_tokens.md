@@ -20,24 +20,24 @@ rock_tokens | Cornerstones or Stumbling Blocks? Deciphering the Rock Tokens in O
 
 ### A. OPD 的 token 级 loss(基底)
 OPD 在学生自采轨迹上最小化逐 token reverse-KL:
-\[\mathcal L_{\text{OPD}}(\theta)=\mathbb E_{x_{1:T}\sim\pi_\theta}\Big[\textstyle\sum_{t=1}^{T}D_{\mathrm{KL}}\big(\pi_\theta(\cdot\mid x_{<t})\,\Vert\,\pi_T(\cdot\mid x_{<t})\big)\Big].\]
+\(\displaystyle \mathcal L_{\text{OPD}}(\theta)=\mathbb E_{x_{1:T}\sim\pi_\theta}\Big[\textstyle\sum_{t=1}^{T}D_{\mathrm{KL}}\big(\pi_\theta(\cdot\mid x_{<t})\,\Vert\,\pi_T(\cdot\mid x_{<t})\big)\Big].\)
 位置 \(t\) 的 token 级蒸馏信号 \(\ell_t=\log\pi_\theta(x_t\mid x_{<t})-\log\pi_T(x_t\mid x_{<t})\)。理想下 \(\ell_t\) 随对齐系统性减小至 plateau;但长推理轨迹里某些 token occurrence 即便总目标饱和仍持续大失配——且这种持续高 loss 可能源自 **token 身份本身** 或 **局部上下文**(对空白/换行/标点/数字这类高频 token 尤其需区分)。【§2.1 式1/2】
 
 ### B. 识别 Rock Tokens:两级打分(§2.2,v1 漏掉的 context-aware 部分在此补全)
 - **一级:聚合 Rock Score(候选筛选)**。OPD loss 按 token type \(v\) 分解 \(\mathcal L_{\text{OPD}}=\sum_v \mathrm{Freq}(v)\cdot\mathbb E[\ell_t\mid x_t=v]\),定义初始
-\[R(v)=\bar\ell_v\cdot\mathrm{Freq}(v),\]
+\(\displaystyle R(v)=\bar\ell_v\cdot\mathrm{Freq}(v),\)
 \(\bar\ell_v\) = 末 checkpoint 上 token \(v\) 的经验平均 token 级 loss。频率项**抑制小样本噪声**(稀有 token 即便观测 loss 极端也限权,高频且持续超基线 loss 才高分)。但 \(R(v)\) 单独不够(高频 token 可能只少数 occurrence 难),故加二级。
 - **二级:occurrence 级 + 上下文感知过滤**。把"持续高 loss occurrence"定义为训练前后都高 loss:\(O_{\text{PH}}=\{(i,t):\ell^{\text{pre}}_{i,t}\ge\tau_{\text{pre}},\ \ell^{\text{post}}_{i,t}\ge\tau_{\text{post}}\}\)。给每个 occurrence 取局部上下文窗 \(c^{(w)}_{i,t}=x^{(i)}_{t-w:t+w}\),编码 \(h^{(w)}_{i,t}=f_{\text{ctx}}(c^{(w)}_{i,t})\),两 occurrence 上下文相似度 \(s(o,o')=\mathrm{sim}(h^{(w)}_{i,t},h^{(w)}_{j,k})\)。**仅在同 token type 内**比较(\(O_{\text{PH}}(v)=\{o\in O_{\text{PH}}:x_o=v\}\)),定义上下文一致性分
-\[\rho(o)=\frac{1}{|O_{\text{PH}}(v)|-1}\sum_{o'\in O_{\text{PH}}(v),\,o'\ne o}\mathbb 1[s(o,o')\ge\gamma],\]
+\(\displaystyle \rho(o)=\frac{1}{|O_{\text{PH}}(v)|-1}\sum_{o'\in O_{\text{PH}}(v),\,o'\ne o}\mathbb 1[s(o,o')\ge\gamma],\)
 保留 \(\rho(o)\ge\eta\) 的 occurrence 得 rock occurrence 集 \(\mathcal R(v)\),其上下文一致 rock 率 \(\mathrm{CCR}(v)=|\mathcal R(v)|/\mathrm{Freq}(v)\)。**最终上下文感知 Rock Score**:
-\[R_{\text{ctx}}(v)=R(v)\cdot\mathrm{CCR}(v),\qquad v\in V_{\text{rock}}\iff R_{\text{ctx}}(v)\ge\tau_R.\]
+\(\displaystyle R_{\text{ctx}}(v)=R(v)\cdot\mathrm{CCR}(v),\qquad v\in V_{\text{rock}}\iff R_{\text{ctx}}(v)\ge\tau_R.\)
 **作用**:防"高频但仅孤立位置难"的 token(如个别空白/数字)被误判为全局顽固——它们 CCR 低、最终分被压下;只有"跨相似上下文反复高 loss"的才留为真 Rock Token。【§2.2 式3-14】
 - **经验估计**:用学生 rollout 估 per-token KL \(\hat b_{\ell v}=\hat{\mathbb E}[D_{\mathrm{KL}}(\pi_\theta\Vert\pi_T)\mid x_t=v]\)(式15)。在 N=500 MATH-500 轨迹上画 频率-KL 平面:稀有 token 噪声主导,Rock Score 把真 Rock Token(红)隔在稳定频率带上沿。【§2.3 式15,图2a】
 - **cutoff \(K\)**(§2.4):扫 Top-K——小 K 稳但覆盖低、大 K 覆盖高但抗噪差;**最优交点 K=100**(覆盖约 60% 语料级 KL,Jaccard 在 \(n\in[50,400]\) 稳健)。Rock Tokens 约占 6% 词表、median 18.5% 输出频次。decode 出来是四类:LaTeX/数学定界符、Markdown/空白结构、话语标记("So"/"Wait")、数字——**学生抵抗的是"怎么组织推理结构"而非"生成什么内容"**(频率匹配对照 \(S_{\text{ctrl}}\) 多是内容词)。【§2.4-2.5,图2c/d】
 
 ### C. RQ1:Rock Tokens 还提供有用学习信号吗?——Gradient Paradox(§2.6)
 对每个 token type 算均值 logit 梯度 \(\bar g_t=\frac1{n_t}\sum_i g_i\),分解其对全局下降的贡献:
-\[\mathrm{contrib}(t)=n_t\cdot\Vert\bar g_t\Vert\cdot\cos(\bar g_t,\ G_{\text{balanced}}),\qquad G_{\text{balanced}}=\textstyle\sum_t\bar g_t,\]
+\(\displaystyle \mathrm{contrib}(t)=n_t\cdot\Vert\bar g_t\Vert\cdot\cos(\bar g_t,\ G_{\text{balanced}}),\qquad G_{\text{balanced}}=\textstyle\sum_t\bar g_t,\)
 其中 \(G_{\text{balanced}}\) 是**频率均衡参考**(每 token type 等权,故意去掉常见 token 的频率主导)。三个发现:
 - **低梯度幅值 vs 高频(图3a)**:Rock 的每次梯度幅值远小于稀有高 KL token(median \(\Vert\bar g_t\Vert\approx0.016\) vs \(0.54\),Mann-Whitney \(p<10^{-30}\)),但 Eq.16 的乘法分解显示其主导来自**频率因子 \(n_t\)**——小信号 ×海量出现=对权更新的主导聚合力。
 - **与全局优化方向对齐(图3b)**:**反直觉**——Rock 的梯度方向与 \(G_{\text{balanced}}\) **正对齐**(median cos \(\approx0.040\) > 高 KL \(0.025\) > random \(0.006\),尾部 cos>0.3)。即每个 rock 在很多位置贡献小而方向一致的信号;从 teacher 视角,Rock Tokens 确实指向"正确"的优化方向。
@@ -46,10 +46,10 @@ OPD 在学生自采轨迹上最小化逐 token reverse-KL:
 
 ### D. RQ2/RQ3:因果功能价值 + 选择性蒸馏(§3-§4)
 - **inference-time knockout(§3.2,RQ2 因果探针)**:构造 knockout 策略 \(\pi^{\backslash v}_\theta\)(解码每步把 token \(v\) 的 logit 设 \(-\infty\)),量 causal delta
-\[\Delta_B(v)=\mathrm{Acc}_B(\pi^{\backslash v}_\theta)-\mathrm{Acc}_B(\pi_\theta).\]
+\(\displaystyle \Delta_B(v)=\mathrm{Acc}_B(\pi^{\backslash v}_\theta)-\mathrm{Acc}_B(\pi_\theta).\)
 \(\Delta_B(v)\le-0.01\) 判为 Strong Pillar。候选池 \(|\tilde{\mathcal R}|=200\)(超出核心 K=100 以搜稀有因果效应),paired-bootstrap \(\alpha=0.05\)、10000 resample。结果(图4):**MATH-500: 7 Pillar / 0 Stumbling / 193 Neutral;IFEval: 3 Pillar / 0 Stumbling / 197 Neutral**。三论断:① Pillar 罕见但致命(仅 3.5% / 1.5%);② **方向不对称——Strong Stumbling 为 0**(学生顽固偏离 teacher 极少有害,要么是必要锚点要么是无害风格偏好);③ **Pillarhood 与传统指标正交**(|r|<0.07 vs entropy/log-freq/residual KL)→ 按 loss/熵加权的重要性方案有压制 Pillar 的风险。【§3.2-3.3 式17,图4】
 - **window-aware 选择性蒸馏(§4.2,RQ3)**:因 Rock 是经局部高散度窗识别(非孤立 token 尖峰),故重加权"Rock token ∪ 其局部窗"。设 Persistence Set \(\mathcal R\)、每候选 token 的局部高散度窗 \(W(v)\),并集 \(W_{\mathcal R}=\bigcup_{v\in\mathcal R}W(v)\)(式18)。加权 OPD:
-\[\mathcal L_{\text{weighted}}=\mathbb E_{x\sim\pi_\theta}\sum_{t=1}^{T}w(x_t,t)\cdot\ell_t,\qquad w(x_t,t)=\begin{cases}\lambda,&x_t\in\mathcal R\ \text{或}\ t\in W_{\mathcal R}\\1,&\text{otherwise}\end{cases}\]
+\(\displaystyle \mathcal L_{\text{weighted}}=\mathbb E_{x\sim\pi_\theta}\sum_{t=1}^{T}w(x_t,t)\cdot\ell_t,\qquad w(x_t,t)=\begin{cases}\lambda,&x_t\in\mathcal R\ \text{或}\ t\in W_{\mathcal R}\\1,&\text{otherwise}\end{cases}\)
 三 regime:**Baseline OPD(\(\lambda=1\))** / **Rock-Freeze(ours,\(\lambda=0\),即 "Just Not Train")** / **Freq-Matched Window Freeze(Random,对频率/窗长匹配的随机窗 \(W_S\) 同样 \(\lambda=0\))**。Random 对照排除"冻任意 token 都无害"的平凡解。逻辑:冻 Rock 窗若维持/提升性能 → 它们更像 Stumbling Block;若显著掉点 → 更像 Pillar/pillar-like。【§4.2 式18/19】
 - **结果(§4.3,图5)**:① Rock Tokens **不是纯噪声陷阱**——含它们提供的梯度锚定优化(Original OPD vs Ours 有性能差,全冻会掉点);② **Random 严重掉点而 Rock-Freeze 维持高准确率上限**(选择性降权远比无差别减信号安全);③ Rock 约占 18% 输出 token,降其优化压力得 **1.7× wall-clock**(take-away 处又称对 30% 高成本 token freeze-weighting 得 **1.4×**,口径不一宜保守)。【§4.3,图5】
 

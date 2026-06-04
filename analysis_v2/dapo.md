@@ -24,18 +24,12 @@ dapo | DAPO: An Open-Source LLM Reinforcement Learning System at Scale | ByteDan
 输入 Qwen2.5-32B base + DAPO-Math-17K(17K 题,作者把 AoPS 等竞赛题答案统一转成整数以便 rule-based 校验)→ 先搭一个**去 KL + 规则二值奖励**的极简 GRPO 底座 → 叠加 4 个解耦补丁 → 输出 AIME 2024 达 50 分的推理模型。下面给每一层的输入→输出、机制、公式真实形式与默认超参。
 
 **底座目标函数(GRPO,作为对照锚点)**【原文 Eq.5】:
-\[
-J_{\mathrm{GRPO}}(\theta)=\mathbb{E}_{(q,a)\sim\mathcal D,\;\{o_i\}_{i=1}^{G}\sim\pi_{\theta_{\mathrm{old}}}(\cdot|q)}\Bigg[\frac{1}{G}\sum_{i=1}^{G}\frac{1}{|o_i|}\sum_{t=1}^{|o_i|}\Big(\min\big(r_{i,t}(\theta)\hat A_{i,t},\;\mathrm{clip}(r_{i,t}(\theta),1-\varepsilon,1+\varepsilon)\hat A_{i,t}\big)-\beta D_{\mathrm{KL}}(\pi_\theta\|\pi_{\mathrm{ref}})\Big)\Bigg]
-\]
+\(\displaystyle J_{\mathrm{GRPO}}(\theta)=\mathbb{E}_{(q,a)\sim\mathcal D,\;\{o_i\}_{i=1}^{G}\sim\pi_{\theta_{\mathrm{old}}}(\cdot|q)}\Bigg[\frac{1}{G}\sum_{i=1}^{G}\frac{1}{|o_i|}\sum_{t=1}^{|o_i|}\Big(\min\big(r_{i,t}(\theta)\hat A_{i,t},\;\mathrm{clip}(r_{i,t}(\theta),1-\varepsilon,1+\varepsilon)\hat A_{i,t}\big)-\beta D_{\mathrm{KL}}(\pi_\theta\|\pi_{\mathrm{ref}})\Big)\Bigg]\)
 其中重要性比 \(r_{i,t}(\theta)=\dfrac{\pi_\theta(o_{i,t}\mid q,o_{i,<t})}{\pi_{\theta_{\mathrm{old}}}(o_{i,t}\mid q,o_{i,<t})}\)【Eq.6】。注意外层 \(\frac1G\sum_i\frac1{|o_i|}\sum_t\) 是 **sample-level 聚合**——这是 §3.3 要修的地方。
 
 **最终 DAPO 目标(四补丁叠加后,Eq.8)**【原文 Eq.8/10/11/12,四式同构、逐步加约束】:
-\[
-J_{\mathrm{DAPO}}(\theta)=\mathbb{E}_{(q,a)\sim\mathcal D,\;\{o_i\}_{i=1}^{G}\sim\pi_{\theta_{\mathrm{old}}}(\cdot|q)}\Bigg[\frac{1}{\sum_{i=1}^{G}|o_i|}\sum_{i=1}^{G}\sum_{t=1}^{|o_i|}\min\big(r_{i,t}(\theta)\hat A_{i,t},\;\mathrm{clip}(r_{i,t}(\theta),1-\varepsilon_{\mathrm{low}},1+\varepsilon_{\mathrm{high}})\hat A_{i,t}\big)\Bigg]
-\]
-\[
-\text{s.t.}\quad 0<\big|\{o_i\mid \text{is\_equivalent}(a,o_i)\}\big|<G,\qquad \hat A_{i,t}=\frac{R_i-\mathrm{mean}(\{R_i\}_{i=1}^G)}{\mathrm{std}(\{R_i\}_{i=1}^G)}
-\]
+\(\displaystyle J_{\mathrm{DAPO}}(\theta)=\mathbb{E}_{(q,a)\sim\mathcal D,\;\{o_i\}_{i=1}^{G}\sim\pi_{\theta_{\mathrm{old}}}(\cdot|q)}\Bigg[\frac{1}{\sum_{i=1}^{G}|o_i|}\sum_{i=1}^{G}\sum_{t=1}^{|o_i|}\min\big(r_{i,t}(\theta)\hat A_{i,t},\;\mathrm{clip}(r_{i,t}(\theta),1-\varepsilon_{\mathrm{low}},1+\varepsilon_{\mathrm{high}})\hat A_{i,t}\big)\Bigg]\)
+\(\displaystyle \text{s.t.}\quad 0<\big|\{o_i\mid \text{is\_equivalent}(a,o_i)\}\big|<G,\qquad \hat A_{i,t}=\frac{R_i-\mathrm{mean}(\{R_i\}_{i=1}^G)}{\mathrm{std}(\{R_i\}_{i=1}^G)}\)
 对照底座式可一眼看出 4 处改动:**(a)** clip 上下界解耦为 \(\varepsilon_{\mathrm{low}},\varepsilon_{\mathrm{high}}\);**(b)** 去掉 \(-\beta D_{\mathrm{KL}}\) 项;**(c)** 外层归一从 \(\frac1G\sum_i\frac1{|o_i|}\) 改为 \(\frac{1}{\sum_i|o_i|}\sum_i\)(token-level);**(d)** 约束 \(0<|\{\text{正确}\}|<G\) 即 Dynamic Sampling 过滤全对/全错。
 
 ### 逐组件必要性(均有 Table 1 累积消融,给机制 + 公式 + 直觉)
@@ -53,9 +47,7 @@ J_{\mathrm{DAPO}}(\theta)=\mathbb{E}_{(q,a)\sim\mathcal D,\;\{o_i\}_{i=1}^{G}\si
   - 作者明说"性能增益较小但提升训练稳定性、让长度更健康增长"。
 - **④ Overlong Reward Shaping**(Overlong Filtering +6,30→36;Soft Punishment +3,38→41)【原文 §3.4, Eq.13, Fig.5】。
   - 干什么:两步。(i)**Overlong Filtering**:把被截断(超长)样本的 loss **mask 掉**(不计梯度);(ii)**Soft Overlong Punishment**:在 \([\,L_{\max}-L_{\mathrm{cache}},\,L_{\max}]\) 区间内给长度加一个**软惩罚**,叠加到规则正确性奖励上:
-  \[
-  R_{\mathrm{length}}(y)=\begin{cases}0,&|y|\le L_{\max}-L_{\mathrm{cache}}\\[4pt]\dfrac{(L_{\max}-L_{\mathrm{cache}})-|y|}{L_{\mathrm{cache}}},&L_{\max}-L_{\mathrm{cache}}<|y|\le L_{\max}\\[6pt]-1,&L_{\max}<|y|\end{cases}
-  \]
+  \(\displaystyle R_{\mathrm{length}}(y)=\begin{cases}0,&|y|\le L_{\max}-L_{\mathrm{cache}}\\[4pt]\dfrac{(L_{\max}-L_{\mathrm{cache}})-|y|}{L_{\mathrm{cache}}},&L_{\max}-L_{\mathrm{cache}}<|y|\le L_{\max}\\[6pt]-1,&L_{\max}<|y|\end{cases}\)
   - 直觉:若一律对截断样本重罚,会把"推理正确只是太长"的样本错误惩罚,注入 reward 噪声、让模型困惑于"我的推理到底对不对"。先 mask 截断样本消除噪声(Fig.5 精度/熵更稳),再用线性软惩罚温和地把长度往回拉(越长罚越多,撞 \(L_{\max}\) 才给 −1)。默认 \(L_{\max}=16384,\;L_{\mathrm{cache}}=4096\)(即生成上限 20480)。
 
 ### 训练流程(Algorithm 1,逐步)

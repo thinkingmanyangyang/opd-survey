@@ -27,14 +27,14 @@ scope | SCOPE: Signal-Calibrated On-Policy Distillation Enhancement with Dual-Pa
      **输出**:两个带各自 loss 形式的轨迹子集。
   2. **Stage 2 — Dual-Path Adaptive Weighting(DPAW)**(§3.2):用序列 PPL \(\mathrm{PPL}(y_i\mid x)=\exp(-\frac{1}{|y_i|}\log\pi(y_i\mid x))\) 量化"轨迹意外度",在**各组内**做 group-relative softmax 得权重(方向相反):
      - **Student-guided weight(放大非常规有效路径)**,只作用于正确轨迹:
-       \[w^{\mathrm{stu}}_i=\frac{\exp\!\big(-\frac{1}{\tau|y_i|}\log\pi_S(y_i\mid x)\big)}{\sum_{j\in\Omega^x_c}\exp\!\big(-\frac{1}{\tau|y_j|}\log\pi_S(y_j\mid x)\big)}=\frac{\mathrm{PPL}_S(y_i\mid x)^{1/\tau}}{\sum_{j\in\Omega^x_c}\mathrm{PPL}_S(y_j\mid x)^{1/\tau}},\quad\forall i\in\Omega^x_c.\]
+       \(\displaystyle w^{\mathrm{stu}}_i=\frac{\exp\!\big(-\frac{1}{\tau|y_i|}\log\pi_S(y_i\mid x)\big)}{\sum_{j\in\Omega^x_c}\exp\!\big(-\frac{1}{\tau|y_j|}\log\pi_S(y_j\mid x)\big)}=\frac{\mathrm{PPL}_S(y_i\mid x)^{1/\tau}}{\sum_{j\in\Omega^x_c}\mathrm{PPL}_S(y_j\mid x)^{1/\tau}},\quad\forall i\in\Omega^x_c.\)
        即 **student PPL 越高(越在能力边界)权重越高** → 缓解 §2.1 多样性退化。
      - **Teacher-guided weight(过滤坏前缀噪声)**,只作用于错误轨迹:
-       \[w^{\mathrm{tea}}_i=\frac{\exp\!\big(\frac{1}{\tau|y_i|}\log\pi_T(y_i\mid x)\big)}{\sum_{j\in\Omega^x_w}\exp\!\big(\frac{1}{\tau|y_j|}\log\pi_T(y_j\mid x)\big)}=\frac{\mathrm{PPL}_T(y_i\mid x)^{-1/\tau}}{\sum_{j\in\Omega^x_w}\mathrm{PPL}_T(y_j\mid x)^{-1/\tau}},\quad\forall i\in\Omega^x_w.\]
+       \(\displaystyle w^{\mathrm{tea}}_i=\frac{\exp\!\big(\frac{1}{\tau|y_i|}\log\pi_T(y_i\mid x)\big)}{\sum_{j\in\Omega^x_w}\exp\!\big(\frac{1}{\tau|y_j|}\log\pi_T(y_j\mid x)\big)}=\frac{\mathrm{PPL}_T(y_i\mid x)^{-1/\tau}}{\sum_{j\in\Omega^x_w}\mathrm{PPL}_T(y_j\mid x)^{-1/\tau}},\quad\forall i\in\Omega^x_w.\)
        即 **teacher PPL 越高(对坏前缀越没把握)权重越低** → 应对 §2.2 坏前缀陷阱。
      **输出**:每条轨迹的自适应权重。
   3. **Stage 3 — 统一目标**(§3.3):
-     \[\mathcal{J}_{\mathrm{SCOPE}}=\mathbb{E}_{x\sim\mathcal{D}}\Big[\sum_{i\in\Omega^x_c}w^{\mathrm{stu}}_i\cdot\mathcal{L}_{\mathrm{MLE}}(x,y_i)+\sum_{i\in\Omega^x_w}w^{\mathrm{tea}}_i\cdot\mathcal{L}_{\mathrm{OPD}}(x,y_i)\Big].\]
+     \(\displaystyle \mathcal{J}_{\mathrm{SCOPE}}=\mathbb{E}_{x\sim\mathcal{D}}\Big[\sum_{i\in\Omega^x_c}w^{\mathrm{stu}}_i\cdot\mathcal{L}_{\mathrm{MLE}}(x,y_i)+\sum_{i\in\Omega^x_w}w^{\mathrm{tea}}_i\cdot\mathcal{L}_{\mathrm{OPD}}(x,y_i)\Big].\)
      group-level 归一化保证 \(\sum_{i\in\Omega}w_i=1,\ 0<w_i<1\)(Eq.18-19),应对 prompt 间难度方差。**输出**:加权后的统一梯度更新。
 - **逐组件必要性(基于真实消融 Fig.5,AIME24/25)**:
   - **outcome-driven 分路 / 整个 DPAW**:w/o DPAW(退回均匀加权)→ AIME25 Pass@32 从 50.9 暴跌到 45.7,证均匀加权未能最优利用 rollout。【原文】§4.3、Fig.5

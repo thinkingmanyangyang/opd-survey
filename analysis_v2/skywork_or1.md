@@ -29,16 +29,12 @@ skywork_or1 | Skywork Open Reasoner 1 Technical Report | Skywork AI(昆仑万维
   - **RL 目标(Eq.2.1)**:\(\max_\pi J(\pi)=\mathbb{E}_{x\sim D}\,\mathbb{E}_{y\sim\pi(\cdot|x)}[r(x,y)]\),batch 级代理(Eq.2.2)。
   - **vanilla PG(Eq.2.3)**:\(L^{\text{PG}}_k(\theta)=-\mathbb{E}\big[\sum_t \tfrac{\pi_\theta(a^t_i|s^t_i)}{\pi_k(a^t_i|s^t_i)}A^{\pi_k}(s^t_i,a^t_i)\big]\)。
   - **GRPO(Eq.2.4)**——MAGIC 的出发点,含长度归一与 k3-KL:
-    \[
-    L^{\text{GRPO}}_k(\theta)=-\mathbb{E}\Big[\tfrac1M\sum_{i=1}^{M}\tfrac{1}{|y_{ij}|}\sum_{t=0}^{|y_{ij}|-1}\min\big(\rho^t_{ij}A^t_{ij},\ \mathrm{clip}(\rho^t_{ij},1-\varepsilon,1+\varepsilon)A^t_{ij}\big)-\beta D^t_{ij}(\theta)\Big]
-    \]
+    \(\displaystyle L^{\text{GRPO}}_k(\theta)=-\mathbb{E}\Big[\tfrac1M\sum_{i=1}^{M}\tfrac{1}{|y_{ij}|}\sum_{t=0}^{|y_{ij}|-1}\min\big(\rho^t_{ij}A^t_{ij},\ \mathrm{clip}(\rho^t_{ij},1-\varepsilon,1+\varepsilon)A^t_{ij}\big)-\beta D^t_{ij}(\theta)\Big]\)
     其中 \(\rho^t_{ij}=\dfrac{\pi_\theta(a^t_{ij}|s^t_{ij})}{\pi_k(a^t_{ij}|s^t_{ij})}\),**k3-KL 罚** \(D^t_{ij}(\theta)=\dfrac{\pi_{\text{ref}}(a^t_{ij}|s^t_{ij})}{\pi_\theta(a^t_{ij}|s^t_{ij})}-\log\dfrac{\pi_{\text{ref}}(a^t_{ij}|s^t_{ij})}{\pi_\theta(a^t_{ij}|s^t_{ij})}-1\),系数 β。
   - **组归一 token 级 advantage(Eq.2.5)**:\(\forall t:\ A^t_{ij}=\dfrac{r(x_i,y_{ij})-\mathrm{mean}(r(x_i,y_{i1}),\dots,r(x_i,y_{iM}))}{\mathrm{std}(\cdots)}\),binary 奖励 \(r\in\{0,1\}\) 由规则验证器给。
   - **Rejection Sampling 集合**:只保留 \(\tilde T_k=\{i\in[N]:\exists j\in[M],\ \hat A_{ij}\ne0\}\)(零优势组不进 batch,避免它们隐式抬高 KL/entropy 罚的相对权重致不稳)。
   - **MAGIC 损失(Eq.3.1,两处关键改动)**:
-    \[
-    L^{\text{MAGIC}}(\theta)=-\frac{1}{T_k}\sum_{i\in\tilde T_k}\sum_{j=1}^{M}\Big[\sum_{t=0}^{|y_{ij}|-1}\min\big(\rho^t_{ij}A^t_{ij},\mathrm{clip}(\rho^t_{ij},1-\varepsilon,1+\varepsilon)A^t_{ij}\big)+\alpha_k H^t_{ij}(\theta)\Big]
-    \]
+    \(\displaystyle L^{\text{MAGIC}}(\theta)=-\frac{1}{T_k}\sum_{i\in\tilde T_k}\sum_{j=1}^{M}\Big[\sum_{t=0}^{|y_{ij}|-1}\min\big(\rho^t_{ij}A^t_{ij},\mathrm{clip}(\rho^t_{ij},1-\varepsilon,1+\varepsilon)A^t_{ij}\big)+\alpha_k H^t_{ij}(\theta)\Big]\)
     ① **去长度归一**:把原 GRPO 的 \(1/|y_{ij}|\) 删掉,改成对**全 batch token** 求平均(\(T_k=\sum_{i\in\tilde T_k}\sum_j|y_{ij}|\) 为 batch 总 token 数),消除长度偏置;② **加 token 级熵项** \(\alpha_k H^t_{ij}(\theta)\),\(H^t_{ij}=H(\pi_\theta(\cdot|s^t_{ij}))\),系数 \(\alpha_k\ge0\) 由自适应熵控制动态调;③ **无 KL**(去掉 Eq.2.4 的 \(\beta D^t_{ij}\) 项)。
   - **Adaptive Entropy Control(§3.2.5,机制)**:引入超参 tgt-ent;\(\alpha_k\) 按"当前熵与 tgt-ent 之差"动态调整,确保当前熵被 tgt-ent **托住下界**(熵跌破下界→自动加大熵奖励系数把它顶回)。直觉:熵=探索度;这是把"clip-higher 等手动 trick"换成"目标熵反馈控制器"。〔主文给的是机制描述与 tgt-ent=0.2,**未给闭式 \(\alpha_k\) 更新方程**,故此处不杜撰其解析式。〕
 - 实验与证据:

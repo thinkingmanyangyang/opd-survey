@@ -23,7 +23,7 @@ apple_ssd | (SSD) Embarrassingly Simple Self-Distillation Improves Code Generati
 ### 1. 方法流水线（§2，三步极简，可复现级）
 - **Step 1 Sample**：冻结 base \(p_\theta\)，以温度 \(T_{\mathrm{train}}\)(非 1.0) + 截断 \(\rho_{\mathrm{train}}\)(top-k/top-p) 对每 prompt 采 \(N\) 个候选 \(y\sim\mathrm{Decode}_{T_{\mathrm{train}},\rho_{\mathrm{train}}}\big(p_\theta(\cdot|x)\big)\)（Eq.1）。\(N=1\) 即够(§3)。**不做任何验证/筛选**(no execution/test/correctness filter)，仅删空响应/单行 stub→原始数据集 \(D_{\mathrm{SSD}}\)。
 - **Step 2 Fine-tune**：对这些原始输出做标准交叉熵 SFT：
-  \[ L(\theta)=-\mathbb{E}_{(x,y)\sim D_{\mathrm{SSD}}}\sum_{t=1}^{|y|}\log p_\theta(y_t\mid x,y_{<t}) \quad(\text{Eq.2}) \]
+  \(\displaystyle L(\theta)=-\mathbb{E}_{(x,y)\sim D_{\mathrm{SSD}}}\sum_{t=1}^{|y|}\log p_\theta(y_t\mid x,y_{<t}) \quad(\text{Eq.2})\)
 - **Step 3 Decode**：评估时用单独调过的 \((T_{\mathrm{eval}},\rho_{\mathrm{eval}})\) 解码 \(\hat y\sim\mathrm{Decode}_{T_{\mathrm{eval}},\rho_{\mathrm{eval}}}\big(p_{\theta^*}(\cdot|x)\big)\)（Eq.3）。
 - **数据流动**：\(\sim\)10K 竞赛题 prompt → 冻结 base 一次性各采 1 解(vLLM, 128K 上下文) → 标准 SFT(Megatron-LM) → 换温评估。**纯 off-policy**：采样分布不随训练更新。
 
@@ -36,7 +36,7 @@ apple_ssd | (SSD) Embarrassingly Simple Self-Distillation Improves Code Generati
 ### 3. 关键机制：precision-exploration conflict（§4，全文灵魂）
 - **§4.1 冲突假设**：代码有两类位置——**fork**(多续写都合理、对应不同解法，需多样性/高温；如函数体开头 for/递归/初始化) vs **lock**(语法语义近乎唯一但有低概率 distractor 尾巴，需精度/低温；如 `if n ==` 后的特定值)。温度缩放 \(p_T(v)\propto p(v)^{1/T}\) **全局**拉平/锐化整个分布：低 \(T_{\mathrm{eval}}\) 保 lock 但饿死 fork 多样性；高 \(T_{\mathrm{eval}}\) 救 fork 但让 lock 的 distractor 复活。故**任何全局固定温度必是折中**(Fig 4)——"帮 fork 的温度恰好让 lock 的 distractor 复活"。
 - **§4.3 理论形式化(Eq.4，核心公式)**：在 \((T_{\mathrm{train}},\rho_{\mathrm{train}})\) 下采样，任一 context 产生保留集 \(S\)(过温度+截断存活的 token)与其上的归一化分布 \(q\)；记 \(\mathrm{KeptMass}_\theta\)=模型分给 \(S\) 的概率质量、\(T\equiv T_{\mathrm{train}}\)，则诱导损失分解为
-  \[ L(\theta)=\underbrace{-\log\mathrm{KeptMass}_\theta}_{\text{support compression (via }\rho_{\mathrm{train}})}+\underbrace{(1-T)\,H_{1/T}\big(p_\theta(\cdot|S)\big)}_{\text{within-support reshaping (via }T_{\mathrm{train}})}+\underbrace{T\cdot\mathrm{KL}\big(q\,\|\,p_{\theta,T}(\cdot|S)\big)}_{\text{alignment to base}}+\text{const} \quad(\text{Eq.4}) \]
+  \(\displaystyle L(\theta)=\underbrace{-\log\mathrm{KeptMass}_\theta}_{\text{support compression (via }\rho_{\mathrm{train}})}+\underbrace{(1-T)\,H_{1/T}\big(p_\theta(\cdot|S)\big)}_{\text{within-support reshaping (via }T_{\mathrm{train}})}+\underbrace{T\cdot\mathrm{KL}\big(q\,\|\,p_{\theta,T}(\cdot|S)\big)}_{\text{alignment to base}}+\text{const} \quad(\text{Eq.4})\)
   其中 \(H_{1/T}\) 是 \(1/T\) 阶 Rényi 熵、\(p_{\theta,T}(\cdot|S)\) 是模型在 \(S\) 上的 tempered 分布。三项作用：①**支撑压缩**(削尾、把质量集中到更小可行 token 集)；②**支撑内重塑**(重塑 head)；③与 base 在 \(S\) 上保持对齐。这证明 SSD **不是单纯模仿**，而是同时强制支撑压缩 + head 重塑。
 - **lock/fork 不对称(§4.3)**：lock 处只有少数 token 存活→支撑压缩主导→distractor 被挤出尾巴、head 对 \(T_{\mathrm{eval}}\) 变不敏感(变 **spike**)；fork 处多个续写存活→within-support 重塑有空间拉平/保留 head 而不重开尾巴(变 **plateau**，Fig 5)。
 - **为何解码调温替代不了(§4.3 B.5)**：decode-only 受 base 现有 ranking/累积曲线约束，只能重加权固定分布，**无法按上下文同时锐化 lock + 清理 fork head**；SSD 改的是分布本身，故 §3.3 的 decode-only gap 持续。

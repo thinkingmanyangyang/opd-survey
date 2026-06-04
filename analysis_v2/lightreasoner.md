@@ -20,24 +20,16 @@ lightreasoner | LightReasoner: Can Small Language Models Teach Large Language Mo
   - 数据流细节:采样 rollout **截到 128 token**(早步更稳、避免级联错误污染监督集);监督题来自 GSM8K 训练集 + CoT 提示;1000 步 × 每步 16 样本。
 - 核心算法/损失(真实形式 + 直觉,符号从 PDF §2.2/§2.3 抄准):
   - **关键步判据**(Eq 3,criticality = expert 偏离 amateur 倾向的程度):保留满足
-    \[
-    D_{\mathrm{KL}}\!\big(\pi_E(\cdot\mid s_t)\,\|\,\pi_A(\cdot\mid s_t)\big)=\sum_{a\in A}\pi_E(a\mid s_t)\log\frac{\pi_E(a\mid s_t)}{\pi_A(a\mid s_t)}>\beta
-    \]
+    \(\displaystyle D_{\mathrm{KL}}\!\big(\pi_E(\cdot\mid s_t)\,\|\,\pi_A(\cdot\mid s_t)\big)=\sum_{a\in A}\pi_E(a\mid s_t)\log\frac{\pi_E(a\mid s_t)}{\pi_A(a\mid s_t)}>\beta\)
     的步;\(A\) 为词表。
   - **α-mask 支撑集**(Eq 4,去尾部噪声 token,防低置信概率扭曲监督):
-    \[
-    A_{\mathrm{mask}}=\Big\{a\in A:\ \pi_E(a\mid s_t)\ge \alpha\cdot\max_{b\in A}\pi_E(b\mid s_t)\Big\},\quad \alpha\in(0,1].
-    \]
+    \(\displaystyle A_{\mathrm{mask}}=\Big\{a\in A:\ \pi_E(a\mid s_t)\ge \alpha\cdot\max_{b\in A}\pi_E(b\mid s_t)\Big\},\quad \alpha\in(0,1].\)
   - **对比分数**(Eq 5,量化 expert 相对 amateur 的优势 margin):\(\ v'_C(a\mid s_t)=\log\dfrac{\pi_E(a\mid s_t)}{\pi_A(a\mid s_t)}\)。
   - **软标签**(Eq 6):对 \(A_{\mathrm{mask}}\) 内的 \(v'_C\) 做 softmax 得 \(\tilde v_C\),再扩回全词表 \(v_C(a\mid s_t)=\tilde v_C(a\mid s_t)\cdot\mathbb 1[a\in A_{\mathrm{mask}}]\)。它把"expert 优于 amateur 的概率质量"编码成概率监督。
   - **自蒸馏目标**(Eq 7→8,把 \(v_C\) 回灌 expert):
-    \[
-    \mathcal L(s_t)=D_{\mathrm{KL}}\!\big(v_C(\cdot\mid s_t)\,\|\,\pi_E(\cdot\mid s_t)\big)=\sum_{a\in A}v_C(a\mid s_t)\log\frac{v_C(a\mid s_t)}{\pi_E(a\mid s_t)},
-    \]
+    \(\displaystyle \mathcal L(s_t)=D_{\mathrm{KL}}\!\big(v_C(\cdot\mid s_t)\,\|\,\pi_E(\cdot\mid s_t)\big)=\sum_{a\in A}v_C(a\mid s_t)\log\frac{v_C(a\mid s_t)}{\pi_E(a\mid s_t)},\)
     因第一项对 \(\pi_E\) 为常数,等价于对 \(v_C\) 加权的交叉熵
-    \[
-    \tilde{\mathcal L}(s_t)=-\sum_{a\in A}v_C(a\mid s_t)\log\pi_E(a\mid s_t).
-    \]
+    \(\displaystyle \tilde{\mathcal L}(s_t)=-\sum_{a\in A}v_C(a\mid s_t)\log\pi_E(a\mid s_t).\)
 - 模块如何咬合:Eq 3(β-filter)与 Eq 5(对比软标签)是**紧耦合系统**——KL 高的步先被选出(否则对比信号被琐碎步稀释),再在这些步上把"expert vs amateur 的对比 margin"转成监督(否则高价值步无法转成有效信号);两者在 Eq 7/8 的损失里合流,只训 expert 自己(self-distillation)。
 - 关键超参与默认值:masking 阈 \(\alpha=0.2\)、step-filter 阈 \(\beta=0.4\)、rollout 截断 128 token、1000 步 × 16 样本;amateur 固定 Qwen2.5-0.5B;LoRA 微调。
 - 逐组件必要性(均有消融,Table 6 / Fig 7):

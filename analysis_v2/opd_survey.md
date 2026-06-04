@@ -15,7 +15,7 @@ opd_survey | A Survey of On-Policy Distillation for Large Language Models | 腾�
 - 与最近邻工作的 Δ：相对 **Xu 2024 蒸馏综述**——从"压缩框架/方法表面分类"转为"**序列决策 + f-散度统一框架 + 设计中心分类**",差在把 on-policy 当作"改训练数据从哪来"的范式转变(而非 off-policy 的可互换变体),并给出 DAgger 误差界与 OPD↔KL-约束 RL 的形式等价。【原文 §1 / §2.2 / §7.3】
 
 ## 怎么做 + 靠不靠谱
-- 方法流水线（综述的组织框架,非实验）：① 用 **f-散度统一目标(Eq.8)**:\[L_{\text{OPD}}(\theta)=\mathbb E_{y\sim\pi_{\text{mix}}}\Big[\textstyle\sum_{t=1}^{|y|} D_f\big(p_T(\cdot\mid x,y_{<t}),\,p_\theta(\cdot\mid x,y_{<t})\big)\Big]\]——f-散度家族 × 采样混合 \(\pi_{\text{mix}}\) × 散度内参数序 → ② 把三个奠基方法映入此空间(GKD / MiniLLM / DistiLLM) → ③ 沿三轴展开 taxonomy(Fig.1,一方法归一主类) → ④ 用 §7 统一解释成功/失效 + OPD↔RL 连接 → ⑤ §8 工业部署模式 + §9 开放问题。【原文 §3 / §6 / §7 / §8 / §9】
+- 方法流水线（综述的组织框架,非实验）：① 用 **f-散度统一目标(Eq.8)**:\(\displaystyle L_{\text{OPD}}(\theta)=\mathbb E_{y\sim\pi_{\text{mix}}}\Big[\textstyle\sum_{t=1}^{|y|} D_f\big(p_T(\cdot\mid x,y_{<t}),\,p_\theta(\cdot\mid x,y_{<t})\big)\Big]\)——f-散度家族 × 采样混合 \(\pi_{\text{mix}}\) × 散度内参数序 → ② 把三个奠基方法映入此空间(GKD / MiniLLM / DistiLLM) → ③ 沿三轴展开 taxonomy(Fig.1,一方法归一主类) → ④ 用 §7 统一解释成功/失效 + OPD↔RL 连接 → ⑤ §8 工业部署模式 + §9 开放问题。【原文 §3 / §6 / §7 / §8 / §9】
 - 逐组件必要性(此处=taxonomy 三轴 + 关键节)：
   - **§4 目标函数设计轴(优化什么)**：4.1 固定散度(GKD/MiniLLM/DistiLLM/DistiLLM-2/AntiSD 等);4.2 自适应散度(ToDi/AKL/EOPD/AOPD,按局部几何在 forward/reverse 间切换,优于固定);4.3 RL-增强目标(G-OPD/RLKD/KDRL/RLAD/AlignDistil——证 OPD 是 KD-约束 RL 特例,可超越教师上限)。【原文 §4】
   - **§5 信号源与教师架构轴(信号从哪来)**：5.1 白盒 logit(同族/跨族,后者处理词表失配 DSKD/ULD/TAID/Delta-KD/Veto/PromptKD);5.2 黑盒/API 受限(标量奖励或成对偏好:Lion/GAD/LUFFY/ThinkTuning/PRISM/ROPD 等,ROPD 用 rubric 替 logit 达 ~10× 样本效率、Qwen3-4B 学生 68.75% 超 GPT-5.2 教师 67.08%);5.3 **自蒸馏(早 2026 最大且增长最快的类)**:5.3.1 特权信息(OPSD/CRISP/GATES/OEL/OPHSD/COPSD)、5.3.2 纯自蒸馏(SDFT;游戏论 SPIN/IRIS 被明确排除到 §9)、5.3.3 外部反馈(SDPO/SD-ZERO/OpenClaw-RL)。【原文 §5 / §5.3 分布观察 / Table 7-8】
@@ -24,7 +24,7 @@ opd_survey | A Survey of On-Policy Distillation for Large Language Models | 腾�
   - 必要性视角:三轴**正交且承接**(目标→信号→稳定按顺序设计决策),缺任一轴则分类不完整;一方法归一主类(按最显著贡献)是为避免跨轴方法的归类爆炸——代价是对跨多轴方法略武断(作者已说明)。
 - 关键机制/公式（真实形式 + 直觉,从 PDF 抄准）：
   - **统一 OPD 目标(Eq.8)**:见上。核心解耦了"**采样轨迹** \(y\sim\pi_{\text{mix}}\)"与"**局部匹配度量** \(D_f\)"两件事。
-  - **f-散度定义(Eq.9)**:\[D_f(P\|Q)=\mathbb E_{y\sim Q}\Big[f\big(\tfrac{P(y)}{Q(y)}\big)\Big],\quad f:(0,\infty)\to\mathbb R\ \text{凸},\ f(1)=0.\] 生成元 \(f\) 决定似然比 \(p_T/p_\theta\) 的隐式加权:
+  - **f-散度定义(Eq.9)**:\(\displaystyle D_f(P\|Q)=\mathbb E_{y\sim Q}\Big[f\big(\tfrac{P(y)}{Q(y)}\big)\Big],\quad f:(0,\infty)\to\mathbb R\ \text{凸},\ f(1)=0.\) 生成元 \(f\) 决定似然比 \(p_T/p_\theta\) 的隐式加权:
     - Forward KL \(f(u)=u\log u\):mode-covering(zero-avoiding),覆盖教师所有模式,易在模式间幻觉;
     - Reverse KL \(f(u)=-\log u\):mode-seeking(zero-forcing),聚到教师单峰,高精度低多样;
     - JSD \(f(u)=u\log u-(u+1)\log\frac{u+1}{2}\):对称、有界、平滑插值;
@@ -32,7 +32,7 @@ opd_survey | A Survey of On-Policy Distillation for Large Language Models | 腾�
     关键性质:\(D_f(P_T\|P_\theta)=\mathbb E_{y\sim p_\theta}[f(p_T(y)/p_\theta(y))]\) 全部可写成**对学生策略 \(p_\theta\) 的期望**,故梯度可经重参数化样本回传,**无需重要性权重/off-policy 修正**(降方差)。
   - **πmix 与 GKD 映射**:GKD 取 \(\pi_{\text{mix}}=\lambda p_\theta+(1-\lambda)p_{\text{data}}\),\(\lambda\to1\) 纯 on-policy、\(\lambda=0\) 退回 off-policy KD;\(\lambda\) 是 on-policy 探索程度的旋钮(中间值 ~0.5 兼顾曝光与稳定)。【原文 §2.3 / Eq.8-9】
   - **DAgger 复合误差(§2.2)**:若策略以每步误差 \(\epsilon\) 模仿专家,在学生自身状态访问下,长度 \(T\) 轨迹的期望偏差 \(\sim O(\epsilon T^2)\)(off-policy);在学生自己访问到的状态上查询专家(on-policy)把它降到 \(O(\epsilon T)\)。直觉:off-policy 训练让学生没在自己会犯错的状态上被纠正,误差按 \(T^2\) 累积;on-policy 把它压成线性。**作者自加限定(§2.2 Remark)**:LLM 上教师在 OOD(学生错误)前缀可能失准,\(O(\epsilon T^2)\to O(\epsilon T)\) 的理论化简需谨慎(Jeong 2026 给反例式经验证据)。
-  - **OPD↔KL-约束 RL 等价(§7.3,G-OPD,Eq.14)**:\[\max_\theta\ \mathbb E_{y\sim p_\theta}\Big[\textstyle\sum_{t=1}^{|y|}\alpha\log\tfrac{p_T(y_t\mid y_{<t})}{p_{\text{ref}}(y_t\mid y_{<t})}-D_{\text{KL}}\big(p_\theta(\cdot\mid y_{<t})\,\|\,p_{\text{ref}}(\cdot\mid y_{<t})\big)\Big].\] \(\alpha=1\) 即标准 reverse KL 蒸馏;\(\alpha>1\) 迫使学生**外推超出教师概率质量**(Reward Extrapolation),在 \(p_T(y\mid x)\) 低但 outcome reward 高的区域发现教师没走过的合理路径——多教师下 ExOPD 甚至产出超过所有同尺寸领域教师的统一学生,说明 **OPD 不必是有损压缩**。这把 GKD(token KL)/MiniLLM(序列 reverse KL)/G-OPD(reward-增强)统一为"散度选择 + 监督密度参数化的 KL-约束策略优化"族。【原文 §7.3 / Eq.14 / §4.3】
+  - **OPD↔KL-约束 RL 等价(§7.3,G-OPD,Eq.14)**:\(\displaystyle \max_\theta\ \mathbb E_{y\sim p_\theta}\Big[\textstyle\sum_{t=1}^{|y|}\alpha\log\tfrac{p_T(y_t\mid y_{<t})}{p_{\text{ref}}(y_t\mid y_{<t})}-D_{\text{KL}}\big(p_\theta(\cdot\mid y_{<t})\,\|\,p_{\text{ref}}(\cdot\mid y_{<t})\big)\Big].\) \(\alpha=1\) 即标准 reverse KL 蒸馏;\(\alpha>1\) 迫使学生**外推超出教师概率质量**(Reward Extrapolation),在 \(p_T(y\mid x)\) 低但 outcome reward 高的区域发现教师没走过的合理路径——多教师下 ExOPD 甚至产出超过所有同尺寸领域教师的统一学生,说明 **OPD 不必是有损压缩**。这把 GKD(token KL)/MiniLLM(序列 reverse KL)/G-OPD(reward-增强)统一为"散度选择 + 监督密度参数化的 KL-约束策略优化"族。【原文 §7.3 / Eq.14 / §4.3】
   - **梯度分解(KD+RL 互补)**:Li 2025 把 hybrid 梯度拆成 稠密 KD 项(token 级模仿,抑制 PG 高方差)+ MC RL 项(防学生塌到对下游次优的教师模式);REOPOLD 用"师生 log-likelihood ratio 作 token reward"实例化。【原文 §4.3 / §7.3】
   - 核心一句话:**"改训练数据从哪来(从静态语料转为学生自身演化策略)比改匹配什么更关键。"** 现代 OPD = 放松经典 KD 的**四条假设**(小师生差距、共享词表、相似容量、off-policy 数据足够)。【原文 §2.2-2.3 / §3】
 - 实验与证据(综述=覆盖与论证质量)：

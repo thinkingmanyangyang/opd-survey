@@ -31,14 +31,10 @@ madopd | MAD-OPD: Breaking the Ceiling in On-Policy Distillation via Multi-Agent
   - ① **辩论产 privileged info**(§4.1,Eq.5):每决策点状态 \(s_m\)(单轮=prompt \(x\),agentic=context \((x,\tau_{<m})\)),\(K\) teacher 辩论 \(R\) 轮——round 1 各自独立采样、round \(r\ge2\) 读全部历史并修订 \(h_r^k\sim p_{T_k}(\cdot|s_m,\{h_{r'}^j\}_{j,r'<r})\);全部历史 \(H_R^m=\{h_r^k\}\) 作 privileged context \(c_m\)(Def.1:teacher 可见、student 不可见)。
   - ② **置信加权**(§4.2,Eq.6-7):辩论后各 teacher 自报置信 \(c_k\in[0,100]\),归一 \(\tilde c_k=c_k/100\),softmax 得 \(w_k=\dfrac{\exp(\tilde c_k/\tau_{\text{conf}})}{\sum_j\exp(\tilde c_j/\tau_{\text{conf}})}\)(\(\tau_{\text{conf}}=1.0\))。因 \(c_k\) 在 R 轮后产生,权重反映**辩论后**的确定性(立场在辩论中被削弱者贡献更小)。
   - ③ **token 级蒸馏目标**(§4.3,Eq.8):teacher **带** \(H_R^m\) force-decode 学生 on-policy 样本 \(\hat y\)、学生**不带**,按置信加权多 teacher 散度求 token loss:
-  \[
-  L_{\text{MAD-OPD}}(\theta)=\mathbb{E}_{s_m\sim D,\hat y\sim\pi_\theta}\Big[\tfrac{1}{|\hat y|}\sum_{t=1}^{|\hat y|}\sum_{k=1}^{K}w_k\cdot D\big(p_{T_k}(\cdot|s_m,H_R^m,\hat y_{<t})\,\|\,p_S(\cdot|s_m,\hat y_{<t})\big)\Big].
-  \]
+  \(\displaystyle L_{\text{MAD-OPD}}(\theta)=\mathbb{E}_{s_m\sim D,\hat y\sim\pi_\theta}\Big[\tfrac{1}{|\hat y|}\sum_{t=1}^{|\hat y|}\sum_{k=1}^{K}w_k\cdot D\big(p_{T_k}(\cdot|s_m,H_R^m,\hat y_{<t})\,\|\,p_S(\cdot|s_m,\hat y_{<t})\big)\Big].\)
   散度跨**全词表**;teacher logits 作固定目标,梯度只流学生。
   - ④ **OPAD**(§4.4,Eq.9-10):学生逐步 rollout 轨迹 \(\tau=(a_1,o_1,\dots,a_M,o_M)\),step \(m\) 在状态 \(s_m=(x,\tau_{<m})\) 采 \(a_m\sim\pi_\theta(\cdot|s_m)\)、环境返回 \(o_m\sim P^{\text{env}}(\cdot|s_m,a_m)\);每步 teacher 就 \(s_m\) 辩论、就**实际观察**force-decode \(a_m\),per-step loss
-  \[
-  L^{\text{opad}}_D(s_m)=\tfrac{1}{|a_m|}\sum_{t=1}^{|a_m|}\sum_{k=1}^{K}w_k\cdot D\big(p_{T_k}(\cdot|s_m,H_R^m,a_{m,<t})\,\|\,p_S(\cdot|s_m,a_{m,<t})\big),
-  \]
+  \(\displaystyle L^{\text{opad}}_D(s_m)=\tfrac{1}{|a_m|}\sum_{t=1}^{|a_m|}\sum_{k=1}^{K}w_k\cdot D\big(p_{T_k}(\cdot|s_m,H_R^m,a_{m,<t})\,\|\,p_S(\cdot|s_m,a_{m,<t})\big),\)
   总损失 \(L_{\text{OPAD}}(\theta)=\mathbb{E}_{x\sim D,\tau\sim\pi_\theta}\big[\sum_{m=1}^{M}L^{\text{opad}}_D(s_m)\big]\)。关键自适应:辩论**逐步发生且条件于真实观察**(非假想),监督随学生实际轨迹走。
   - ⑤ 散度按 Remark 1 选:agentic→JSD_{0.5}、code→reverse KL;梯度只流学生。
 - 逐组件必要性(均有消融,§5.4 RQ3 Fig.4a,全数 App.C.1):

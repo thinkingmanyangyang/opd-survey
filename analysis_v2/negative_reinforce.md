@@ -4,7 +4,7 @@ negative_reinforce | The Surprising Effectiveness of Negative Reinforcement in L
 
 ## 一眼看懂
 - 🟦 TL;DR:把 RLVR 的二元学习信号(对+1/错-1)解析地拆成两条独立范式——**PSR(只奖励对的)** vs **NSR(只惩罚错的)**。惊人发现:**只惩罚错的 NSR**,在整个 Pass@k 谱(k 到 256)上一致超过基座,常追平甚至超过 PPO/GRPO;而只奖对的 PSR 提升 Pass@1 但因多样性塌缩,在大 k 处掉到基座以下。token 级梯度分析解释:NSR 压低错 token、把概率**按模型自身先验比例**重分配给其它候选,所以"精修已有知识、不抹掉先验、改对就停手"。据此提出把正奖励降权 λ=0.1 的 **W-REINFORCE**。【原文 Abstract, §3.2, §4】
-- 最巧的一步:**NSR 的 token 级梯度把未采样 token 的 logit 抬升量正比于其当前概率 `\(\pi_v\)`**(式8)。抽掉这个"按先验比例"性质(比如换成均匀 entropy bonus),就不能保住模型先验、不能定向探索到"自己原本就觉得对"的候选,NSR 的多样性保持与 Pass@k 优势就垮了(附录 B 用梯度分析证明 entropy bonus 做不到这点)。
+- 最巧的一步:**NSR 的 token 级梯度把未采样 token 的 logit 抬升量正比于其当前概率 \(\pi_v\)**(式8)。抽掉这个"按先验比例"性质(比如换成均匀 entropy bonus),就不能保住模型先验、不能定向探索到"自己原本就觉得对"的候选,NSR 的多样性保持与 Pass@k 优势就垮了(附录 B 用梯度分析证明 entropy bonus 做不到这点)。
 
 ## 为什么做
 - 研究背景:RLVR(可验证奖励 RL)用二元奖励训推理模型(DeepSeek-R1/Kimi-K1.5),既防 reward hacking 又省人工标注。但它**到底怎么用对/错样本、机理为何有效,仍未被理解**。【原文 §1, §6】
@@ -20,40 +20,32 @@ negative_reinforce | The Surprising Effectiveness of Negative Reinforcement in L
 
 ## 怎么做(到可复现)
 ### 形式化拆解(真实形式)
-- **RLVR 期望奖励目标(式1)**:`\(L_{\text{RLVR}}(\theta)=-\mathbb{E}_{x\sim D,\,y\sim\pi_\theta(\cdot|x)}[r(x,y)]\)`,`\(r\in\{-1,+1\}\)`,同一响应所有 token 共享同一奖励;PPO/GRPO 实践里再做 batch 内零均值归一。
+- **RLVR 期望奖励目标(式1)**:\(L_{\text{RLVR}}(\theta)=-\mathbb{E}_{x\sim D,\,y\sim\pi_\theta(\cdot|x)}[r(x,y)]\),\(r\in\{-1,+1\}\),同一响应所有 token 共享同一奖励;PPO/GRPO 实践里再做 batch 内零均值归一。
 - **拆成 PSR+NSR(式2-4)**:把期望写成 reward-weighted 似然后按对错分组:
-\[
-L_{\text{RLVR}}(\theta)=\underbrace{-\mathbb{E}_{x\sim D}\!\!\sum_{y:r=1}\!\pi_\theta(y|x)}_{L_{\text{PSR}}(\theta)}\;\underbrace{-\mathbb{E}_{x\sim D}\!\!\sum_{y:r=-1}\!\!\big(-\pi_\theta(y|x)\big)}_{L_{\text{NSR}}(\theta)},\qquad L_{\text{RLVR}}=L_{\text{PSR}}+L_{\text{NSR}}.
-\]
+\(\displaystyle L_{\text{RLVR}}(\theta)=\underbrace{-\mathbb{E}_{x\sim D}\!\!\sum_{y:r=1}\!\pi_\theta(y|x)}_{L_{\text{PSR}}(\theta)}\;\underbrace{-\mathbb{E}_{x\sim D}\!\!\sum_{y:r=-1}\!\!\big(-\pi_\theta(y|x)\big)}_{L_{\text{NSR}}(\theta)},\qquad L_{\text{RLVR}}=L_{\text{PSR}}+L_{\text{NSR}}.\)
 PSR 类似 SFT(抬高正确响应似然),NSR 类似 likelihood-minimization(压低错误响应似然);二者均 **on-policy**(响应从当前模型自采样)。
 - **训练协议**:对每个 prompt 选择性地**只用对的(PSR)/只用错的(NSR)** 响应更新策略;因此 PSR/NSR 单 batch 有效样本比 PPO/GRPO 少(作者已说明)。
 
 ### token 级梯度分析(机理核心 + 直觉)
-统一损失形式(式6):`\(L(\theta)=-R\cdot\frac1T\sum_t \pi_\theta(y_t|x,y_{<t})=-R\cdot\frac1T\sum_t\frac{\exp(z_{y_t})}{\sum_{v'}\exp(z_{v'})}\)`,`\(R\in\{-1,+1\}\)`,`\(z_v\)` 为 token v 的 logit。对 logit 求梯度(`\(\pi_v=\pi_\theta(v|x,y_{<t})\)`):
+统一损失形式(式6):\(L(\theta)=-R\cdot\frac1T\sum_t \pi_\theta(y_t|x,y_{<t})=-R\cdot\frac1T\sum_t\frac{\exp(z_{y_t})}{\sum_{v'}\exp(z_{v'})}\),\(R\in\{-1,+1\}\),\(z_v\) 为 token v 的 logit。对 logit 求梯度(\(\pi_v=\pi_\theta(v|x,y_{<t})\)):
 - **PSR(式7)**:
-\[
--\frac{\partial L_{\text{PSR}}}{\partial z_v}\propto\begin{cases}\pi_v(1-\pi_v) & v=y_t\ (\text{采样 token})\\[2pt] -\pi_{y_t}\pi_v & v\neq y_t\ (\text{未采样})\end{cases}
-\]
+\(\displaystyle -\frac{\partial L_{\text{PSR}}}{\partial z_v}\propto\begin{cases}\pi_v(1-\pi_v) & v=y_t\ (\text{采样 token})\\[2pt] -\pi_{y_t}\pi_v & v\neq y_t\ (\text{未采样})\end{cases}\)
 即**抬采样到的对 token、压所有其它**(含别的正确候选)→ 分布越来越尖、熵塌缩、过拟合到"早期采到的对解"(Fig.5b/Fig.6 左)。
 - **NSR(式8)**:
-\[
--\frac{\partial L_{\text{NSR}}}{\partial z_v}\propto\begin{cases}-\pi_v(1-\pi_v) & v=y_t\ (\text{采样 token})\\[2pt] \pi_{y_t}\pi_v & v\neq y_t\ (\text{未采样})\end{cases}
-\]
-即**压采样到的错 token、把概率按 `\(\pi_v\)` 比例抬给其它候选**(Fig.6 右)。三个良性性质:
-  1. **保高置信先验**:`\(\pi_{y_t}\to1\)` 时负梯度被 `\((1-\pi_{y_t})\)` 缩小 → 即便错误里含高置信的语法/常识 token,也几乎不动 → 不抹掉预训练学到的高置信先验;
-  2. **按先验比例软重排**:抬未采样 token 正比于其当前概率 `\(\pi_v\)` → 定向探索"模型本就觉得可能对"的路径;
+\(\displaystyle -\frac{\partial L_{\text{NSR}}}{\partial z_v}\propto\begin{cases}-\pi_v(1-\pi_v) & v=y_t\ (\text{采样 token})\\[2pt] \pi_{y_t}\pi_v & v\neq y_t\ (\text{未采样})\end{cases}\)
+即**压采样到的错 token、把概率按 \(\pi_v\) 比例抬给其它候选**(Fig.6 右)。三个良性性质:
+  1. **保高置信先验**:\(\pi_{y_t}\to1\) 时负梯度被 \((1-\pi_{y_t})\) 缩小 → 即便错误里含高置信的语法/常识 token,也几乎不动 → 不抹掉预训练学到的高置信先验;
+  2. **按先验比例软重排**:抬未采样 token 正比于其当前概率 \(\pi_v\) → 定向探索"模型本就觉得可能对"的路径;
   3. **改对即停**:NSR 仅在生成错误时更新,一旦不再犯该错就停止更新该样本 → 隐式正则、**"锁住已掌握的成功经验"不再过拟合**(原文 "locking in successful experiences")。
-- **推广到 PPO/GRPO(§4.3)**:PPO/GRPO 在式6 基础上加 (1) clip (2) KL (3) advantage 替代 raw reward。结论:① clip 只限幅度不改方向;② KL 在推理任务系数极小或去掉、影响可忽略;③ advantage `\(A_i=\frac{r_i-\text{mean}(r)}{\text{std}(r)}\)` 只是按符号缩放梯度,保留 raw reward 的符号。故"PSR 塌缩、NSR 按先验重分配"的方向性分析对 PPO/GRPO 仍成立。
+- **推广到 PPO/GRPO(§4.3)**:PPO/GRPO 在式6 基础上加 (1) clip (2) KL (3) advantage 替代 raw reward。结论:① clip 只限幅度不改方向;② KL 在推理任务系数极小或去掉、影响可忽略;③ advantage \(A_i=\frac{r_i-\text{mean}(r)}{\text{std}(r)}\) 只是按符号缩放梯度,保留 raw reward 的符号。故"PSR 塌缩、NSR 按先验重分配"的方向性分析对 PPO/GRPO 仍成立。
 
 ### W-REINFORCE(式9,据机理设计的算法)
-对 PSR 项的奖励幅度乘降权因子 `\(\lambda\)` 再与 NSR 合并:
-\[
-L_{\text{W-REINFORCE}}(\theta)=\underbrace{-\mathbb{E}_{x\sim D}\!\!\sum_{y:r=1}\!\lambda\,\pi_\theta(y|x)}_{\lambda\cdot L_{\text{PSR}}}\;\underbrace{-\mathbb{E}_{x\sim D}\!\!\sum_{y:r=-1}\!\!\big(-\pi_\theta(y|x)\big)}_{L_{\text{NSR}}}.
-\]
-`\(\lambda=1\)` 退化为 vanilla REINFORCE;实验用 **`\(\lambda=0.1\)`**(强烈偏向 NSR)。直觉:保留少量正向信号撑住小 k 的 Pass@1,主体靠 NSR 维持高熵/大 k 的 Pass@k。
+对 PSR 项的奖励幅度乘降权因子 \(\lambda\) 再与 NSR 合并:
+\(\displaystyle L_{\text{W-REINFORCE}}(\theta)=\underbrace{-\mathbb{E}_{x\sim D}\!\!\sum_{y:r=1}\!\lambda\,\pi_\theta(y|x)}_{\lambda\cdot L_{\text{PSR}}}\;\underbrace{-\mathbb{E}_{x\sim D}\!\!\sum_{y:r=-1}\!\!\big(-\pi_\theta(y|x)\big)}_{L_{\text{NSR}}}.\)
+\(\lambda=1\) 退化为 vanilla REINFORCE;实验用 **\(\lambda=0.1\)**(强烈偏向 NSR)。直觉:保留少量正向信号撑住小 k 的 Pass@1,主体靠 NSR 维持高熵/大 k 的 Pass@k。
 
 ### 评测协议(Pass@k 无偏估计,式5)
-为降方差,每题采 `\(n\ge k\)` 个样本、数对的 `\(c\)` 个,无偏估计 `\(\text{Pass@}k=\mathbb{E}_{x\sim D}\big[1-\binom{n-c}{k}/\binom{n}{k}\big]\)`。Pass@1≈贪心准确率(exploitation),大 k≈多样化正确生成能力(exploration/推理边界)。
+为降方差,每题采 \(n\ge k\) 个样本、数对的 \(c\) 个,无偏估计 \(\text{Pass@}k=\mathbb{E}_{x\sim D}\big[1-\binom{n-c}{k}/\binom{n}{k}\big]\)。Pass@1≈贪心准确率(exploitation),大 k≈多样化正确生成能力(exploration/推理边界)。
 - **关键复现配置(§3.1)**:数据=MATH 训练集(7500 题),verl 框架;prompt batch 1024、每 prompt 8 rollouts、训练温度 1.0、max ctx 4096(Qwen2.5-Math-7B)/32768(Qwen3-4B);mini-batch 256、lr 1e-6。评测:Qwen2.5-Math-7B 采 256 样本(T=0.6,top-p=0.95),Qwen3-4B 采 64 样本(T=0.7,top-p=0.8,top-k=20)。
 
 ## 靠不靠谱
@@ -69,7 +61,7 @@ L_{\text{W-REINFORCE}}(\theta)=\underbrace{-\mathbb{E}_{x\sim D}\!\!\sum_{y:r=1}
   - 何时改 = on-policy RL 训练期,逐 batch;NSR 仅在生成错误时更新,改对后对该样本停更。
   - 免梯度? = 否,策略梯度/REINFORCE 族。
   - 记忆-技能生命周期 = 无外部记忆;"成功经验"以"改对即停、不再扰动高置信先验"的方式隐式固化进参数。
-  - 防遗忘机制 = NSR 内禀性质:负梯度被 `\((1-\pi_{y_t})\)` 缩小 → 不抹掉预训练高置信先验;改对即停 → 不过拟合已掌握样本(防遗忘/防塌缩)。
+  - 防遗忘机制 = NSR 内禀性质:负梯度被 \((1-\pi_{y_t})\) 缩小 → 不抹掉预训练高置信先验;改对即停 → 不过拟合已掌握样本(防遗忘/防塌缩)。
 - ⑦ 开源代码+框架/harness:https://github.com/TianHongZXY/RLVR-Decomposed(本地已 clone,~15MB,Tier A)。框架=**veRL(vendored)**。【原文 §3.1 "using the verl framework" + 元信息】
 - 💰 资源/成本与可扩展性:原文未给 GPU 时/成本;训练规模可推(7B 模型 + MATH 7.5K + prompt batch 1024×8 rollout、mini-batch 256、lr 1e-6)。【原文 §3.1;算力数字未说明】
 - 🎯 对"探索-巩固"对标:**强支撑 + 直接可借组件**。NSR 三性质几乎是本课题"巩固/回轨"想要的:① "改对即停、锁住成功经验"= 巩固而不过拟合;② "按先验比例重分配、定向探索自己觉得可能对的候选"= 探索/选路偏向"自己能走通的开头";③ "不抹掉高置信先验"= 防遗忘。**可借**:把 W-REINFORCE 的"正奖励降权 λ"思想与 on-policy 蒸馏结合——在走偏(错)处用强负向信号驱动模型自选恢复分支,在已走通处降权/停手以固化。**缺口/竞品面**:纯参数级、序列级二元奖励,**无 teacher 脚手架、无关键步定位、无 MTP 前瞻**;且强依赖 Qwen 先验。一句判定:NSR 提供"巩固=改对即停 + 探索=按先验重分配"的极简机制原型,本课题需补"teacher 稀疏接管 + 高熵分叉点定位 + MTP 探针"。

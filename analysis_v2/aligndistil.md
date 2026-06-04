@@ -22,12 +22,12 @@ aligndistil | AlignDistil: Token-Level Language Model Alignment as Adaptive Poli
 ## 怎么做 + 靠不靠谱
 ### 0. 核心理论桥：RLHF ⇔ 蒸馏（§3 Theorem 1，全文地基）
 - 第一步直觉：把 DPO reward \(r_{\mathrm{dpo}}(x,y)=\beta_0\log\frac{\pi_{\mathrm{dpo}}(y|x)}{\pi_{\mathrm{ref}}(y|x)}\)（Eq.5，省去与 \(y\) 无关的 \(Z(x)\)）代入 RLHF 目标 Eq.2，得
-  \[ \widetilde{J}_{\mathrm{RLHF}}(\theta)=\max_\theta\mathbb{E}_{x\sim D,\,y\sim\pi_\theta(\cdot|x)}\Big[\underbrace{\beta_0\log\tfrac{\pi_{\mathrm{dpo}}(y|x)}{\pi_{\mathrm{ref}}(y|x)}}_{\text{DPO reward}}-\underbrace{\beta\log\tfrac{\pi_\theta(y|x)}{\pi_{\mathrm{ref}}(y|x)}}_{\text{KL divergence}}\Big] \quad(\text{Eq.8}) \]
+  \(\displaystyle \widetilde{J}_{\mathrm{RLHF}}(\theta)=\max_\theta\mathbb{E}_{x\sim D,\,y\sim\pi_\theta(\cdot|x)}\Big[\underbrace{\beta_0\log\tfrac{\pi_{\mathrm{dpo}}(y|x)}{\pi_{\mathrm{ref}}(y|x)}}_{\text{DPO reward}}-\underbrace{\beta\log\tfrac{\pi_\theta(y|x)}{\pi_{\mathrm{ref}}(y|x)}}_{\text{KL divergence}}\Big] \quad(\text{Eq.8})\)
   其中 \(\beta_0\) 是 DPO 训练时的系数(常数)，\(\beta\) 是当前 KL 系数。
 - **Theorem 1**：上式（Eq.9 / Eq.8）严格等价于一个 token 级蒸馏目标
-  \[ \widetilde{J}_{\mathrm{RLHF}}(\theta)=\min_\theta\mathbb{E}_{x\sim D,\,y\sim\pi_\theta}\;\frac{\beta}{|y|}\sum_{t=1}^{|y|}D_{\mathrm{KL}}\big(\pi_\theta(\cdot|y_{<t},x)\,\|\,\pi^*(\cdot|y_{<t},x)\big) \quad(\text{Eq.10}) \]
+  \(\displaystyle \widetilde{J}_{\mathrm{RLHF}}(\theta)=\min_\theta\mathbb{E}_{x\sim D,\,y\sim\pi_\theta}\;\frac{\beta}{|y|}\sum_{t=1}^{|y|}D_{\mathrm{KL}}\big(\pi_\theta(\cdot|y_{<t},x)\,\|\,\pi^*(\cdot|y_{<t},x)\big) \quad(\text{Eq.10})\)
   其中 teacher 分布 \(\pi^*\) 是对一个**合成 logit** 做 softmax，合成 logit 为 DPO 与 reference logit 的线性组合：
-  \[ z_t^*=\frac{\beta_0}{\beta}\,z_t^{\mathrm{dpo}}+\Big(1-\frac{\beta_0}{\beta}\Big)z_t^{\mathrm{ref}} \quad(\text{Eq.11}) \]
+  \(\displaystyle z_t^*=\frac{\beta_0}{\beta}\,z_t^{\mathrm{dpo}}+\Big(1-\frac{\beta_0}{\beta}\Big)z_t^{\mathrm{ref}} \quad(\text{Eq.11})\)
   直觉：把"对齐"诠释为"向一个比 DPO 更靠 reward 方向的合成 teacher 做 token 级反向 KL 蒸馏"。证明见附录 A（把 Eq.8 的期望逐 token 展开、配方成 KL）。
 
 ### 1. AlignDistil 两个工程设计（§4）
@@ -35,18 +35,18 @@ aligndistil | AlignDistil: Token-Level Language Model Alignment as Adaptive Poli
   - 问题：vanilla DPO reward 泛化差于纯 RM（Lin 2024 + Table 2 复现）。
   - 做法：用一对对比 DPO 模型——正常 DPO \(\pi_{\mathrm{dpo}}\) + **reverse DPO** \(\pi_{\mathrm{dpo}}^-\)（把训练数据的 chosen/rejected **对调**后训，专门捕捉低质量数据的负面特征）。对比 reward \(r_{\mathrm{ctr}}(x,y)=\beta_0\log\frac{\pi_{\mathrm{dpo}}(y|x)}{\pi_{\mathrm{dpo}}^-(y|x)}\)（Eq.12）。
   - 配套技巧：把 RLHF 的 reference 从初始模型**前移成 \(\pi_{\mathrm{dpo}}\)**（既省一个模型，又把参考基线推得更对齐）。于是目标变 Eq.13，合成 logit 变
-    \[ z_t^*=\Big(1+\tfrac{\beta_0}{\beta}\Big)z_t^{\mathrm{dpo}}-\tfrac{\beta_0}{\beta}z_t^{\mathrm{dpo}-}=\underbrace{z_t^{\mathrm{dpo}}}_{\text{DPO 分布}}+\underbrace{\tfrac{\beta_0}{\beta}\big(z_t^{\mathrm{dpo}}-z_t^{\mathrm{dpo}-}\big)}_{\text{reward 分布}} \quad(\text{Eq.14-15}) \]
+    \(\displaystyle z_t^*=\Big(1+\tfrac{\beta_0}{\beta}\Big)z_t^{\mathrm{dpo}}-\tfrac{\beta_0}{\beta}z_t^{\mathrm{dpo}-}=\underbrace{z_t^{\mathrm{dpo}}}_{\text{DPO 分布}}+\underbrace{\tfrac{\beta_0}{\beta}\big(z_t^{\mathrm{dpo}}-z_t^{\mathrm{dpo}-}\big)}_{\text{reward 分布}} \quad(\text{Eq.14-15})\)
     因 \(\beta_0,\beta>0\)，这严格是"在 forward DPO 基础上沿 `forward − reverse` 差分方向**再外推一段**"——构造比单纯 DPO 更对齐的分布，推策略**越过** DPO。
 - **设计二：Token Adaptive Logit Extrapolation（管稳不稳，§4.2）**
   - 问题：固定 \(\frac{\beta_0}{\beta}\) 难调——大 \(\beta\)(小 \(\frac{\beta_0}{\beta}\))欠优化，小 \(\beta\)(大 \(\frac{\beta_0}{\beta}\))过优化、回复暴长。
   - 做法：用两 DPO 分布的 **TVD** 算逐 token 权重
-    \[ \alpha_t=D_{\mathrm{TVD}}(t)\cdot r+\epsilon\in[\epsilon,\,r+\epsilon],\quad D_{\mathrm{TVD}}(t):=\tfrac{1}{2}\sum_{y_t\in V}\big|\pi_{\mathrm{dpo}}(y_t|y_{<t},x)-\pi_{\mathrm{dpo}}^-(y_t|y_{<t},x)\big| \quad(\text{Eq.16}) \]
+    \(\displaystyle \alpha_t=D_{\mathrm{TVD}}(t)\cdot r+\epsilon\in[\epsilon,\,r+\epsilon],\quad D_{\mathrm{TVD}}(t):=\tfrac{1}{2}\sum_{y_t\in V}\big|\pi_{\mathrm{dpo}}(y_t|y_{<t},x)-\pi_{\mathrm{dpo}}^-(y_t|y_{<t},x)\big| \quad(\text{Eq.16})\)
     其中 \(r\) 控外插上界、\(\epsilon=0.001\) 防 \(\alpha_t=0\)。选 TVD 因其对称、计算高效且值域 \([0,1]\)。直觉：两 DPO 分歧大的 token 对最终 reward 影响大→该位置用更强 teacher。
   - 用 \(\alpha_t\) 替换常数得逐 token teacher \(z_t^*=z_t^{\mathrm{dpo}}+\alpha_t(z_t^{\mathrm{dpo}}-z_t^{\mathrm{dpo}-})\)（Eq.17），对应 \(\beta_t=\frac{\beta_0}{\alpha_t}\) 也随之自适应。
 
 ### 2. 训练目标与数据流动（§4.3）
 - **on-policy**（Eq.18）：用当前策略采样 \(\hat y\sim\pi_\theta(\cdot|x)\)，Monte-Carlo 估期望：
-  \[ L_{\mathrm{AD}}^{\mathrm{on}}=\frac{1}{|B|}\sum_{x\in B}\frac{\beta_t}{|\hat y|}\sum_{t=1}^{|\hat y|}D_{\mathrm{KL}}\big(\pi_\theta(\cdot|\hat y_{<t},x)\,\|\,\pi^*(\cdot|\hat y_{<t},x)\big) \]
+  \(\displaystyle L_{\mathrm{AD}}^{\mathrm{on}}=\frac{1}{|B|}\sum_{x\in B}\frac{\beta_t}{|\hat y|}\sum_{t=1}^{|\hat y|}D_{\mathrm{KL}}\big(\pi_\theta(\cdot|\hat y_{<t},x)\,\|\,\pi^*(\cdot|\hat y_{<t},x)\big)\)
 - **off-policy**（Eq.19）：用现成 prompt-response 数据集 \(\{(x,y)\}\)，把 \(\hat y\) 换成数据集里的 \(y\)。
 - 数据流动：UltraFeedback 的 prompt+response pair 先训 \(\pi_{\mathrm{dpo}}\) 与 \(\pi_{\mathrm{dpo}}^-\)；on-policy 训练只用 prompt(策略自采样)，off-policy 用 prompt+chosen response；每步前向 \(\pi_{\mathrm{dpo}}/\pi_{\mathrm{dpo}}^-\) 合成 teacher logit → 算 token 级反向 KL → 更新 \(\pi_\theta\)。
 - **关键超参与默认值**(§5.1)：1 epoch、batch 128、lr 1e-6、warmup 0.1；\(\epsilon=0.001\)；§6.5 收敛实验 \(\beta=0.08\)；外插上界 \(r\) 与 \(\beta_2\) 见附录 C；8×A100-40G。

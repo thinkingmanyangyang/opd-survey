@@ -26,11 +26,11 @@ amft | AMFT: Aligning LLM Reasoners by Meta-Learning the Optimal Imitation-Explo
 ### 1. 自适应配比控制器（§3.2，全文核心，双层优化）
 把配比升格为 bilevel optimization：内层固定 \(\mu\) 优化策略 \(\theta\)，外层优化 \(\mu\) 提升长期性能。
 - **长期信号 — meta-gradient**：定义 utility 为留出验证集上的期望显式奖励 \(U(\theta)=\mathbb{E}_{(x,\tau)\sim\pi_\theta(\cdot|D_{\mathrm{val}})}[R_{\mathrm{explicit}}(\tau)]\)（Eq.4）。控制器周期性算 \(U\) 对 \(\mu\) 的梯度(链式)：
-  \[ \nabla_\mu U(\theta_t)=\nabla_\theta U(\theta_t)\,\frac{\partial\theta_t}{\partial\mu} \quad(\text{Eq.5}) \]
+  \(\displaystyle \nabla_\mu U(\theta_t)=\nabla_\theta U(\theta_t)\,\frac{\partial\theta_t}{\partial\mu} \quad(\text{Eq.5})\)
   完整 Jacobian-vector 积 \(\partial\theta_t/\partial\mu\) 昂贵，故用 **one-step 近似**：对内层单步更新 \(\theta_t\approx\theta_{t-1}-\alpha\nabla_\theta L_{\mathrm{total}}(\theta_{t-1};\mu_t)\) 求导（meta-learning 常用技巧，引[10]）。直觉：问"\(\mu\) 往哪挪能让未来验证奖励更高"。
 - **短期信号 — 熵启发式**：用 policy entropy \(H(\pi_\theta)\) 作稳定性代理——熵远高于目标 \(H^*\)(混沌探索)→增 \(\mu\) 强化 SFT 稳定项；熵远低于 \(H^*\)(将坍塌/过拟合)→减 \(\mu\) 鼓励探索。\(H^*\) 是超参，初始化为 warm-up SFT 策略的平均熵。
 - **合一更新规则**：
-  \[ \mu_{t+1}=\mathrm{clip}\big(\mu_t+\eta_\mu\nabla_\mu U(\theta_t)+\eta_H(H^*-H(\pi_{\theta_t})),\,\mu_{\min},\,\mu_{\max}\big) \quad(\text{Eq.6}) \]
+  \(\displaystyle \mu_{t+1}=\mathrm{clip}\big(\mu_t+\eta_\mu\nabla_\mu U(\theta_t)+\eta_H(H^*-H(\pi_{\theta_t})),\,\mu_{\min},\,\mu_{\max}\big) \quad(\text{Eq.6})\)
   \(\eta_\mu/\eta_H\) 分别是长期 meta-gradient / 短期熵的学习率——长期求最优策略、短期防即时失稳。
 
 ### 2. 完整训练循环（§3.3，Algorithm 1，可复现级）

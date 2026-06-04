@@ -28,22 +28,22 @@ pi_play | π-Play: Multi-Agent Self-Play via Privileged Self-Distillation withou
   - **K(每题采样数)**:有消融 Table 10。
 - 关键机制/公式(真实符号,从 PDF 抄准 + 直觉):
   - **三角色总目标**(§2.1,examiner Eq.1 / teacher Eq.2 / student Eq.3):
-    \[ \max_\phi\ \mathbb{E}_{(q,c,o^\star)\sim\pi^E_\phi,\,\{y_k\}_{k=1}^n\sim\pi^S_\theta(\cdot|q)}\big[r_d(o^\star,\{o_k\}_{k=1}^n)\big], \tag{1} \]
-    \[ \max_\psi\ \mathbb{E}_{(q,c,o^\star)\sim\pi^E_\phi,\,y\sim\pi^T_\psi(\cdot|q,c)}\Big[\mathbf{1}(o=o^\star)-\beta D_{\mathrm{KL}}\big(\pi^T_\psi(\cdot|q,c)\,\|\,\mathrm{stopgrad}[\pi^S_\theta(\cdot|q)]\big)\Big], \tag{2} \]
-    \[ \max_\theta\ \mathbb{E}_{(q,c,o^\star)\sim\pi^E_\phi,\,y\sim\pi^S_\theta(\cdot|q)}\Big[\mathbf{1}(o=o^\star)-\lambda D_{\mathrm{Distill}}\big(\pi^S_\theta(\cdot|q)\,\|\,\mathrm{stopgrad}[\pi^T_\psi(\cdot|q,c)]\big)\Big]. \tag{3} \]
+    \(\displaystyle \max_\phi\ \mathbb{E}_{(q,c,o^\star)\sim\pi^E_\phi,\,\{y_k\}_{k=1}^n\sim\pi^S_\theta(\cdot|q)}\big[r_d(o^\star,\{o_k\}_{k=1}^n)\big], \tag{1}\)
+    \(\displaystyle \max_\psi\ \mathbb{E}_{(q,c,o^\star)\sim\pi^E_\phi,\,y\sim\pi^T_\psi(\cdot|q,c)}\Big[\mathbf{1}(o=o^\star)-\beta D_{\mathrm{KL}}\big(\pi^T_\psi(\cdot|q,c)\,\|\,\mathrm{stopgrad}[\pi^S_\theta(\cdot|q)]\big)\Big], \tag{2}\)
+    \(\displaystyle \max_\theta\ \mathbb{E}_{(q,c,o^\star)\sim\pi^E_\phi,\,y\sim\pi^S_\theta(\cdot|q)}\Big[\mathbf{1}(o=o^\star)-\lambda D_{\mathrm{Distill}}\big(\pi^S_\theta(\cdot|q)\,\|\,\mathrm{stopgrad}[\pi^T_\psi(\cdot|q,c)]\big)\Big]. \tag{3}\)
     注意 Eq.2 是 teacher 的**理想**目标(看得到 \(c\)、又不能离 student 太远),但 §2.4 因开销大改用 EMA 近似(Eq.11)。
   - **examiner 难度奖励**(Eq.4,\(k\) = \(n\) 次采样中答对数;k=1 时最大、随 \(k\) 线性衰减):
-    \[ r_d(o^\star,\{o_i\}_{i=1}^n)=\mathbf{1}(0<k<n)\,\frac{n-k}{n-1}+r_f,\qquad k=\sum_{i=1}^n\mathbf{1}(o_i=o^\star), \]
+    \(\displaystyle r_d(o^\star,\{o_i\}_{i=1}^n)=\mathbf{1}(0<k<n)\,\frac{n-k}{n-1}+r_f,\qquad k=\sum_{i=1}^n\mathbf{1}(o_i=o^\star),\)
     \(r_f\) 为 format reward,鼓励 examiner 边推理边搜索→题目既有事实依据又附带 informative 的构造路径(即 QCP,作特权信息)。
   - **examiner 训练目标**(Eq.5,hop-grouped relative policy optimization,按 cross-hop 复杂度分组归一以降方差):
-    \[ J_{\mathrm{Examiner}}(\phi)=\mathbb{E}\Big[\tfrac{1}{N}\sum_{h\in H}\sum_{i\in I_h}\log\pi^E_\phi\,A_{i,h}-\beta D_{\mathrm{KL}}(\pi^E_\phi\,\|\,\pi_{\mathrm{ref}})\Big], \]
+    \(\displaystyle J_{\mathrm{Examiner}}(\phi)=\mathbb{E}\Big[\tfrac{1}{N}\sum_{h\in H}\sum_{i\in I_h}\log\pi^E_\phi\,A_{i,h}-\beta D_{\mathrm{KL}}(\pi^E_\phi\,\|\,\pi_{\mathrm{ref}})\Big],\)
     hop-wise 优势(Eq.6):\(A_{i,h}=\dfrac{r^d_i-\mathbb{E}_{j\in I_h}[r^d_j]}{\sqrt{\mathrm{Var}_{j\in I_h}[r^d_j]+\delta}}\),\(I_h\) 是 hop 组 \(h\) 内的题集。
   - **student 联合目标**(Eq.7,GRPO 结果奖励 + KL-to-ref − λ·蒸馏):
-    \[ J_{\pi\text{-play}}(\theta)=\mathbb{E}\Big[\underbrace{\tfrac{1}{G}\sum_{i=1}^G\sum_{t=1}^{|y_i|}L_{i,t}-\beta D_{\mathrm{KL}}(\pi^S_\theta\,\|\,\pi_{\mathrm{ref}})}_{\text{Learning from outcome reward}}\;-\;\underbrace{\lambda D_{\mathrm{Distill}}(\pi^S_\theta\,\|\,\pi^T_\psi)}_{\text{Teacher guidance}}\Big], \]
+    \(\displaystyle J_{\pi\text{-play}}(\theta)=\mathbb{E}\Big[\underbrace{\tfrac{1}{G}\sum_{i=1}^G\sum_{t=1}^{|y_i|}L_{i,t}-\beta D_{\mathrm{KL}}(\pi^S_\theta\,\|\,\pi_{\mathrm{ref}})}_{\text{Learning from outcome reward}}\;-\;\underbrace{\lambda D_{\mathrm{Distill}}(\pi^S_\theta\,\|\,\pi^T_\psi)}_{\text{Teacher guidance}}\Big],\)
     PPO-clip 项(Eq.8):\(L_{i,t}=\min\big(w_{i,t}A_i,\ \mathrm{clip}(w_{i,t},1-\epsilon,1+\epsilon)A_i\big)\);重要性权重与组归一优势(Eq.9):
-    \[ w_{i,t}=\frac{\pi^S_\theta(y_{i,t}|q,y_{i,<t})}{\pi^S_{\theta_{\mathrm{old}}}(y_{i,t}|q,y_{i,<t})},\qquad A_i=\frac{r^e_i-\mathbb{E}_{j\in G}[r^e_j]}{\sqrt{\mathrm{Var}_{j\in G}[r^e_j]+\delta}},\quad r^e(q,o_i)=\mathbf{1}(o_i=o^\star). \]
+    \(\displaystyle w_{i,t}=\frac{\pi^S_\theta(y_{i,t}|q,y_{i,<t})}{\pi^S_{\theta_{\mathrm{old}}}(y_{i,t}|q,y_{i,<t})},\qquad A_i=\frac{r^e_i-\mathbb{E}_{j\in G}[r^e_j]}{\sqrt{\mathrm{Var}_{j\in G}[r^e_j]+\delta}},\quad r^e(q,o_i)=\mathbf{1}(o_i=o^\star).\)
   - **蒸馏损失**(Eq.10,沿 student rollout 的逐 token reverse-KL,teacher 看得到 \(c\),stop-gradient):
-    \[ D_{\mathrm{Distill}}(\pi^S_\theta\,\|\,\pi^T_\psi)=\frac{1}{|y_i|}\sum_{t=1}^{|y_i|} \mathrm{KL}\Big(\pi^S_\theta(\cdot\mid q,y_{i,<t})\ \big\|\ \mathrm{stopgrad}\big[\pi^T_\psi(\cdot\mid q,c,y_{i,<t})\big]\Big). \]
+    \(\displaystyle D_{\mathrm{Distill}}(\pi^S_\theta\,\|\,\pi^T_\psi)=\frac{1}{|y_i|}\sum_{t=1}^{|y_i|} \mathrm{KL}\Big(\pi^S_\theta(\cdot\mid q,y_{i,<t})\ \big\|\ \mathrm{stopgrad}\big[\pi^T_\psi(\cdot\mid q,c,y_{i,<t})\big]\Big).\)
   - **teacher EMA 软更新**(Eq.11,τ=0.05,近似 Eq.2):\( \psi\leftarrow(1-\tau)\psi+\tau\theta,\ \tau\in(0,1). \)
   直觉:结果奖励无偏但高方差,teacher 逐 token 指导有偏但低方差(Schulman 2016 / Gu 2016 的 bias-variance 视角),二者组合改善信用分配。teacher 看得到 \(c\)、student 看不到,所以 teacher 的"下一 token 分布"对 student 是有信息的软标签。【原文 Eq.(1)–(11)+Fig.2】
 - 实验与证据:

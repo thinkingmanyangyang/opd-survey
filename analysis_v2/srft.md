@@ -27,18 +27,14 @@ srft | SRFT: A Single-Stage Method with Supervised and Reinforcement Fine-Tuning
   - **单阶段 vs 两阶段**:有对照(Table 1:SFT→RL=52.5 > RL=49.4 > SFT=47.3 > RL→SFT=37.4 > RL→SFT_KL=38.3;§3.2.2 Fig.5 单阶段 SFT+RL 训练效率优于 SFT→RL)——该对照支撑"单阶段更优"。机理:Fig.4(b) 显示 RL→SFT 时 SFT 致熵骤升再缓降(对应 Fig.4(a) 性能骤跌),且 RL 后模型 plasticity 受损;Fig.3 学习动力学显示 SFT→RL 的高性能区**反而更靠近 base model**,提示初始 SFT 过度偏移损后续 RL。
 - 关键机制/公式(本轮据 PDF 正文 Eq.1-13 补全,真符号 MathJax):
   - **SFT 目标(Eq.1)**:\(L_{\text{SFT}}(\theta)=\mathbb{E}_{(x,y)\sim D}[-\log\pi_\theta(y\mid x)]\)。其梯度(Eq.4,推导见 Appendix D)揭示 SFT 为何"全局粗调":
-    \[
-    \nabla_\theta L_{\text{SFT}}=\mathbb{E}_{(x,y)\sim D}\!\left[\sum_{t=1}^{|y|}\sum_{v\in V}\big(\pi_\theta(v\mid x,y_{<t})-\mathbb{1}_{v=y_t}\big)\nabla_\theta\log\pi_\theta(v\mid x,y_{<t})\right]
-    \]
+    \(\displaystyle \nabla_\theta L_{\text{SFT}}=\mathbb{E}_{(x,y)\sim D}\!\left[\sum_{t=1}^{|y|}\sum_{v\in V}\big(\pi_\theta(v\mid x,y_{<t})-\mathbb{1}_{v=y_t}\big)\nabla_\theta\log\pi_\theta(v\mid x,y_{<t})\right]\)
     即对**全词表**每个 token 都施梯度(抬高目标 token、压低其余),故分布整体 sharpen——"sledgehammer"。
   - **GRPO 优势(Eq.2)**:\(\hat A_k=\dfrac{R(x,y_k)-\mathrm{mean}(\{R(x,y_k)\})}{\mathrm{std}(\{R(x,y_k)\})}\);GRPO 目标(Eq.3)为标准 clip 形式。RL 只动少数 token——"scalpel"。
   - **混合 batch 优势(Eq.7)**:对 \(G_{\text{aug}}\) 整体算 group-norm;因专家解奖励高,拼入后抬高整组优势,促 optimistic exploration。
   - **demo-SFT 熵权(Eq.8)**:\(L^{\text{demo}}_{\text{SFT}}(\theta)=w_{\text{SFT}}\cdot\mathbb{E}_{(x,y)\sim D_{\text{demo}}}[-\log\pi_\theta(y\mid x)]\),其中 \(w_{\text{SFT}}=0.5\cdot\mathrm{sg}(\exp(-H(\pi_\theta)))\),\(\mathrm{sg}\)=stop-grad。**论文直觉**:熵高(不确定)→ \(\exp(-H)\) 小 → 少模仿,缓解 demo 与当前策略失配。
   - **demo-RL off-policy(Eq.9-10)**:LUFFY 式,重要性比 \(r_{k,t}(\theta)=\dfrac{\pi_\theta(y_{k,t}\mid x_t)}{\pi_\beta(y_{k,t}\mid x_t)}\),令 \(\pi_\beta=1\) 且去 clip。
   - **self-rollout 拆分(Eq.11)**:在 binary 奖励下
-    \[
-    L^{\text{self-rollout}}_{\text{RL}}=\underbrace{\mathbb{E}_{y^+\sim\pi_\theta}[-\log\pi_\theta(y^+\mid x)]}_{\text{正样本}\approx\text{on-policy SFT}}+\underbrace{\mathbb{E}_{y^-\sim\pi_\theta}[\log\pi_\theta(y^-\mid x)]}_{\text{负样本}=\text{likelihood 最小化}}
-    \]
+    \(\displaystyle L^{\text{self-rollout}}_{\text{RL}}=\underbrace{\mathbb{E}_{y^+\sim\pi_\theta}[-\log\pi_\theta(y^+\mid x)]}_{\text{正样本}\approx\text{on-policy SFT}}+\underbrace{\mathbb{E}_{y^-\sim\pi_\theta}[\log\pi_\theta(y^-\mid x)]}_{\text{负样本}=\text{likelihood 最小化}}\)
     正样本目标结构上等同最大化正确响应似然(但 \(y^+\) 是**当前策略 on-policy 生成**而非来自 SFT 数据集),负样本压低错误响应概率质量。
   - **self-rollout 熵权(Eq.12)**:对正样本项乘 \(w_{\text{RL}}=0.1\cdot\mathrm{sg}(\exp(+H(\pi_\theta)))\),熵高→加强(维持探索),与 Eq.8 的 demo-SFT 方向**相反但目的互补**:\(L^{\text{self-rollout}}_{\text{RL}}=w_{\text{RL}}\,\mathbb{E}_{y^+}[-\log\pi_\theta(y^+|x)]+\mathbb{E}_{y^-}[\log\pi_\theta(y^-|x)]\)。
   - **stop-grad** 保证两个熵权只调幅度不回传梯度。

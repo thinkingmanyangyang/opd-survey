@@ -24,16 +24,16 @@ search_dont_guess | Search, Do not Guess: Teaching Small Language Models to Be E
   2. **for** hop \(t=1,\dots,H\):
      - 内层 repeat:采样响应 \(s_t\leftarrow\pi_\theta(\tau)\),\(k\leftarrow k+1\);**直到** \(s_t\) 含 action 或 含 answer,或 \(k\geq K\)。
      - 若仍既无 action 又无 answer → **Raise Error 丢弃该轨迹**(强制搜索失败)。
-     - 若 \(s_t\) 含 `<search>q_t</search>`:\(o_t\leftarrow S(q_t)\),\(\tau\leftarrow\tau\oplus s_t\oplus\)`<information>`\(o_t\)`</information>`。
+     - 若 \(s_t\) 含 `<search>q_t</search>`:\(o_t\leftarrow S(q_t)\),\(\tau\leftarrow\tau\oplus s_t\oplus\)`<information>\(o_t\)</information>`。
      - 若 \(s_t\) 含 `<answer>y</answer>`:返回 \(y,\tau\)(成功)。
   3. 到 \(H\) hop 上限仍未答 → Failure。
   关键:**\(K\) 次重试 + 失败即丢**是"强制总搜"的运行时保障——逼模型在 action/answer 间二选一,堵住"既不搜也不答"的退路。
 - **三种把 ASP 注入训练的变体**【原文 §4.1、B.2】:
   1. **ASP-SFT(过滤式)**:从 HotpotQA 训练集采 **18,000** 条 Qwen3-32B teacher 轨迹,**两道过滤**——① String-F1 > **0.65** 留对的;② **search tool checking + keyword filtering**——只留"始终用搜索工具、不出现 'I remember' 这类不搜直答"的轨迹。在过滤后轨迹上做标准 SFT(序列级 CE),损失即
-     \[ \mathcal{L}_{\text{ASP-SFT}}(\theta)=-\sum_{t}\log\pi_\theta(y_t\,|\,y_{<t},x)\quad\text{(仅在通过 ASP 过滤的轨迹上)} \]
+     \(\displaystyle \mathcal{L}_{\text{ASP-SFT}}(\theta)=-\sum_{t}\log\pi_\theta(y_t\,|\,y_{<t},x)\quad\text{(仅在通过 ASP 过滤的轨迹上)}\)
      超参:**3.0 epochs,AdamW,lr 1e-5,batch 4**。
   2. **ASP-OPD(on-policy distillation,prompt 式)**:**不显式过滤轨迹**,改用 system prompt 强制总搜,**靠 teacher 的 log-prob 分布来约束学生行为**。流程:HotpotQA **3,000** 题,每题**学生自己采 8 条轨迹**,以 **4 题/batch** 把这些 on-policy 轨迹送 teacher 取 token 概率分布,**最小化 KL 散度**:
-     \[ \mathcal{L}_{\text{ASP-OPD}}(\theta)=\mathbb{E}_{x}\,\mathbb{E}_{y\sim\pi_\theta(\cdot|x,P_{\mathrm{force}})}\Big[\textstyle\sum_t D_{\mathrm{KL}}\!\big(\pi_{\text{teacher}}(\cdot|y_{<t},x)\,\|\,\pi_\theta(\cdot|y_{<t},x)\big)\Big] \]
+     \(\displaystyle \mathcal{L}_{\text{ASP-OPD}}(\theta)=\mathbb{E}_{x}\,\mathbb{E}_{y\sim\pi_\theta(\cdot|x,P_{\mathrm{force}})}\Big[\textstyle\sum_t D_{\mathrm{KL}}\!\big(\pi_{\text{teacher}}(\cdot|y_{<t},x)\,\|\,\pi_\theta(\cdot|y_{<t},x)\big)\Big]\)
      即"学生采样、teacher 在学生 rollout 上逐 token 给分布"的标准 OPD 形态(Agarwal 2024;teacher "观察并约束学生动作")。超参:**4.0 epochs,AdamW,lr 2e-6**。〔KL 方向论文只写 "optimize the KL Divergence loss",未显式标 forward/reverse;按 GKD 默认与"teacher 约束学生"语义,记为以 teacher 为参考分布的 token 级 KL,方向【待核】。〕
   3. **Mixed**:先 ASP-SFT 再在其上做 ASP-OPD 强化(§4.1)。
 - **下游增强:Rejection Fine-Tuning(RFT)**【原文 B.2,Yuan 2023】:用**学生自生成** 10,000 条轨迹(HotpotQA,与蒸馏用**不同题**)、**拒绝采样**留高质量 agentic 行为再 SFT。超参:**2.0 epochs,AdamW,lr 5e-6,batch 4**。

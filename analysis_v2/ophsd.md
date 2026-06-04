@@ -27,13 +27,13 @@ ophsd | Training with Harnesses: On-Policy Harness Self-Distillation for Complex
   - **冷启动保护(bank<10 条退化为单次前向)、训练嵌入预算**:工程必要(防泄漏:harness baseline 评测时 bank 仅从测试流重填,§3.3 原文 "memory bank is reset and re-populated exclusively from the test stream")。
 - 关键机制/公式(真实符号,从 PDF 抄准 + 直觉):
   - **OPD 基础目标**(Eq.1,本文站它肩上):
-    \[ L_{\mathrm{OPD}}(\theta)=\mathbb{E}_{x\sim S}\,\mathbb{E}_{\hat y\sim p_S(\cdot|x)}\,\frac{1}{|\hat y|}\sum_{n=1}^{|\hat y|} D\!\Big(p_T(\cdot\mid x,\hat y_{<n})\,\big\|\,p_S(\cdot\mid x,\hat y_{<n})\Big), \]
+    \(\displaystyle L_{\mathrm{OPD}}(\theta)=\mathbb{E}_{x\sim S}\,\mathbb{E}_{\hat y\sim p_S(\cdot|x)}\,\frac{1}{|\hat y|}\sum_{n=1}^{|\hat y|} D\!\Big(p_T(\cdot\mid x,\hat y_{<n})\,\big\|\,p_S(\cdot\mid x,\hat y_{<n})\Big),\)
     teacher 常由"同模型 frozen 副本 \(\tilde\theta\) + 特权上下文 \(X\)"构造:\(p_T(\cdot|x)\triangleq p_{\tilde\theta}(\cdot|x,X)\)。
   - **harness 诱导的条件分布**(Eq.2,把 harness 形式化为确定性有状态 LLM 程序):
-    \[ H_\theta(y\mid x)=\sum_{s_{1:T},\,c_{1:T}}\Big[\prod_{t=1}^{T} p_\theta(c_t\mid s_{t-1},x)\,\tau(s_t\mid s_{t-1},c_t)\Big]\,\delta\big(y=\pi(s_T)\big), \]
+    \(\displaystyle H_\theta(y\mid x)=\sum_{s_{1:T},\,c_{1:T}}\Big[\prod_{t=1}^{T} p_\theta(c_t\mid s_{t-1},x)\,\tau(s_t\mid s_{t-1},c_t)\Big]\,\delta\big(y=\pi(s_T)\big),\)
     其中 \(c_t\) 是第 \(t\) 次模型调用、\(\tau\) 是确定性状态转移、\(\pi\) 是从终端状态读出答案的确定性读出函数;\(z(x)\) 通过注入初始状态得到 \(H_\theta(y\mid x,z(x))\)。
   - **OPHSD 训练目标**(Eq.3,核心——动态 harness 终端上下文当 teacher 前缀):
-    \[ L_{\mathrm{OPHSD}}(\theta)=\mathbb{E}_{x\sim S}\,\mathbb{E}_{\hat y\sim p_\theta(\cdot|x)}\,\frac{1}{|\hat y|}\sum_{n=1}^{|\hat y|}\mathrm{KL}\!\Big(\underbrace{p_{\tilde\theta}\big(\cdot\mid C[H_\theta(x,z(x))],\hat y_{<n}\big)}_{p_T(\cdot|x,\hat y_{<n})}\;\Big\|\;\underbrace{p_\theta\big(\cdot\mid x,\hat y_{<n}\big)}_{p_S(\cdot|x,\hat y_{<n})}\Big), \]
+    \(\displaystyle L_{\mathrm{OPHSD}}(\theta)=\mathbb{E}_{x\sim S}\,\mathbb{E}_{\hat y\sim p_\theta(\cdot|x)}\,\frac{1}{|\hat y|}\sum_{n=1}^{|\hat y|}\mathrm{KL}\!\Big(\underbrace{p_{\tilde\theta}\big(\cdot\mid C[H_\theta(x,z(x))],\hat y_{<n}\big)}_{p_T(\cdot|x,\hat y_{<n})}\;\Big\|\;\underbrace{p_\theta\big(\cdot\mid x,\hat y_{<n}\big)}_{p_S(\cdot|x,\hat y_{<n})}\Big),\)
     \(C[H_\theta(x,z(x))]\) 视为 **stop-gradient** target。直觉:harness 编排(由 \(\theta\) 驱动、随能力演进)与 logit 监督(锚在稳定 \(\tilde\theta\))解耦——轨迹越来越好,但监督信号不漂移。学生被迫"从裸输入 \(x\) 复现自己在 harness 里的增强行为",自然划出**可蒸馏边界**:结构性推理先验(分解/自验证)可内化进权重,真正实时外部访问(工具/检索内容)不可。
   - **两个 harness 实例的终端上下文**(决定 teacher 看到什么):
     - Plan–Solve(数学,\(z(x)=y^\star\)):planner 把 oracle 解蒸成策略草图 \(s\sim p_\theta(\cdot|x,y^\star)\),solver 据 \((x,s)\) 执行推导 \(y\sim p_\theta(\cdot|x,s)\);**终端上下文 \(C=(x,s)\)**——teacher 是"已看过 plan 的 solver"信号,而非 \(y^\star\) 原文。

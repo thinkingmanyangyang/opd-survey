@@ -32,20 +32,20 @@ sdcl | Self-Distillation Enables Continual Learning (SDFT) | MIT + Improbable AI
   5. **EMA 同步**:\(\phi \leftarrow \alpha\theta + (1-\alpha)\phi\)。
   6. 回到 1。(完整伪码 = 附录 Algorithm 1。)
 - **核心目标(原文写的是 reverse-KL)**【原文 Eq.(1)】:
-  \[ \mathcal{L}(\theta)=D_{\mathrm{KL}}\!\big(\pi_\theta(\cdot|x)\,\|\,\pi(\cdot|x,c)\big)=\mathbb{E}_{y\sim\pi_\theta(y|x)}\!\left[\log\frac{\pi_\theta(y|x)}{\pi(y|x,c)}\right] \]
+  \(\displaystyle \mathcal{L}(\theta)=D_{\mathrm{KL}}\!\big(\pi_\theta(\cdot|x)\,\|\,\pi(\cdot|x,c)\big)=\mathbb{E}_{y\sim\pi_\theta(y|x)}\!\left[\log\frac{\pi_\theta(y|x)}{\pi(y|x,c)}\right]\)
   直觉:让"只看 query 的学生"在它**自己**的轨迹分布上,逐 token 向"看了示范的教师"靠拢;reverse-KL(student 在外)是 mode-seeking,鼓励学生抓住 teacher 的主模式。
 - **token 级梯度估计器**【原文 Eq.(2)】(对自回归结构展开,teacher 视为固定;推导见 Tang & Munos 2025):
-  \[ \nabla_\theta\mathcal{L}(\theta)=\mathbb{E}_{y\sim\pi_\theta}\!\left[\sum_t\sum_{y_t\in V}\log\frac{\pi_\theta(y_t|y_{<t},x)}{\pi(y_t|y_{<t},x,c)}\,\nabla_\theta\log\pi_\theta(y_t|y_{<t},x)\right] \]
+  \(\displaystyle \nabla_\theta\mathcal{L}(\theta)=\mathbb{E}_{y\sim\pi_\theta}\!\left[\sum_t\sum_{y_t\in V}\log\frac{\pi_\theta(y_t|y_{<t},x)}{\pi(y_t|y_{<t},x,c)}\,\nabla_\theta\log\pi_\theta(y_t|y_{<t},x)\right]\)
   其中 \(V\) 是词表。**注意**:这是把 KL 解析地在词表上展开的形式(下文"full analytic per-token"估计器)。
 - **三种 KL 梯度估计器(附录 A.1,做了消融,实测选第二种)**:
   - **(i) Token-level(partial)估计器**:把序列 KL 拆成各 token 项独立微分:
-    \[ \sum_t \log\frac{\pi_\theta(y_t|y_{<t},x)}{\pi(y_t|y_{<t},x,c)}\,\nabla_\theta\log\pi_\theta(y_t|y_{<t},x) \]
+    \(\displaystyle \sum_t \log\frac{\pi_\theta(y_t|y_{<t},x)}{\pi(y_t|y_{<t},x,c)}\,\nabla_\theta\log\pi_\theta(y_t|y_{<t},x)\)
     【原文】它"忽略早期 token 对后续 token 分布的影响",对真梯度**有偏**、方差高、KL 控制弱。
   - **(ii) Full analytic per-token 估计器(实测默认)**:每步在词表上解析求和(marginalize over \(V\)):
-    \[ \sum_t\sum_{v\in V}\pi_\theta(v|y_{<t},x)\,\log\frac{\pi_\theta(v|y_{<t},x)}{\pi(v|y_{<t},x,c)}\,\nabla_\theta\log\pi_\theta(v|y_{<t},x) \]
+    \(\displaystyle \sum_t\sum_{v\in V}\pi_\theta(v|y_{<t},x)\,\log\frac{\pi_\theta(v|y_{<t},x)}{\pi(v|y_{<t},x,c)}\,\nabla_\theta\log\pi_\theta(v|y_{<t},x)\)
     【原文】严格低于 (i) 的方差,但**序列层仍有偏**(没考虑 \(y_t\) 对未来 \(y_{>t}\) 的影响);因复用 forward pass 已产出的量,计算上划算。**实测它最稳、下游最好**(§A.1)。
   - **(iii) Rao-Blackwellized 估计器**(Amini et al. 2025):对 next-token 分布解析积分、对前缀保留 MC 采样,得 KL 及其梯度的**无偏**且方差可证更低的估计:
-    \[ b_{\mathrm{grb}}=\sum_t k_\theta(y_{<t})\;,\quad k_\theta(y_{<t})=\mathrm{KL}\!\big(\pi_\theta(\cdot|y_{<t},x)\,\|\,\pi(\cdot|y_{<t},x,c)\big) \]
+    \(\displaystyle b_{\mathrm{grb}}=\sum_t k_\theta(y_{<t})\;,\quad k_\theta(y_{<t})=\mathrm{KL}\!\big(\pi_\theta(\cdot|y_{<t},x)\,\|\,\pi(\cdot|y_{<t},x,c)\big)\)
     【原文】更贵;实测相对其额外复杂度**无可测增益**,故弃。
   - **采样数**:理论上每 prompt 多采样降方差,**实测多采样收益微乎其微却显著加 compute → 全部主实验用单轨迹/prompt + (ii)**(§A.1)。
 - **⚠ KL 方向:论文正文 vs 实际实现的关键脱节**(本轮基于 PDF + 仓库 README 双重核实):
@@ -61,11 +61,11 @@ sdcl | Self-Distillation Enables Continual Learning (SDFT) | MIT + Improbable AI
   - **mask 前几个 token 的损失**(§5 Learned Artifacts):防学生继承 teacher 的 "Based on the text..." 这类口头禅(由模板诱发)。论文自承是**启发式补丁**,非原理性解。
 - 关键机制/IRL 等价推导(直觉 + 真实公式):
   - **起点:trust-region RL**(Schulman 2015)——第 \(k\!+\!1\) 步策略更新约束在当前策略 \(\pi_k\) 附近:
-    \[ \pi_{k+1}=\arg\max_{\pi}\ \mathbb{E}_{y\sim\pi}[r(y,x)]-\beta\,D_{\mathrm{KL}}\!\big(\pi(\cdot|x)\,\|\,\pi_k(\cdot|x)\big)\quad(\text{Eq.3}) \]
+    \(\displaystyle \pi_{k+1}=\arg\max_{\pi}\ \mathbb{E}_{y\sim\pi}[r(y,x)]-\beta\,D_{\mathrm{KL}}\!\big(\pi(\cdot|x)\,\|\,\pi_k(\cdot|x)\big)\quad(\text{Eq.3})\)
     其最优解是 tilted 分布 \(\pi^*_{k+1}(y|x)\propto\pi_k(y|x)\exp\!\big(\tfrac{1}{\beta}r(y,x)\big)\)(Korbak 2022 / Rafailov 2023)。反解出 reward:
-    \[ r(y,x)=\beta\big(\log\pi^*_{k+1}(y|x)-\log\pi_k(y|x)\big)+C \]
+    \(\displaystyle r(y,x)=\beta\big(\log\pi^*_{k+1}(y|x)-\log\pi_k(y|x)\big)+C\)
   - **In-Context Assumption(Eq.4,核心假设)**:\(\pi^*_{k+1}(y|x)\approx\pi(y|x,c)\)——"观察一条示范引发的行为偏移,反映专家真实意图",故 condition 在 \(c\) 上的模型 ≈ 该任务最优下一步策略。代入得**内蕴 reward(Eq.5,丢掉不影响最优策略的线性项 \(\beta,C\))**:
-    \[ r(y,x,c)=\log\pi(y|x,c)-\log\pi_k(y|x) \]
+    \(\displaystyle r(y,x,c)=\log\pi(y|x,c)-\log\pi_k(y|x)\)
   - **分解到 token 级**:\(r_t(y_t|y_{<t},x,c)=\log\dfrac{\pi(y_t|y_{<t},x,c)}{\pi_k(y_t|y_{<t},x)}\),且 \(\sum_t r_t=r(y,x,c)\)。
   - **等价性(Eq.6 邻近)**:在当前策略 \(\pi_k\) 下该 reward 的策略梯度 \(\nabla_\theta J(\pi_k)=\mathbb{E}_{y\sim\pi_k}[r(y,x,c)\nabla_\theta\log\pi_k(y|x)]\) "在期望意义上等于 reverse-KL \(D_{\mathrm{KL}}(\pi_k(\cdot|x)\,\|\,\pi(\cdot|x,c))\) 的梯度"(§3.1 原话)。**直觉**:把学生当前行为与它"更聪明的、看了示范的自己"比较,差异(log-prob 变化)就是免费的、贴近 base 的隐式奖励信号。【再次提醒:此等价链只对 reverse-KL 成立,与实测 forward-KL 脱节。】
   - **为何少遗忘**(§3.2 两条件):① **Optimality**——示范条件化策略的期望 reward ≈ 未知最优策略 \(\mathbb{E}_{y\sim\pi(\cdot|x,c)}[r]\approx\mathbb{E}_{y\sim\pi^*_{k+1}}[r]\);② **Minimal Deviation**——trust-region 下最优策略是"达最优 reward 的策略里离 \(\pi_k\) 最近的那个",而示范条件化 teacher 恰满足"高质量输出 + 贴近 base"(实测 \(0.68\) nats vs SFT \(1.26\) nats),朝它更新走得"近"→ 少遗忘。这是 anchoring 的直觉。

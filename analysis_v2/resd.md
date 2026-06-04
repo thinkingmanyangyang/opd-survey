@@ -20,9 +20,7 @@ resd | Learning with Rare Success but Rich Feedback via Reflection-Enhanced Self
 
 ## 怎么做 + 靠不靠谱
 - 基础自蒸馏目标(§1 末,Eq.1):self-teacher θ_old 条件于中间状态 \(s_t=(x_t,y_{<t})\) 与回顾反馈 \(c(x,y)\),产出纠正后的 feedback-informed 分布 \(\pi_{\theta_{\text{old}}}(\cdot\mid x,y_{<t},c)\);学生 \(\pi_\theta\) 在每步去匹配它。定义 token 似然比 \(\tau_v^t=\dfrac{\pi_{\theta_{\text{old}}}(v\mid x,y_{<t},c)}{\pi_\theta(v\mid x,y_{<t})}\),clip 到有界区间 \(\tilde\tau_v^t=\operatorname{clip}(\tau_v^t,\epsilon_{\min},\epsilon_{\max})\) 防爆;统一用 f-散度:
-  \[
-  L_{\text{SD}}(\theta)=\mathbb{E}_{x,y\sim\pi_\theta,\,f}\left[\sum_{t=1}^{T}\sum_{v\in V}\pi_\theta(v\mid x,y_{<t})\cdot f(\tilde\tau_v^t)\right]
-  \]
+  \(\displaystyle L_{\text{SD}}(\theta)=\mathbb{E}_{x,y\sim\pi_\theta,\,f}\left[\sum_{t=1}^{T}\sum_{v\in V}\pi_\theta(v\mid x,y_{<t})\cdot f(\tilde\tau_v^t)\right]\)
   选不同凸函数 f 可恢复 forward-KL / reverse-KL / JSD(各有优化性质,Appendix A)。因轨迹采自 base policy \(\pi_\theta\),目标**天然 on-policy**——可"recover forgotten behaviors after midtraining"并防 exposure bias。
 - 方法流水线(Algorithm 1,输入→输出讲清):
   - **Require**:学生 \(\pi_\theta\)、teacher 权重 θ_old、playbook \(P\leftarrow\emptyset\)、solution buffer \(B\leftarrow\emptyset\)。

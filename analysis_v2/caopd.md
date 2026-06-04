@@ -20,23 +20,23 @@ caopd | The Illusion of Certainty: Decoupling Capability and Calibration in On-P
 **【理论:为何能力蒸馏加剧过自信（§3,三命题,Appendix A 给全证）】**
 - **理想校准目标（§2.2）**：部署成功率 \(\mu(x):=\mathbb E_{a\sim\pi_\theta(\cdot\mid x)}[R(x,a)]=\Pr_{\pi_\theta}(R=1\mid x)\)（\(R\) 是二值验证函数）。校准要求 \(\mathbb E[\mathrm{val}(c_\theta(x))]=\mu(x)\)，故 **\(\mu(x)\) 才是置信对齐的 ground-truth 目标**。
 - **标准 OPD 目标的盲点（§2.3）**：per-token reverse-KL（先采 \(y\sim\pi_\theta(\cdot\mid x)\)，再让 student/teacher 沿该轨迹算分布）
-  \[ \mathcal L_{\text{OPD}}(\theta)=\mathbb E_{x,z\sim Z(x)}\,\mathbb E_{y\sim\pi_\theta(\cdot\mid x)}\Big[\sum_{t=1}^T D_{KL}\big(\pi_\theta(\cdot\mid y_{<t},x)\,\|\,\pi_\theta(\cdot\mid y_{<t},x,z)\big)\Big]. \]
+  \(\displaystyle \mathcal L_{\text{OPD}}(\theta)=\mathbb E_{x,z\sim Z(x)}\,\mathbb E_{y\sim\pi_\theta(\cdot\mid x)}\Big[\sum_{t=1}^T D_{KL}\big(\pi_\theta(\cdot\mid y_{<t},x)\,\|\,\pi_\theta(\cdot\mid y_{<t},x,z)\big)\Big].\)
   因 \(y=(a,c)\) 含置信 token,该损失也作用在置信位置——而 teacher 拿了 \(z\)（如正确答案）会在置信位输出≈1.0 → **OPD 同时迁移能力 AND 逼 student 模仿 teacher 的无端笃定**。
 - **命题1（信息差→不可辨识）**：当条件互信息 \(I(R;Z\mid X)>0\)（特权上下文对正确性有 \(X\) 之外的信息）,teacher 条件成功率 \(\mu_T(X,Z)\) 对 \(X\) 不可测,且平方误差下 **X-可测最优预测恰是 student 部署成功率 \(\mu(X)\)**,残差严格为正:
-  \[ \min_g \mathbb E\big[(\mu_T(X,Z)-g(X))^2\big]=\mathbb E_X\big[\mathrm{Var}(\mu_T(X,Z)\mid X)\big]>0. \]
+  \(\displaystyle \min_g \mathbb E\big[(\mu_T(X,Z)-g(X))^2\big]=\mathbb E_X\big[\mathrm{Var}(\mu_T(X,Z)\mid X)\big]>0.\)
   → 用 teacher 的笃定当置信目标在信息论上就是错的。
 - **命题2（特权条件→熵坍缩）**：当 \(I(A;Z\mid X)>0\)，teacher 轨迹期望熵严格低于仅给 \(X\) 的条件熵:\(\mathbb E_{X,Z}[H(\pi_\theta(A\mid X,Z))]<\mathbb E_X[H(A\mid X)]\)。最小化对它的 per-token reverse-KL **逼 student logits 人为锐化**（被罚于表达自然不确定性 \(H(A\mid X)\)）。
 - **命题3（选择偏置→乐观）**：特权上下文 \(Z\) 常取自成功/高质量样本（\(\mathcal D_{\text{helpful}}\)），使 \(\mathbb E_{Z\sim\mathcal D_{\text{helpful}}}[\mu_T(X,Z)\mid X]\ge\mu(X)\)（正测度集上严格）,于是蒸进 student 的隐式目标对真实部署成功率**系统性上偏**:\(\mathbb E_{X,Z\sim\mathcal D_{\text{helpful}}}[\mu_T(X,Z)-\mu(X)]>0\)。
 
 **【CaOPD 方法流水线（§4 Algorithm 1）——读完可复现】** 对每输入 \(x\)：
 1. **student-grounded 置信估计（§4.1）**：采 \(K\) 条独立 \((a_k,c_k)\sim\pi_\theta(\cdot\mid x)\)，verifier 打分,经验成功率
-   \[ \hat\mu(x)=\frac1K\sum_{k=1}^K R(x,a_k). \]
+   \(\displaystyle \hat\mu(x)=\frac1K\sum_{k=1}^K R(x,a_k).\)
    **关键省成本**:SDPO 下**复用基础训练循环已生成的 rollout** 算 \(\hat\mu(x)\)，只多一次轻量 verifier 评估;蒸馏轨迹另采、不增额外成本。开放域无 verifier 时 \(\hat\mu\) 退化用 **Teacher-Anchored Self-Consistency**（Appendix B.6）。
 2. **target replacement（§4.2,改 completion 与 teacher context、reverse-KL 机制不动）**：给 student 生成轨迹 \(y=(a,c)\)——
    - (i) **改 completion**:把置信段 \(c\) 换成 \(\hat\mu(x)\)，得 \(\tilde y=(a,\hat\mu(x))\)。
    - (ii) **改 teacher context**:在特权上下文 \(z\) 里把原≈1.0 的置信改写成 \(\hat\mu(x)\)，得 \(\tilde z\)。
 3. **蒸馏（§4.2 Eq.7）**：student/teacher 各自条件化（\(x\) 与 \((x,\tilde z)\)）给 \(\tilde y\) 打分;token 位置分 reasoning \(I_a=\{1,\dots,T_a\}\) 与置信 \(I_c=\{T_a+1,\dots,T\}\)：
-   \[ \mathcal L_{\text{CaOPD}}(\theta)=\mathbb E_{x,\tilde z}\,\mathbb E_{\tilde y}\Big[\underbrace{\sum_{t\in I_a}D_{KL}\big(\pi_\theta(\cdot\mid\tilde y_{<t},x)\,\|\,\pi_\theta(\cdot\mid\tilde y_{<t},x,\tilde z)\big)}_{\text{Capability Cloning(保留)}}+\underbrace{\sum_{t\in I_c}D_{KL}\big(\pi_\theta(\cdot\mid\tilde y_{<t},x)\,\|\,\pi_\theta(\cdot\mid\tilde y_{<t},x,\tilde z)\big)}_{\text{Confidence Calibration(student-grounded)}}\Big]. \]
+   \(\displaystyle \mathcal L_{\text{CaOPD}}(\theta)=\mathbb E_{x,\tilde z}\,\mathbb E_{\tilde y}\Big[\underbrace{\sum_{t\in I_a}D_{KL}\big(\pi_\theta(\cdot\mid\tilde y_{<t},x)\,\|\,\pi_\theta(\cdot\mid\tilde y_{<t},x,\tilde z)\big)}_{\text{Capability Cloning(保留)}}+\underbrace{\sum_{t\in I_c}D_{KL}\big(\pi_\theta(\cdot\mid\tilde y_{<t},x)\,\|\,\pi_\theta(\cdot\mid\tilde y_{<t},x,\tilde z)\big)}_{\text{Confidence Calibration(student-grounded)}}\Big].\)
    - **reasoning 位置 \(t\in I_a\)**:前缀 \(\tilde y_{<t}\) 只含 reasoning token（置信替换还没出现）、\(\tilde z\) 的 reasoning 内容未改 → **per-token KL 与标准 OPD（Eq.2）实质相同**（能力克隆原样保留）。
    - **置信位置 \(t\in I_c\)**:打分的 token 编码 \(\hat\mu(x)\) 而非原 \(c\)、teacher context 反映 \(\hat\mu(x)\) 而非 1.0 → student 被训去产出 student-grounded 经验成功率,**直接消解熵坍缩(命题2) + 乐观偏置(命题3)**。
    - AdamW 更新。整套**无 reward 改造、无额外优化阶段**。

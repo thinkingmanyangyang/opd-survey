@@ -21,23 +21,23 @@ bapo | BAPO: Stabilizing Off-Policy Reinforcement Learning for LLMs via Balanced
 ## 怎么做 + 靠不靠谱
 
 > 基础设定（§2）：prompt \(x\)，response \(\boldsymbol y=(y_1,\dots,y_T)\)，\(\pi_\theta(\boldsymbol y\mid x)=\prod_t\pi_\theta(y_t\mid x,\boldsymbol y_{<t})\)。RL 目标 \(J(\theta)=\mathbb E_{x,\boldsymbol y\sim\pi_\theta}[R(x,\boldsymbol y)]\)，policy gradient \(\nabla_\theta J=\mathbb E[\sum_t\nabla_\theta\log\pi_\theta(y_t)\cdot A_t]\)。PPO 代理目标用 importance weight \(r_t=\frac{\pi_\theta(y_t\mid x,\boldsymbol y_{<t})}{\pi_{\theta_{\text{rollout}}}(y_t\mid x,\boldsymbol y_{<t})}\) 修正分布失配:
-> \[ J_{\text{PPO}}(\theta)=\mathbb E_{x,\boldsymbol y\sim\pi_{\theta_{\text{rollout}}}}\Big[\textstyle\sum_{t=1}^T\min\big(r_t A_t,\ \mathrm{clip}(r_t,1-\varepsilon,1+\varepsilon)A_t\big)\Big]. \]
+> \(\displaystyle J_{\text{PPO}}(\theta)=\mathbb E_{x,\boldsymbol y\sim\pi_{\theta_{\text{rollout}}}}\Big[\textstyle\sum_{t=1}^T\min\big(r_t A_t,\ \mathrm{clip}(r_t,1-\varepsilon,1+\varepsilon)A_t\big)\Big].\)
 
 **【两条诊断的形式化】**
 - **失衡（§3 Eq.5）**：把 PG 按正负 advantage 拆开,裁剪体现为指示函数——
-  \[ \nabla J_{\text{PPO}}=\underbrace{\sum_{A_t>0}\pi_\theta(y_t)\,\mathbb I\{r_t<1+\varepsilon\}\,A_t\,\nabla\log\pi_\theta(y_t)}_{\text{正 token}}+\underbrace{\sum_{A_t<0}\pi_\theta(y_t)\,\mathbb I\{r_t>1-\varepsilon\}\,A_t\,\nabla\log\pi_\theta(y_t)}_{\text{负 token}}. \]
+  \(\displaystyle \nabla J_{\text{PPO}}=\underbrace{\sum_{A_t>0}\pi_\theta(y_t)\,\mathbb I\{r_t<1+\varepsilon\}\,A_t\,\nabla\log\pi_\theta(y_t)}_{\text{正 token}}+\underbrace{\sum_{A_t<0}\pi_\theta(y_t)\,\mathbb I\{r_t>1-\varepsilon\}\,A_t\,\nabla\log\pi_\theta(y_t)}_{\text{负 token}}.\)
   上界 \(1+\varepsilon\) 把**低概率正 token（\(r_t\) 偏大）挡在外**,下界 \(1-\varepsilon\) 让低概率负 token 留下并累积。
 - **Entropy-Clip Rule（§3 Eq.6,Appendix B 证明）**：熵变近似为对数概率与"裁后 advantage"的负协方差——
-  \[ \Delta H(\pi_\theta)\approx -\eta\cdot\mathrm{Cov}_{\boldsymbol y\sim\pi_\theta}\big[\log\pi_\theta(y_t\mid x,\boldsymbol y_{<t}),\ A_t\cdot\mathcal X(y_t)+C\big], \]
+  \(\displaystyle \Delta H(\pi_\theta)\approx -\eta\cdot\mathrm{Cov}_{\boldsymbol y\sim\pi_\theta}\big[\log\pi_\theta(y_t\mid x,\boldsymbol y_{<t}),\ A_t\cdot\mathcal X(y_t)+C\big],\)
   其中 \(C\) 为常数,\(\mathcal X(y_t)=1\) 当（\(A_t>0\) 且 \(r_t<1+\epsilon\)）或（\(A_t<0\) 且 \(r_t>1-\epsilon\)）即"该 token 未被裁",否则 0。**直觉**:更新"正高概率 + 负低概率"token 会**锐化分布、降熵**;更新"负高概率 + 正低概率"token 会**平滑分布、增熵**。Fig.5/10 实证:IS 权重偏离 1（极高或极低）的 token 往往是低概率 token 且高熵——固定对称裁剪 [0.8,1.2] 把大量低概率正 token 挡在外,**系统性排除增熵更新→熵持续下降→探索能力枯竭**。BAPO 据此扩 \(c_{\text{high}}\) 把这些正 token 放回来。
 
 **【BAPO 算法流水线（§4.2 Algorithm 1）——读完可复现】**
 1. **采样**：更新 rollout 策略 \(\pi_{\theta_{\text{rollout}}}\leftarrow\pi_\theta\);从第 \(s\) 个 batch 采 \(G\) 条 response \(\{\boldsymbol y_i\}\sim\pi_{\theta_{\text{rollout}}}(\cdot\mid x)\);算 reward 与 advantage（GRPO group-relative）。
 2. **对每个 staleness 层动态搜裁剪界**（核心循环）：初始化 \(c_{\text{low}}=a^-,\ c_{\text{high}}=a^+\);**while（正 token 贡献 \(\rho<\rho_0\) 且 \(c_{\text{low}}+\delta_2\le b^-\)）**：若 \(c_{\text{high}}+\delta_1\le b^+\) 则 **先增 \(c_{\text{high}}\)**（步长 \(\delta_1\)）,到顶后再增 \(c_{\text{low}}\)（步长 \(\delta_2\)）。目标占比定义（**Eq.8**）：
-   \[ \frac{\big|\sum_{A_t>0}\pi_{\theta_{\text{rollout}}}(y_t)\cdot\min(r_tA_t,\mathrm{clip}(r_t,0,c_{\text{high}})A_t)\big|}{\big|\sum_{A_t}\pi_{\theta_{\text{rollout}}}(y_t)\cdot\min(r_tA_t,\mathrm{clip}(r_t,c_{\text{low}},c_{\text{high}})A_t)\big|}\ \ge\ \rho_0. \]
+   \(\displaystyle \frac{\big|\sum_{A_t>0}\pi_{\theta_{\text{rollout}}}(y_t)\cdot\min(r_tA_t,\mathrm{clip}(r_t,0,c_{\text{high}})A_t)\big|}{\big|\sum_{A_t}\pi_{\theta_{\text{rollout}}}(y_t)\cdot\min(r_tA_t,\mathrm{clip}(r_t,c_{\text{low}},c_{\text{high}})A_t)\big|}\ \ge\ \rho_0.\)
    即"正 token 对 PG 损失的贡献绝对值 / 全部 token 的贡献绝对值"要达到 \(\rho_0\)。
 3. **更新**：用搜到的 \((c_{\text{low}},c_{\text{high}})\) 跑非对称裁剪的 PPO/GRPO 目标
-   \[ J_{\text{BAPO}}(\theta)=\mathbb E_{\boldsymbol y\sim\pi_{\theta_{\text{rollout}}}}\Big[\textstyle\sum_t\min\big(r_tA_t,\ \mathrm{clip}(r_t,c_{\text{low}},c_{\text{high}})A_t\big)\Big]. \]
+   \(\displaystyle J_{\text{BAPO}}(\theta)=\mathbb E_{\boldsymbol y\sim\pi_{\theta_{\text{rollout}}}}\Big[\textstyle\sum_t\min\big(r_tA_t,\ \mathrm{clip}(r_t,c_{\text{low}},c_{\text{high}})A_t\big)\Big].\)
 - **逐组件必要性（§4.1 Fig.7 验证 + §4.3 Fig.8/9 训练动态）**：
   - **\(c_{\text{high}}\) 上调**——Fig.7（Clip=[0.8,1.5] vs [0.8,1.2]）:纳入低概率正 token **提性能 + 抑熵降**。
   - **\(c_{\text{low}}\) 上调（收紧下界过滤负 token）**——Fig.7 反向验证:放宽 \(c_{\text{low}}\)（[0.5,1.2]）反而**降性能 + 加速熵崩**,所以方向是"收紧下界过滤低概率负 token"。

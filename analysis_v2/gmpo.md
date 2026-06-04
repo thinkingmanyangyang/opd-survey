@@ -26,22 +26,14 @@ gmpo | Geometric-Mean Policy Optimization (GMPO) | UCAS / CUHK / HKUST / Microso
 
 ## 怎么做 + 靠不靠谱
 - **GRPO 基线目标(§2.2,式1/2)**：对每题 \(q\) 从 \(\pi_{\theta_{\mathrm{old}}}\) 采一组 rollout \(\{o_1,\dots,o_G\}\)、算奖励 \(\{r_1,\dots,r_G\}\),最大化(式1):
-  \[
-  J_{\mathrm{GRPO}}(\pi_\theta)=\mathbb{E}_{q,\{o_i\}\sim\pi_{\theta_{\mathrm{old}}}}\frac{1}{G}\sum_{i=1}^{G}\frac{1}{|o_i|}\sum_{t=1}^{|o_i|}\Big\{\min\big(\rho_{i,t}(\theta)\hat A_i,\ \mathrm{clip}(\rho_{i,t}(\theta),\epsilon_{\mathrm{low}},\epsilon_{\mathrm{high}})\hat A_i\big)-\beta D_{\mathrm{KL}}(\pi_\theta\|\pi_{\mathrm{ref}})\Big\},
-  \]
+  \(\displaystyle J_{\mathrm{GRPO}}(\pi_\theta)=\mathbb{E}_{q,\{o_i\}\sim\pi_{\theta_{\mathrm{old}}}}\frac{1}{G}\sum_{i=1}^{G}\frac{1}{|o_i|}\sum_{t=1}^{|o_i|}\Big\{\min\big(\rho_{i,t}(\theta)\hat A_i,\ \mathrm{clip}(\rho_{i,t}(\theta),\epsilon_{\mathrm{low}},\epsilon_{\mathrm{high}})\hat A_i\big)-\beta D_{\mathrm{KL}}(\pi_\theta\|\pi_{\mathrm{ref}})\Big\},\)
   其中 \(\rho_{i,t}(\theta)=\frac{\pi_\theta(o_{i,t}\mid q,o_{i,<t})}{\pi_{\theta_{\mathrm{old}}}(o_{i,t}\mid q,o_{i,<t})}\)、\(\hat A_i=\frac{r_i-\operatorname{mean}(\{r_1..r_G\})}{\operatorname{std}(\{r_1..r_G\})}\)。跟 Dr.GRPO 一样**忽略 \(D_{\mathrm{KL}}\) 项**省显存,简化为算术平均形式(式2):\(J^{*}_{\mathrm{GRPO}}=\mathbb{E}\big[\frac{1}{G}\sum_i\frac{1}{|o_i|}\sum_t\rho_{i,t}(\theta)\hat A_i\big]\)。
 - **GMPO 目标(§3,式3/4)**：把算术平均换几何平均(式3):
-  \[
-  J^{*}_{\mathrm{GMPO}}(\pi_\theta)=\mathbb{E}_{q,\{o_i\}\sim\pi_{\theta_{\mathrm{old}}}}\frac{1}{G}\sum_{i=1}^{G}\Big(\prod_{t=1}^{|o_i|}\rho_{i,t}(\theta)\hat A_i\Big)^{\frac{1}{|o_i|}}\!\cdot\mathrm{sgn}(\hat A_i),
-  \]
+  \(\displaystyle J^{*}_{\mathrm{GMPO}}(\pi_\theta)=\mathbb{E}_{q,\{o_i\}\sim\pi_{\theta_{\mathrm{old}}}}\frac{1}{G}\sum_{i=1}^{G}\Big(\prod_{t=1}^{|o_i|}\rho_{i,t}(\theta)\hat A_i\Big)^{\frac{1}{|o_i|}}\!\cdot\mathrm{sgn}(\hat A_i),\)
   \(\mathrm{sgn}(\hat A_i)\) 确保优化方向正确(\(\hat A_i>0\) 返 1、否则 −1;因为对负 advantage 取偶/奇次根会丢符号,需显式纠向)。加入 token 级 clip 后的完整目标(式4):
-  \[
-  J_{\mathrm{GMPO}}(\pi_\theta)=\mathbb{E}\frac{1}{G}\sum_{i=1}^{G}\Big[\prod_{t=1}^{|o_i|}\min\big(\rho_{i,t}(\theta)\hat A_i,\ \mathrm{clip}(\rho_{i,t}(\theta),\epsilon_{\mathrm{low}},\epsilon_{\mathrm{high}})\hat A_i\big)\Big]^{\frac{1}{|o_i|}}\!\cdot\mathrm{sgn}(\hat A_i).
-  \]
+  \(\displaystyle J_{\mathrm{GMPO}}(\pi_\theta)=\mathbb{E}\frac{1}{G}\sum_{i=1}^{G}\Big[\prod_{t=1}^{|o_i|}\min\big(\rho_{i,t}(\theta)\hat A_i,\ \mathrm{clip}(\rho_{i,t}(\theta),\epsilon_{\mathrm{low}},\epsilon_{\mathrm{high}})\hat A_i\big)\Big]^{\frac{1}{|o_i|}}\!\cdot\mathrm{sgn}(\hat A_i).\)
   **值域收缩(§3 不等式,这是"为何更稳"的第一层证据)**:由 AM-GM,
-  \[
-  |J^{*}_{\mathrm{GMPO}}|=\mathbb{E}\Big|\tfrac{1}{G}\textstyle\sum_i\big(\prod_t\rho_{i,t}\hat A_i\big)^{1/|o_i|}\Big|\ \le\ \mathbb{E}\Big|\tfrac{1}{G}\textstyle\sum_i\tfrac{1}{|o_i|}\sum_t\rho_{i,t}\hat A_i\Big|=|J^{*}_{\mathrm{GRPO}}|,
-  \]
+  \(\displaystyle |J^{*}_{\mathrm{GMPO}}|=\mathbb{E}\Big|\tfrac{1}{G}\textstyle\sum_i\big(\prod_t\rho_{i,t}\hat A_i\big)^{1/|o_i|}\Big|\ \le\ \mathbb{E}\Big|\tfrac{1}{G}\textstyle\sum_i\tfrac{1}{|o_i|}\sum_t\rho_{i,t}\hat A_i\Big|=|J^{*}_{\mathrm{GRPO}}|,\)
   即 GMPO 目标值域更窄 → 训练方差更低 → 更稳。
 - **方法流水线(逐步 输入→输出)**：① 采样组内 \(G\) 条 rollout、算组内相对优势 \(\hat A_i\)(同 GRPO,免 value)→ ② 每条序列内对 token 级 \(\rho_{i,t}\hat A_i\) 取**几何平均**(乘积后开 \(1/|o_i|\) 次幂、乘 \(\mathrm{sgn}(\hat A_i)\))→ ③ token 级裁剪到 \((e^{-0.4},e^{0.4})\)(比 GRPO/DAPO 宽)→ ④ 最大化该目标,按标准 policy gradient 更新。
 - **真实实现:全在 log 空间(Algorithm 1,~10 行,复现关键)**：把概率取对数 `new_log_probs, old_log_probs = log(new_probs), log(old_probs)`;算 `sgn_A = +1/−1`;`sgn_A_log_probs_diff = sgn_A * (new_log - old_log)`;**先按 sgn 把对数差 clamp 到 \([-\epsilon,\epsilon]\)**(\(\epsilon=0.4\)),再 `min(原差, clamp 差)`、乘回 sgn_A 得 `log_probs_diff_min`;几何平均 = `exp( sum(log_probs_diff_min[mask]) / mask.sum() )`(即对数和除 token 数再指数 = 乘积开 \(1/|o_i|\) 次幂);`loss = -advantage * importance_sampling_ratio`。→ 乘积/裁剪都在 log 空间做,避免连乘数值下溢/上溢。
@@ -51,12 +43,8 @@ gmpo | Geometric-Mean Policy Optimization (GMPO) | UCAS / CUHK / HKUST / Microso
   - **裁剪策略**(行2 不裁剪 52.3 / 行3 序列级裁剪 52.6 / 行5 token 级 52.7):性能差异其实**很小(0.1~0.4%)**,但 token 级裁剪让 \(\rho\) 范围最稳(图3)。〔推断〕裁剪方式对最终分数贡献边际,主要价值在稳定性而非精度。
   - **裁剪窗口大小**(表5:\((e^{-0.2},e^{0.2})\) 52.4 / \((e^{-0.4},e^{0.4})\) 52.7 / \((e^{-0.8},e^{0.8})\) 52.1 / \((-\infty,+\infty)\) 52.3):\((e^{-0.4},e^{0.4})\) 是甜点;过宽不稳、过窄抑探索。有消融。
 - **关键机制/公式:梯度视角(§3 + 附录 A 引理1-3,这是「为何稳」的数学根)**：两目标的梯度都是"各 token policy gradient \(\hat A_i\nabla_\theta\log\pi_\theta(o_{i,t}\mid q,o_{i,<t})\) 的加权和",差在权重——
-  \[
-  \nabla_\theta J^{*}_{\mathrm{GRPO}}\big|_{q,o_i}=\frac{1}{G|o_i|}\sum_{t=1}^{|o_i|}\rho_{i,t}(\theta)\cdot\hat A_i\cdot\nabla_\theta\log\pi_\theta(o_{i,t}\mid q,o_{i,<t}),
-  \]
-  \[
-  \nabla_\theta J^{*}_{\mathrm{GMPO}}\big|_{q,o_i}=\frac{1}{G|o_i|}\sum_{t=1}^{|o_i|}\Big(\prod_{k=1}^{|o_i|}\rho_{i,k}(\theta)\Big)^{\frac{1}{|o_i|}}\!\cdot\hat A_i\cdot\nabla_\theta\log\pi_\theta(o_{i,t}\mid q,o_{i,<t}).
-  \]
+  \(\displaystyle \nabla_\theta J^{*}_{\mathrm{GRPO}}\big|_{q,o_i}=\frac{1}{G|o_i|}\sum_{t=1}^{|o_i|}\rho_{i,t}(\theta)\cdot\hat A_i\cdot\nabla_\theta\log\pi_\theta(o_{i,t}\mid q,o_{i,<t}),\)
+  \(\displaystyle \nabla_\theta J^{*}_{\mathrm{GMPO}}\big|_{q,o_i}=\frac{1}{G|o_i|}\sum_{t=1}^{|o_i|}\Big(\prod_{k=1}^{|o_i|}\rho_{i,k}(\theta)\Big)^{\frac{1}{|o_i|}}\!\cdot\hat A_i\cdot\nabla_\theta\log\pi_\theta(o_{i,t}\mid q,o_{i,<t}).\)
   GRPO 里每 token 权重含**它自己**的 \(\rho_{i,t}\)——一个极端值就让该 token 梯度爆/灭;GMPO 里权重换成**整条序列所有 \(\rho\) 的几何平均** \((\prod_k\rho_{i,k})^{1/|o_i|}\)——任何单个极端 \(\rho\) 经 \(1/|o_i|\) 次幂被强力压缩,给出更均衡的更新信号。(推导用到引理1 \(\nabla_\theta\rho_{i,t}=\rho_{i,t}\nabla_\theta\log\pi_\theta(o_{i,t})\)。)
 - 实验与证据:base=Qwen2.5-Math-1.5B/7B、R1-Distill-Qwen-7B、Qwen3-32B(MoE)、Qwen2.5-VL-7B;训练数据 MATH L3-5(8523 题)/DeepScaleR/CountDown/Geometry3K;评测 AIME24/AMC/MATH500/Minerva/OlympiadBench + Geometry3K。关键数字:R1-Distill-7B 上 **63.4 vs GRPO 59.3 (+4.1%)**;MoE Qwen3-32B MATH500 **96.7 vs 94.6 (+2.1%)**;多模态 Geometry3K **54.7 vs 53.3 (+1.4%)**。稳定性证据扎实:图4 显示 GMPO 全程更高熵、更小 KL、更稳梯度;图5(e) CountDown 上 GRPO ~250 步崩溃、GMPO 不崩。
 - baseline 公平吗:主对比 GRPO/Dr.GRPO 在**同一套 Dr.GRPO 设置**下跑(每问 8 rollouts、max 3000 token、每轮 1024 rollouts、更新 8 次 batch 128),较公平;表3 与 SOTA(SimpleRL/PRIME/OpenReasoner/Oat-Zero/GPG)对比,GMPO-7B 52.7 居前但与 Oat-Zero-7B(51.4)差距不大、R1-Distill 版 63.4 vs Oat-Zero 61.5。**注意各 SOTA 训练数据/设置不一,非严格同条件**,应谨慎解读「outperform SOTA」。

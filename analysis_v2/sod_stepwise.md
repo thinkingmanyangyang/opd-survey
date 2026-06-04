@@ -32,9 +32,7 @@ sod_stepwise | SOD: Step-wise On-policy Distillation for Small Language Model Ag
   - **Prop.2(梯度 SNR 退化)**:定义 teacher-支持区 \(S^\epsilon_t=\{v:\pi_{\text{teacher}}(v|y_{<t})\ge\epsilon\}\) 与重叠 \(\rho_t=\sum_{v\in S^\epsilon_t}\pi_\theta(v|y_{<t})\);当 \(\rho_t\le\rho\),OPD 损失二阶矩 \(\mathbb{E}[\ell^2_t]\ge(1-\rho)\log^2(1/\epsilon)\),且 \(\mathrm{SNR}(g_t)\to0\) as \(\rho_t\to0\)。
   - **廉价代理(Eq.6)**:\(d_k=\dfrac{1}{|I_k|}\sum_{t\in I_k}|\log\pi_\theta(y_t|y_{<t})-\log\pi_{\text{teacher}}(y_t|y_{<t})|\)(用 OPD 前向**已有**的师生 logprob 之差绝对值均值,零额外成本;D.5 证与 \(\Delta_k\) 单调一致)。
   - **核心权重(Eq.7)**:
-    \[
-    w_k=\min\!\left(\prod_{u=1}^{k-1}\frac{d_u+\epsilon}{d_{u+1}+\epsilon},\ 1+\delta\right),\quad k\ge2,\quad w_1=1
-    \]
+    \(\displaystyle w_k=\min\!\left(\prod_{u=1}^{k-1}\frac{d_u+\epsilon}{d_{u+1}+\epsilon},\ 1+\delta\right),\quad k\ge2,\quad w_1=1\)
     发散一路升(\(d_{u+1}>d_u\))→每个比值 \(<1\)→累乘越来越小→被污染区监督被压;某步重新对齐(\(d_{u+1}<d_u\))→该比值 \(>1\)→权重回升(**recovery from earlier errors**);上界 \(1+\delta\) 防暴涨。ε=1e-6、δ=0.2。
   - **token OPD 与 step-wise 目标(Eq.8-9)**:\(\ell_{\text{OPD}}(y_t)=\log\pi_\theta(y_t|y_{<t})-\log\pi_{\text{teacher}}(y_t|y_{<t})\);\(L^{\text{step}}_{\text{OPD}}=\mathbb{E}_{y\sim\pi_\theta}\big[\sum_{k=1}^{K+1}w_k\sum_{t\in I_k}\ell_{\text{OPD}}(y_t)\big]\)。
   - **总目标(Eq.10)**:\(L=L_{\text{GRPO}}+L^{\text{step}}_{\text{OPD}}\)——GRPO 给稀疏 outcome 驱动探索,step-OPD 给 dense 指导且按发散调权。

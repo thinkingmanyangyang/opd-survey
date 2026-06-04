@@ -34,28 +34,18 @@ llm_future_mtp | Your LLM Knows the Future: Uncovering Its Multi-Token Predictio
   - **LCM 损失**(Fig.7 橄榄绿):提 MTP↔NTP 对齐进而提整体加速;正文给出动机/公式,作为"提加速"的辅助项,消融力度弱于 gated LoRA/quadratic。
 - 关键机制/公式(真实符号 + 直觉):
   - **gated LoRA**(§2.2):标准 LoRA 输出 \(y_t=W\cdot x_t+A\cdot B\cdot x_t\)(\(A\in\mathbb{R}^{d\times r},B\in\mathbb{R}^{r\times d}\));gated 版改为
-  \[
-  y_t=W\cdot x_t+\mathbb{I}(t)\,[\,A\cdot B\cdot x_t\,],\qquad \mathbb{I}(t)\in\{0,1\}.
-  \]
+  \(\displaystyle y_t=W\cdot x_t+\mathbb{I}(t)\,[\,A\cdot B\cdot x_t\,],\qquad \mathbb{I}(t)\in\{0,1\}.\)
   门 \(\mathbb{I}(t)\) 对 MTP 位 \(=1\)、对 NTP 位 \(=0\),且**对任意 \(t\) 确定可知**(已知该位是否 mask)。直觉:NTP 位门关→输出严格等于原模型 \(W\cdot x_t\)(故零 NTP 退化),MTP 位门开→走多 token 路径。即"用一个开关把改动严格圈在 MTP 路径里"。代价:LoRA 因门控**不能融进 base 层**(推理时需单独算 LoRA,但秩小、开销小,§3.2)。
   - **sampler 头**(§2.3):标准解码 \(p_n=W\cdot z_n\)(只条件于 latent \(z_n\),\(W\in\mathbb{R}^{V\times d}\) 为 unembedding);本文改为
-  \[
-  p_n=W\cdot \mathrm{MLP}\big([\,E_{y_{n-1}};\,z_n\,]\big),
-  \]
+  \(\displaystyle p_n=W\cdot \mathrm{MLP}\big([\,E_{y_{n-1}};\,z_n\,]\big),\)
   把前一采样 token 的 embedding \(E_{y_{n-1}}\in\mathbb{R}^{d}\) 与 \(z_n\) 拼成 \(2d\) 向量过两层 MLP(每块=Linear→SiLU→LayerNorm)。直觉:让每个未来 token 显式看见"我刚生成了什么",避免独立采样导致不连贯。
   - **交叉熵损失**(§2.5):对位置 \(t\) 的标签 \(y_t\),base 头与 sampler 头各出分布 \(p^b_t,p^s_t\in\mathbb{R}^v\),
-  \[
-  L^b_t=-\log p^b_t(y_t),\qquad L^s_t=-\log p^s_t(y_t).
-  \]
+  \(\displaystyle L^b_t=-\log p^b_t(y_t),\qquad L^s_t=-\log p^s_t(y_t).\)
   - **Latent Consistency(LCM)损失**(§2.5,Eq.1):令 \(z_t\) 为某 NTP 位在末层的 latent,\(S(z_t)\)(\(|S(z_t)|\le k\))为应与之匹配的若干 MTP latent,则
-  \[
-  L^{\mathrm{lcm}}_t=\frac{1}{|S(z_t)|}\sum_{z\in S(z_t)}(z_t-z)^2.
-  \]
+  \(\displaystyle L^{\mathrm{lcm}}_t=\frac{1}{|S(z_t)|}\sum_{z\in S(z_t)}(z_t-z)^2.\)
   关键:\(z_t\) **被 detach(停梯度)**——只逼 MTP latent 靠近 NTP 锚点,锚点本身不动;且因 gated LoRA 令 NTP 的 \(z_t\) 与原模型相同,LCM 实为一种**自蒸馏**(向"原模型在更长上下文下的下一 token 表示"对齐)。
   - **总损失**(§2.5):
-  \[
-  L=\mathbb{E}_{t\in T_{\mathrm{ntp}}\cup T_{\mathrm{mtp}}}\big[L^b_t+L^s_t\big]+\mathbb{E}_{t\in T_{\mathrm{ntp}}}\big[L^{\mathrm{lcm}}_t\big].
-  \]
+  \(\displaystyle L=\mathbb{E}_{t\in T_{\mathrm{ntp}}\cup T_{\mathrm{mtp}}}\big[L^b_t+L^s_t\big]+\mathbb{E}_{t\in T_{\mathrm{ntp}}}\big[L^{\mathrm{lcm}}_t\big].\)
   - **加速度量**:跑 \(T\) 步生成 \(G\) 个 token,接受率(speedup)\(=G/T\in[1,\,k{+}1]\)(\(k{+}1=9\),§3.2)。**Quadratic decoding 保证接受率 ≥ linear decoding**:linear 加更多 speculative token 会因"整段验证更难"而降接受率,quadratic 因交错插 mask 不会(§2.4.2,代价是并行序列长 \(n+k^2\) 而非 \(n+k\),但 \(k\ll n\) 故开销可忽略)。
 - 实验与证据:基模 **Tulu3-8B**(LLaMA-3 家族,Tulu3 数据 SFT,选它因权重+全量数据均开源);微调预测 **\(k=8\)** 个额外 token(故一步最多出 9);Gated-LoRA rank **128**、sampler 为 2 层 MLP;只训 LoRA+MLP;**50,000 iter / 8×A100 / batch 1 per GPU / AdamW / 平 lr \(2\times10^{-4}\) / 5,000 步 warmup**(§3)。评测以"加速比 + 质量是否退化"为指标:知识=MMLU/PopQA/TruthfulQA;数学=GSM8k(8 mask 时 **2.58×@2masks→5.22×@8masks** 区间,Table 1 列 GSM8k 在 2 mask 为 2.58、8 mask 为 5.22);编码=HumanEval(8 mask **5.35×**);对话=AlpacaEval/IFEval;安全=XSTest/HarmBench 等;13 项平均 8 mask **3.17×**(Table 1 末行)。NTP 质量用 ARC-Challenge zero-shot(Harness 库)验证不退化(Fig.6)。baseline 是同模型 1× 自回归基线,公平。
 - 假设与失效边界:

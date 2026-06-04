@@ -31,9 +31,7 @@ entropy_mechanism | The Entropy Mechanism of Reinforcement Learning for Reasonin
 
 ### 2. 熵动力学理论（§3）：坍缩的根因 = 协方差
 - **Lemma 1（softmax 策略的熵差，一阶近似）**：对 tabular softmax 策略 \(\pi_\theta(a\mid s)=\dfrac{\exp(z_{s,a})}{\sum_{a'}\exp(z_{s,a'})}\)（Eq.7），相邻两步熵差
-\[
-H(\pi^{k+1}_\theta\mid s)-H(\pi^{k}_\theta\mid s)\approx-\,\mathrm{Cov}_{a\sim\pi^k_\theta(\cdot\mid s)}\big(\log\pi^k_\theta(a\mid s),\ z^{k+1}_{s,a}-z^{k}_{s,a}\big).
-\]
+\(\displaystyle H(\pi^{k+1}_\theta\mid s)-H(\pi^{k}_\theta\mid s)\approx-\,\mathrm{Cov}_{a\sim\pi^k_\theta(\cdot\mid s)}\big(\log\pi^k_\theta(a\mid s),\ z^{k+1}_{s,a}-z^{k}_{s,a}\big).\)
 直觉：动作更新前已是高概率、更新后 logit 又升 → 降熵。
 - **Proposition 1（PG 下的 logit 变化）**：vanilla PG 更新 \(z^{k+1}_{s,a}-z^{k}_{s,a}=\eta\,\pi_\theta(a\mid s)\,A(s,a)\)。
 - **Theorem 1（PG 下熵变）**：\(H(\pi^{k+1}_\theta\mid s)-H(\pi^{k}_\theta\mid s)\approx-\eta\,\mathrm{Cov}_{a\sim\pi^k_\theta}\big(\log\pi^k_\theta(a\mid s),\ \pi^k_\theta(a\mid s)\,A(s,a)\big)\)。
@@ -43,17 +41,11 @@ H(\pi^{k+1}_\theta\mid s)-H(\pi^{k}_\theta\mid s)\approx-\,\mathrm{Cov}_{a\sim\p
 
 ### 3. 两个干预（§4.2，Listing 1，只改几行 loss）
 - **token 级协方差**（Eq.10，对一 batch \(N\) 个 token 的中心化叉积）：
-\[
-\mathrm{Cov}(y_i)=\Big(\log\pi_\theta(y_i)-\tfrac1N\textstyle\sum_j\log\pi_\theta(y_j)\Big)\cdot\Big(A(y_i)-\tfrac1N\textstyle\sum_j A(y_j)\Big).
-\]
+\(\displaystyle \mathrm{Cov}(y_i)=\Big(\log\pi_\theta(y_i)-\tfrac1N\textstyle\sum_j\log\pi_\theta(y_j)\Big)\cdot\Big(A(y_i)-\tfrac1N\textstyle\sum_j A(y_j)\Big).\)
 - **Clip-Cov**：先按 Eq.10 算协方差，从落在 \([\omega_{\text{low}},\omega_{\text{high}}]\) 区间的高协方差 token 中**随机**选 \(\lfloor r\cdot N\rfloor\) 个（Eq.11），把这些 token **从策略梯度 detach**（停更）：
-\[
-L_{\text{Clip-Cov}}(\theta)=\begin{cases}\mathbb{E}_t\big[\tfrac{\pi_\theta(y_t\mid y_{<t})}{\pi_{\theta_{\text{old}}}(y_t\mid y_{<t})}A_t\big], & t\notin I_{\text{clip}}\\[4pt]0, & t\in I_{\text{clip}}\end{cases}\quad(\text{Eq.12}).
-\]
+\(\displaystyle L_{\text{Clip-Cov}}(\theta)=\begin{cases}\mathbb{E}_t\big[\tfrac{\pi_\theta(y_t\mid y_{<t})}{\pi_{\theta_{\text{old}}}(y_t\mid y_{<t})}A_t\big], & t\notin I_{\text{clip}}\\[4pt]0, & t\in I_{\text{clip}}\end{cases}\quad(\text{Eq.12}).\)
 - **KL-Cov**：取协方差 **Top-\(k\)** 比例 token（Eq.13），对它们额外加"当前策略 ↔ rollout 策略"的 KL 惩罚：
-\[
-L_{\text{KL-Cov}}(\theta)=\begin{cases}\mathbb{E}_t\big[\tfrac{\pi_\theta}{\pi_{\theta_{\text{old}}}}A_t\big], & t\notin I_{\text{KL}}\\[4pt]\mathbb{E}_t\big[\tfrac{\pi_\theta}{\pi_{\theta_{\text{old}}}}A_t-\beta\,D_{\text{KL}}(\pi_{\theta_{\text{old}}}\Vert\pi_\theta)\big], & t\in I_{\text{KL}}\end{cases}\quad(\text{Eq.14}).
-\]
+\(\displaystyle L_{\text{KL-Cov}}(\theta)=\begin{cases}\mathbb{E}_t\big[\tfrac{\pi_\theta}{\pi_{\theta_{\text{old}}}}A_t\big], & t\notin I_{\text{KL}}\\[4pt]\mathbb{E}_t\big[\tfrac{\pi_\theta}{\pi_{\theta_{\text{old}}}}A_t-\beta\,D_{\text{KL}}(\pi_{\theta_{\text{old}}}\Vert\pi_\theta)\big], & t\in I_{\text{KL}}\end{cases}\quad(\text{Eq.14}).\)
 - **数据流动**：rollout 采样 → 算 token-级 \(\log\pi,A\) → Eq.10 算每 token 协方差 → 选 pivotal token 索引集 → 对这撮 token 改写 loss（detach 或加 KL）→ 反传更新全参。整条管线相对 vanilla GRPO 只新增"算协方差 + 选索引 + 改这撮 token 的 loss"几行（伪代码 Listing 1 即官方 veRL `core_algos.py` 的实现原型）。
 - **关键超参默认值（§4.3）**：Clip-Cov \(r=2\times10^{-4}\)、\(\omega_{\text{low}}=1,\omega_{\text{high}}=5\)（均 >500× 平均协方差）；KL-Cov \(k=2\times10^{-3}\)(7B)/\(2\times10^{-4}\)(32B)、\(\beta=1\)；DAPO-MATH 训练，batch 256 prompt × 8 响应、温度 1、每 rollout 做 8 次更新、max gen 8192；评测 AIME/AMC 用温度 0.6，其余贪心。
 

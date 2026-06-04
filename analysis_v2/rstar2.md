@@ -9,7 +9,7 @@ rstar2 | rStar2-Agent: Agentic Reasoning Technical Report | Microsoft Research(N
 ## 为什么做
 - **研究背景的来龙去脉**:RLVR(DeepSeek-R1 范式)用规则可验证的 outcome reward 让模型自主习得 long CoT 推理。但纯 long CoT 对难题有内禀上限:模型只能靠"内部自反思"纠错,动作空间窄。**agentic reasoning** 这条线让模型自主调用工具(Python 编码 + 解释器)来推理/验证/从工具反馈学习——拓宽动作空间、支持探索替代解与验证中间步,补足单纯 long CoT 的不足。本报告即沿 agentic RL 路线把 14B 推到前沿。【原文】§1
 - **GRPO 基线与"更多探索"的现成做法**:本文 RL 底座是 GRPO,目标
-  \[\mathcal{J}_{\mathrm{GRPO}}(\theta)=\mathbb{E}\Big[\tfrac{1}{|o_i|}\sum_{t}\min\big(\rho_{i,t}A_{i,t},\,\mathrm{clip}(\rho_{i,t},1-\varepsilon,1+\varepsilon)A_{i,t}\big)-\beta\, D_{\mathrm{KL}}(\pi_\theta\|\pi_{\mathrm{ref}})\Big],\quad \rho_{i,t}=\tfrac{\pi_\theta(o_{i,t}\mid q,o_{i,<t})}{\pi_{\theta_{\mathrm{old}}}(o_{i,t}\mid q,o_{i,<t})}\]
+  \(\displaystyle \mathcal{J}_{\mathrm{GRPO}}(\theta)=\mathbb{E}\Big[\tfrac{1}{|o_i|}\sum_{t}\min\big(\rho_{i,t}A_{i,t},\,\mathrm{clip}(\rho_{i,t},1-\varepsilon,1+\varepsilon)A_{i,t}\big)-\beta\, D_{\mathrm{KL}}(\pi_\theta\|\pi_{\mathrm{ref}})\Big],\quad \rho_{i,t}=\tfrac{\pi_\theta(o_{i,t}\mid q,o_{i,<t})}{\pi_{\theta_{\mathrm{old}}}(o_{i,t}\mid q,o_{i,<t})}\)
   其中 group-relative advantage \(A_{i,t}=\dfrac{r_i-\mathrm{mean}(\{r_1,\dots,r_G\})}{\mathrm{std}(\{r_1,\dots,r_G\})}\)(Eq.1-2)。为"探索超出预训练上限",本文吸收三项现成改动:**移除 KL 惩罚**(\(\beta=0\),放开对 ref 的约束以发现新工具增强模式)、**Clip-Higher**(\(\varepsilon_{\mathrm{high}}:0.2\to0.28\),放开上界以探索高熵低概率"forking" token)、**移除 entropy loss**(防熵失控致 collapse)。【原文】§2.2.1
 - **agentic RL 扩展的两大具体挑战(本文靶子)**:
   - **环境噪声**:编码工具复杂,模型生成错误代码时环境返回与推理无关的报错,让其浪费 token 纠错;且 answer-only outcome reward(Eq.3,\(r_i=\mathbb{1}[\text{is\_equivalent}(a,o_i)]\))**无法惩罚中间错误行为**——"最终答案对就给正奖励"会让模型把中间工具错误当可接受,产冗长低质轨迹(Fig.4 实测工具错误率随训练 plateau 在显著水平)。【原文】§2.2.2-2.2.3
@@ -27,12 +27,12 @@ rstar2 | rStar2-Agent: Agentic Reasoning Technical Report | Microsoft Research(N
 - **GRPO-RoC 的核心算法(真实形式 + 直觉)**:先 oversample \(2G\) 条 \(\{o_i\}_{i=1}^{2G}\),记负样本集 \(O_{\mathrm{neg}}\)、正样本集 \(O_{\mathrm{pos}}\)(\(|O_{\mathrm{neg}}|+|O_{\mathrm{pos}}|=2G\)),非对称下采样到 \(G\) 条:
   - **负样本(保多样)**:对 \(O_{\mathrm{neg}}\) **不过滤**,按原分布采 \(\lfloor|O_{\mathrm{neg}}|/2\rfloor\) 条 → 暴露多样失败模式、学会避开多种错误。
   - **正样本(筛优)**:对每条成功轨迹算两项惩罚。工具错误率
-    \[p_{\mathrm{err}}=\begin{cases}0.5,&\text{无工具调用}\\[2pt]\dfrac{\#\text{错误工具调用}}{\#\text{全部工具调用}},&\text{否则}\end{cases}\]
+    \(\displaystyle p_{\mathrm{err}}=\begin{cases}0.5,&\text{无工具调用}\\[2pt]\dfrac{\#\text{错误工具调用}}{\#\text{全部工具调用}},&\text{否则}\end{cases}\)
     (无调用默认 0.5 以**鼓励用工具**);格式惩罚
-    \[p_{\mathrm{format}}=\begin{cases}1,&\text{无 <answer> 标签}\\[2pt]\min\!\big(1,\ \dfrac{\#\langle\text{answer}\rangle\text{标签}-1}{\#\text{turns}}\big),&\text{否则}\end{cases}\]
+    \(\displaystyle p_{\mathrm{format}}=\begin{cases}1,&\text{无 <answer> 标签}\\[2pt]\min\!\big(1,\ \dfrac{\#\langle\text{answer}\rangle\text{标签}-1}{\#\text{turns}}\big),&\text{否则}\end{cases}\)
     (惩罚缺/多 `<answer>` 致重复);总惩罚 \(p_{\mathrm{total}}=p_{\mathrm{err}}+p_{\mathrm{format}}\),按**与 \(p_{\mathrm{total}}\) 成反比**的概率采半数正样本(低惩罚更易选中)。
   - **最终目标**(Eq.6-7):在 RoC 选出的 \(\{\hat o_i\}_{i=1}^{G}\) 上算
-    \[\mathcal{J}_{\mathrm{GRPO\text{-}RoC}}(\theta)=\mathbb{E}\Big[\tfrac{1}{\sum_i|\hat o_i|}\sum_{i=1}^{G}\sum_{t=1}^{|\hat o_i|}\min\big(\hat\rho_{i,t}\hat A_{i,t},\,\mathrm{clip}(\hat\rho_{i,t},1-\varepsilon_{\mathrm{low}},1+\varepsilon_{\mathrm{high}})\hat A_{i,t}\big)\Big],\quad \hat A_{i,t}=\tfrac{\hat r_i-\mathrm{mean}(\{\hat r\})}{\mathrm{std}(\{\hat r\})}\]
+    \(\displaystyle \mathcal{J}_{\mathrm{GRPO\text{-}RoC}}(\theta)=\mathbb{E}\Big[\tfrac{1}{\sum_i|\hat o_i|}\sum_{i=1}^{G}\sum_{t=1}^{|\hat o_i|}\min\big(\hat\rho_{i,t}\hat A_{i,t},\,\mathrm{clip}(\hat\rho_{i,t},1-\varepsilon_{\mathrm{low}},1+\varepsilon_{\mathrm{high}})\hat A_{i,t}\big)\Big],\quad \hat A_{i,t}=\tfrac{\hat r_i-\mathrm{mean}(\{\hat r\})}{\mathrm{std}(\{\hat r\})}\)
     \(\varepsilon_{\mathrm{low}}=0.2,\ \varepsilon_{\mathrm{high}}=0.28\)(Clip-Higher)。**直觉**:正轨迹"挑最干净的成功样本"作正监督,负轨迹"保多样失败模式"作负信号——比在 reward 里惩罚工具错误更稳、避免 reward-hacking(报错惩罚在早期会误伤探索)。Fig.4/Fig.9 证 GRPO-RoC 下工具错误率持续下降、推理更强且响应更短。【原文】§2.2.3、Eq.4-7、Fig.4/9
 - **逐组件必要性**:
   - **non-reasoning SFT**:打底不增推理(Table 1)——刻意保持初始响应短、不过拟合。无它则起点响应过长。【原文】§4.1、Table 1

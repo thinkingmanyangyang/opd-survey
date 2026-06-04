@@ -30,64 +30,33 @@ denoiserl | DenoiseRL: Bootstrapping Reasoning Models to Recover from Noisy Pref
 ### 2. 每步双类 rollout(§3.2,Eq.1-3)
 对每题 \(q\sim\mathcal D\):
 - **Main rollouts(\(N=12\)/题)**:标准 on-policy
-\[
-y\sim\pi_\theta(\cdot\mid q)
-\tag{1}
-\]
+\(\displaystyle y\sim\pi_\theta(\cdot\mid q) \tag{1}\)
 - **Denoise rollouts(\(K=4\)/题)**:抽错误解 \(w\sim\mathcal W(q)\),按**固定前缀比** \(\rho\in(0,1]\) 保留其前 \(p\) 个 token 作 assistant 前缀
-\[
-p=\max\big(1,\ \lceil \rho\,|w|\rceil\big)\quad(\rho=0.2)
-\tag{2}
-\]
+\(\displaystyle p=\max\big(1,\ \lceil \rho\,|w|\rceil\big)\quad(\rho=0.2) \tag{2}\)
 策略从这个 **off-policy 前缀**续写:
-\[
-y_{>p}\sim\pi_\theta(\cdot\mid q,\,w_{1:p})
-\tag{3}
-\]
+\(\displaystyle y_{>p}\sim\pi_\theta(\cdot\mid q,\,w_{1:p}) \tag{3}\)
 
 ### 3. 预算折叠(length-fair,§3.2,Eq.4)
 两类 rollout 共享同宽响应窗 \(R=4096\)。因前缀已占 \(p\) token,denoise rollout 被折叠成可见响应
-\[
-\tilde y=\big(\underbrace{w_{1:p}}_{\text{prefix}},\ \underbrace{y_{p+1:p+L}}_{\text{continuation}}\big),\qquad p+L\le R,\qquad L=\min(T_{y>p},\,R-p)
-\tag{4}
-\]
+\(\displaystyle \tilde y=\big(\underbrace{w_{1:p}}_{\text{prefix}},\ \underbrace{y_{p+1:p+L}}_{\text{continuation}}\big),\qquad p+L\le R,\qquad L=\min(T_{y>p},\,R-p) \tag{4}\)
 超出 length-fair 预算的尾部 token 被丢弃。verifier 对**完整折叠响应** \(\tilde y\) 打 0/1 奖励 \(r(\tilde y;q)\)(看是否在条件化错误前缀后到达正确答案)。**训练时只更新 on-policy 续写段 \(y_{p+1:p+L}\)**——这是防崩溃的核心设计。
 
 ### 4. token 级 GRPO 目标(§3.2,Eq.5-7)
 - **共享 baseline**:同题 \(N+K\) 条 rollout 共用一个 advantage baseline(\(\mathcal G(q)=\{1,\dots,N+K\}\),终端奖励 \(r_i\in\{0,1\}\)):
-\[
-A_i=\frac{r_i-\mu_q}{\sigma_q+\varepsilon},\quad \mu_q=\frac{1}{N+K}\sum_{j\in\mathcal G(q)}r_j,\quad \sigma_q^2=\frac{1}{N+K}\sum_{j\in\mathcal G(q)}(r_j-\mu_q)^2
-\tag{5}
-\]
+\(\displaystyle A_i=\frac{r_i-\mu_q}{\sigma_q+\varepsilon},\quad \mu_q=\frac{1}{N+K}\sum_{j\in\mathcal G(q)}r_j,\quad \sigma_q^2=\frac{1}{N+K}\sum_{j\in\mathcal G(q)}(r_j-\mu_q)^2 \tag{5}\)
 **直觉(关键)**:denoise rollout 对易题提供**负样本**(错误前缀拉低成功率),使该题的正样本携带有效学习信号——否则易题组内全对、advantage 归零无梯度。
 - **token 级重要性比**(context 对 main 是 \(q\)、对 denoise 是 \((q,w_{1:p_i})\)):
-\[
-r_{i,t}(\theta)=\frac{\pi_\theta(y_{i,t}\mid c_{i,t},y_{i,<t})}{\pi_{\theta_{\mathrm{old}}}(y_{i,t}\mid c_{i,t},y_{i,<t})}
-\tag{6}
-\]
+\(\displaystyle r_{i,t}(\theta)=\frac{\pi_\theta(y_{i,t}\mid c_{i,t},y_{i,<t})}{\pi_{\theta_{\mathrm{old}}}(y_{i,t}\mid c_{i,t},y_{i,<t})} \tag{6}\)
 - **clip 代理目标**(\(\varepsilon_{\mathrm{low}}=\varepsilon_{\mathrm{high}}=0.2\)):
-\[
-\mathcal L_i^{\mathrm{PPO}}(\theta)=\frac{1}{|\mathcal T_i|}\sum_{t\in\mathcal T_i}\min\Big(r_{i,t}(\theta)\hat A_{i,t},\ \mathrm{clip}\big(r_{i,t}(\theta),1-\varepsilon_{\mathrm{low}},1+\varepsilon_{\mathrm{high}}\big)\hat A_{i,t}\Big)
-\tag{7}
-\]
+\(\displaystyle \mathcal L_i^{\mathrm{PPO}}(\theta)=\frac{1}{|\mathcal T_i|}\sum_{t\in\mathcal T_i}\min\Big(r_{i,t}(\theta)\hat A_{i,t},\ \mathrm{clip}\big(r_{i,t}(\theta),1-\varepsilon_{\mathrm{low}},1+\varepsilon_{\mathrm{high}}\big)\hat A_{i,t}\Big) \tag{7}\)
 （\(\mathcal T_i\) 对 denoise rollout 只含续写段索引——前缀不进 \(\mathcal T_i\),即 mask。）
 
 ### 5. 联合目标(§3.2,Eq.8-11)
 两条 rollout 分布的混合期望(\(\pi_\theta^{\mathrm{main}}(\cdot|q)=\pi_\theta(\cdot|q)\),\(\pi_\theta^{\mathrm{denoise}}(\cdot|q,w)=\pi_\theta(\cdot|q,w_{1:p})\)):
-\[
-\mathcal J(\theta)=\frac{N}{N+K}\,\mathcal J_{\mathrm{main}}(\theta)+\frac{K}{N+K}\,\mathcal J_{\mathrm{denoise}}(\theta)
-\tag{8}
-\]
-\[
-\mathcal J_{\mathrm{main}}(\theta)=\mathbb E_{q\sim\mathcal D,\;y\sim\pi^{\mathrm{main}}_{\theta_{\mathrm{old}}}}\big[\mathcal L^{\mathrm{PPO}}(\theta;q,y)\big],\qquad
-\mathcal J_{\mathrm{denoise}}(\theta)=\mathbb E_{q\sim\mathcal D,\,w\sim\mathcal W(q),\;y\sim\pi^{\mathrm{denoise}}_{\theta_{\mathrm{old}}}}\big[\mathcal L^{\mathrm{PPO}}(\theta;q,w_{1:p},y)\big]
-\tag{9,10}
-\]
+\(\displaystyle \mathcal J(\theta)=\frac{N}{N+K}\,\mathcal J_{\mathrm{main}}(\theta)+\frac{K}{N+K}\,\mathcal J_{\mathrm{denoise}}(\theta) \tag{8}\)
+\(\displaystyle \mathcal J_{\mathrm{main}}(\theta)=\mathbb E_{q\sim\mathcal D,\;y\sim\pi^{\mathrm{main}}_{\theta_{\mathrm{old}}}}\big[\mathcal L^{\mathrm{PPO}}(\theta;q,y)\big],\qquad \mathcal J_{\mathrm{denoise}}(\theta)=\mathbb E_{q\sim\mathcal D,\,w\sim\mathcal W(q),\;y\sim\pi^{\mathrm{denoise}}_{\theta_{\mathrm{old}}}}\big[\mathcal L^{\mathrm{PPO}}(\theta;q,w_{1:p},y)\big] \tag{9,10}\)
 实际每步优化的 Monte-Carlo 估计(\(B\)=每 batch 题数,\(\mathcal M(q_b)\)=\(N\) main,\(\mathcal S(q_b)\)=\(K\) denoise):
-\[
-\hat{\mathcal J}(\theta)=\frac{1}{B(N+K)}\sum_{b=1}^{B}\Big[\sum_{i\in\mathcal M(q_b)}\mathcal L_i^{\mathrm{PPO}}(\theta)+\sum_{i\in\mathcal S(q_b)}\mathcal L_i^{\mathrm{PPO}}(\theta)\Big]
-\tag{11}
-\]
+\(\displaystyle \hat{\mathcal J}(\theta)=\frac{1}{B(N+K)}\sum_{b=1}^{B}\Big[\sum_{i\in\mathcal M(q_b)}\mathcal L_i^{\mathrm{PPO}}(\theta)+\sum_{i\in\mathcal S(q_b)}\mathcal L_i^{\mathrm{PPO}}(\theta)\Big] \tag{11}\)
 即:两类 rollout 按 \(N/(N+K)\) 与 \(K/(N+K)\) 加权、共享同题单一 baseline、且**只在策略自己生成的 token 上更新**。
 
 ### 逐组件必要性(消融较齐全)

@@ -21,8 +21,8 @@ eaft | Entropy-Adaptive Fine-Tuning: Resolving Confident Conflicts to Mitigate F
 - **核心损失的真实形式 + 直觉**：
   - 两个 token 级度量(原文 §3.1)：概率 \(p_t=P_\theta(y_t\mid x,y_{<t})\)(模型对 ground-truth token 的信心);预测熵 \(H_t=-\sum_{v\in V}P_t(v)\log P_t(v)\)(模型对全词表的不确定度)。
   - 标准 CE(对照):\(\mathcal{L}_{\mathrm{CE}}(\theta)=-\sum_{t=1}^{T}\log P_\theta(y_t\mid x,y_{<t})\)(Eq.1),其缺陷是"uniform treatment of all tokens"——不论模型先验,对每个 token 一视同仁地猛更新。
-  - **EAFT 目标(Eq.2)**：\[\mathcal{L}_{\mathrm{EAFT}}(\theta)=-\sum_{t=1}^{T}\underbrace{\tilde H_t}_{\text{adaptive gating}}\cdot\underbrace{\log P_\theta(y_t\mid x,y_{<t})}_{\text{standard supervision}}.\]
-  - **归一化门控(Eq.3,含 Top-K 近似)**：\[\tilde H_t=\frac{H^{\text{top-}K}_t}{\ln(K)}\;\approx\;\frac{H^{\text{top-20}}_t}{3.0},\qquad K=20,\;\ln 20\approx3.0.\]其中 \(\ln(K)\) 是 K 个结果的最大熵(归一化因子)。这造出自调机制:**Conflict Suppression** \((\tilde H_t\to0)\)——模型笃定(低熵)时权重趋 0,等效屏蔽冲突标签的破坏性梯度;**Knowledge Acquisition** \((\tilde H_t\to1)\)——模型不确定/探索(高熵)时权重≈1,恢复标准 SFT 学新模式。
+  - **EAFT 目标(Eq.2)**：\(\displaystyle \mathcal{L}_{\mathrm{EAFT}}(\theta)=-\sum_{t=1}^{T}\underbrace{\tilde H_t}_{\text{adaptive gating}}\cdot\underbrace{\log P_\theta(y_t\mid x,y_{<t})}_{\text{standard supervision}}.\)
+  - **归一化门控(Eq.3,含 Top-K 近似)**：\(\displaystyle \tilde H_t=\frac{H^{\text{top-}K}_t}{\ln(K)}\;\approx\;\frac{H^{\text{top-20}}_t}{3.0},\qquad K=20,\;\ln 20\approx3.0.\)其中 \(\ln(K)\) 是 K 个结果的最大熵(归一化因子)。这造出自调机制:**Conflict Suppression** \((\tilde H_t\to0)\)——模型笃定(低熵)时权重趋 0,等效屏蔽冲突标签的破坏性梯度;**Knowledge Acquisition** \((\tilde H_t\to1)\)——模型不确定/探索(高熵)时权重≈1,恢复标准 SFT 学新模式。
   - **机制直觉(Fig.3 梯度热图)**：CE 对低概率 token 天然给最大梯度(把概率从很低拉高需大幅更新参数);在低熵处这种大更新会**改写**承载通用能力的表征(Fig.3 左下角深紫=强优化压力)。乘上 \(\tilde H_t\) 后,低熵→系数≈0→把这股大梯度压灭(Fig.3 右图同区域变浅黄);高熵→系数≈1→正常学。一句话:"按模型自身的不确定度决定该不该被标签'掰过来'"。【原文 §3.2 Theoretical Insight / §4.3 / Fig.3–4】
 - **门控函数形式的鲁棒性(§5.1,关键消融,把结论从"魔数"解放)**：把门控泛化为 \(f(\tilde H_t)\),测四类变体:
   - 线性(默认):\(f(\tilde H_t)=\tilde H_t\);

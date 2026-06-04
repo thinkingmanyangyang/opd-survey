@@ -31,7 +31,7 @@ why_sd_degrade | Why Does Self-Distillation (Sometimes) Degrade the Reasoning Ca
   - **Fig.12 频移对照（排除混淆，关键）**：全词表平均每词 shift \(|\Delta|<1\)，而 10 个 epistemic token shift 大 30-40×（SDPO 达 −11.9/−12.2）——证明训练**特异性**作用于 epistemic 表达而非均匀词表漂移，排除"通用风格漂移"的替代解释【原文 附录 B.4、Fig.12】。
 - 关键机制/公式（真实符号 + 直觉）：
   - **被诊断的自蒸馏目标（前向 KL，注意不是 reverse-KL）**：student 向"富 context teacher"对齐，token 级最小化 \(\mathrm{KL}\!\big(\pi_\theta(\cdot\mid x,\hat y_{<t})\,\big\|\,\mathrm{sg}[\pi_\theta(\cdot\mid x,c,\hat y_{<t})]\big)\)，\(\mathrm{sg}\)=stop-gradient，\(c=s\) 为正确解。直觉：这等价于"学一种预设了推理时不可得信息 \(c\) 的自信风格"【原文 §1-2，符号据正文论证；具体目标式分散于 SDPO 引文，标记为本文诊断对象】。
-  - **信息丰富度量化**：\[ I(y^*; c \mid x) = H(y^* \mid x) - H(y^* \mid x, c), \] \(y^*\) 为理想正确响应的随机变量。\(c\) 越富→\(H(y^*\mid x,c)\) 越小→\(I\) 越大→teacher 越能"照抄"提示→轨迹简洁自信→epistemic 越少（式2）。MI 排序由"\(s_{\setminus\text{think}}\subset s\) 信息子集" + "数据处理不等式（\(y_r\) 由 \(s\) 派生）"导出（式3）。
+  - **信息丰富度量化**：\(\displaystyle I(y^*; c \mid x) = H(y^* \mid x) - H(y^* \mid x, c),\) \(y^*\) 为理想正确响应的随机变量。\(c\) 越富→\(H(y^*\mid x,c)\) 越小→\(I\) 越大→teacher 越能"照抄"提示→轨迹简洁自信→epistemic 越少（式2）。MI 排序由"\(s_{\setminus\text{think}}\subset s\) 信息子集" + "数据处理不等式（\(y_r\) 由 \(s\) 派生）"导出（式3）。
   - **epistemic token 代理**：\(\mathcal T=\{\textit{wait, hmm, perhaps, maybe, actually, alternatively, seems, might, likely, check}\}\)，\(E(y)=\sum_{t\in\mathcal T}\text{count}(t,y)\)（式见 §3，附录 B.5 用 GPT-5.4 as judge 验证 10 词与多 token 不确定短语共现）。
   - **覆盖度调制直觉**：\(|\mathcal D|\) 大时模型需容纳更多推理模式，GRPO 靠增 epistemic 表达适应，SDPO 却逼简洁自信→宽覆盖受限【原文 §6.2】。
 - 实验与证据：

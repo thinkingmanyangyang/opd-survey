@@ -27,9 +27,7 @@ Stage 1 Expert Training：构造 Reasoning / Agent / General-chat 三个专家�
 
 ### 2. Expert RL（§3.2，以 Reasoning RL 为例）
 - **RL 目标**：build on GRPO **去掉 KL loss 项**。对每个问题 \(x\) 采 \(K\) 条轨迹 \(\{y_1,\dots,y_K\}\sim\pi_{\text{old}}\)，优化
-\[
-L_{\text{RL}}(\theta)=\mathbb{E}_{x\sim D}\Big[\frac1K\sum_{i=1}^{K}\big(r(x,y_i)-\bar r(x)\big)\Big],\qquad \bar r(x)=\frac1K\sum_{i=1}^{K}r(x,y_i),
-\]
+\(\displaystyle L_{\text{RL}}(\theta)=\mathbb{E}_{x\sim D}\Big[\frac1K\sum_{i=1}^{K}\big(r(x,y_i)-\bar r(x)\big)\Big],\qquad \bar r(x)=\frac1K\sum_{i=1}^{K}r(x,y_i),\)
 即优势 = 单条奖励 − 组内平均奖励（group-wise、critic-free）。**只对模型生成 token 计 loss，环境反馈不计**（agent 设定）。〔注：报告写的目标式未显式含 importance ratio/clip，呈最简 group-mean-baseline REINFORCE 形式；推断实际实现仍带 PPO 式 clip〕。
 - **难度课程二阶段**（Fig.5）：随能力升级换数据；二阶段严格只用「已验证正确答案池」降噪，持续突破天花板（AIME24 81.8%→83.4%）。
 - **单阶段 64K RL**（Fig.6，关键防遗忘经验）：直接在 64K 输出长度训，**不**走多阶段渐增长度——因 SFT 已 condition 到 64K，引入短长度 RL 阶段会让模型 unlearn 长上下文、平均输出变短、造成**不可逆**掉点（多阶段 80.6% vs 单阶段 83.4%）。

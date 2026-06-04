@@ -21,27 +21,27 @@ segment_attrib | Segment-Level Attribution for Selective Learning of Long Reason
 - **方法流水线(三阶段:切段 → IG 归因聚合选段 → 选择性 SFT)**。
 - **第 1 步:切段**【原文 §2.2】:按 "\n\nWait"、"\n\nAlternatively" 等**转折关键词**把 CoT 切成 \(\{S_1,\dots,S_M\}\)(完整关键词表见附录 C.2)。每段是语义完整的推理单元。
 - **第 2 步:IG token 归因(Eq.1-2)**【原文 §2.2】:给模型 \(F\)、输入 token embedding \(x\)、baseline \(x'\)(取 padding token 的 embedding),第 \(i\) 维的积分梯度:
-  \[ \mathrm{IG}_i(x)=(x_i-x'_i)\times\int_{\alpha=0}^{1}\frac{\partial F\big(x'+\alpha\cdot(x-x')\big)}{\partial x_i}\,d\alpha \]
+  \(\displaystyle \mathrm{IG}_i(x)=(x_i-x'_i)\times\int_{\alpha=0}^{1}\frac{\partial F\big(x'+\alpha\cdot(x-x')\big)}{\partial x_i}\,d\alpha\)
   实际用 \(J\) 步插值近似(\(J\!=\!50\)):
-  \[ \mathrm{IG}_i(x)\approx(x_i-x'_i)\times\frac{1}{J}\sum_{j=1}^{J}\frac{\partial F\big(x'+\tfrac{j}{J}\cdot(x-x')\big)}{\partial x_i} \]
+  \(\displaystyle \mathrm{IG}_i(x)\approx(x_i-x'_i)\times\frac{1}{J}\sum_{j=1}^{J}\frac{\partial F\big(x'+\tfrac{j}{J}\cdot(x-x')\big)}{\partial x_i}\)
   其中 \(F\) 取"预测正确答案"的输出。**直觉**:沿 baseline→真实嵌入的直线路径累积梯度,既捕**直接**影响也捕**间接**影响(优于"顺序追加段看答案概率变化"或 leave-one-out——后两者低估间接贡献且在后文完整时对该段不敏感,§2.1)。token 级归因 \(\mathrm{IG}(x)=\sum_i \mathrm{IG}_i(x)\)。**正负号含义**:正 IG = 提升正确答案似然,负 IG = 降低;但**负 IG token 不丢**——它可能是"错误但必要的探索性推理",故下面用**绝对值**捕影响幅度。
 - **第 3 步:段级两指标(Eq.3)**【原文 §2.2】:给段 \(S=\{o_1,\dots,o_N\}\),每 token 有归因 \(\mathrm{IG}(o_n)\),
-  \[ \mathrm{Strength}(S)=\frac{\sum_{o_n\in S}|\mathrm{IG}(o_n)|}{\sqrt{N}}\,,\qquad \mathrm{Consistency}(S)=\frac{\big|\sum_{o_n\in S}\mathrm{IG}(o_n)\big|}{\sum_{o_n\in S}|\mathrm{IG}(o_n)|} \]
+  \(\displaystyle \mathrm{Strength}(S)=\frac{\sum_{o_n\in S}|\mathrm{IG}(o_n)|}{\sqrt{N}}\,,\qquad \mathrm{Consistency}(S)=\frac{\big|\sum_{o_n\in S}\mathrm{IG}(o_n)\big|}{\sum_{o_n\in S}|\mathrm{IG}(o_n)|}\)
   - **强度**:段内绝对 IG 之和,除以 \(\sqrt{N}\) 做**长度归一**(防偏向长段)。
   - **一致性**:段内**净 IG / 总 |IG|**,衡量方向是否统一——接近 1 = 几乎全正或全负(浅层/已定),居中 = 正负混合(反思性,同时有支持与纠正)。
 - **第 4 步:CoT 内强度归一(Eq.4)**【原文】(让同一 CoT 内各段强度可比):
-  \[ \mathrm{Strength}'(S_m)=\frac{\mathrm{Strength}(S_m)}{\sum_{j=1}^{M}\mathrm{Strength}(S_j)} \]
+  \(\displaystyle \mathrm{Strength}'(S_m)=\frac{\mathrm{Strength}(S_m)}{\sum_{j=1}^{M}\mathrm{Strength}(S_j)}\)
 - **第 5 步:重要段判据(Eq.5-7)**【原文 §2.3】:
   - 按归一化强度降序排,设排列 \(\pi\) 使 \(\mathrm{Strength}'(S_{\pi(1)})\geq\cdots\geq\mathrm{Strength}'(S_{\pi(M)})\)(Eq.5)。
   - 取**累计强度超阈值 \(\tau\)(如 80%)的最小 top-\(k^*\)**(Eq.6):
-    \[ k^*=\arg\min_{k\in\{1,\dots,M\}}\Big\{\textstyle\sum_{i=1}^{k}\mathrm{Strength}'(S_{\pi(i)})\geq\tau\Big\} \]
+    \(\displaystyle k^*=\arg\min_{k\in\{1,\dots,M\}}\Big\{\textstyle\sum_{i=1}^{k}\mathrm{Strength}'(S_{\pi(i)})\geq\tau\Big\}\)
   - **重要段集**=top-\(k^*\) 里**一致性低于阈值 \(\beta\)(如 0.8)**者(Eq.7):
-    \[ S_{\mathrm{important}}=\big\{S_{\pi(i)}\,\big|\,i\leq k^*,\ \mathrm{Consistency}(S_{\pi(i)})\leq\beta\big\} \]
+    \(\displaystyle S_{\mathrm{important}}=\big\{S_{\pi(i)}\,\big|\,i\leq k^*,\ \mathrm{Consistency}(S_{\pi(i)})\leq\beta\big\}\)
     即"高强度 **且** 中等一致性"——过滤掉那些强度高但极端一致(浅层澄清或严重错误探索)的段。
 - **第 6 步:选择性 SFT(Eq.8→9)**【原文 §2.3,沿用 Rho-1】:标准 full-CoT SFT 是
-  \[ \mathcal{L}_{\mathrm{SFT}}(\theta)=-\frac{1}{T}\sum_{t=1}^{T}\log P(o_t|o_{<t},q;\theta) \]
+  \(\displaystyle \mathcal{L}_{\mathrm{SFT}}(\theta)=-\frac{1}{T}\sum_{t=1}^{T}\log P(o_t|o_{<t},q;\theta)\)
   改为**只在重要段 token 上算 CE、其余 mask**(保留完整轨迹连贯,不物理删除):
-  \[ \mathcal{L}_{\text{Selective-SFT}}(\theta)=-\frac{1}{\sum_t I(o_t)}\sum_{t=1}^{T}I(o_t)\,\log P(o_t|o_{<t},q;\theta) \]
+  \(\displaystyle \mathcal{L}_{\text{Selective-SFT}}(\theta)=-\frac{1}{\sum_t I(o_t)}\sum_{t=1}^{T}I(o_t)\,\log P(o_t|o_{<t},q;\theta)\)
   其中 \(I(o_t)=1\) 当且仅当 \(o_t\) 属于某重要段 \(S_m\in S_{\mathrm{important}}\)(代码里非重要段 labels 置 \(-100\) 实现 mask)。归一化分母用重要 token 数 \(\sum_t I(o_t)\)。**作用机理**:让参数更新只被最关键推理部分驱动 + 隐式正则(防过拟合冗余),但保全轨迹连贯。
 - 逐组件必要性(Table 2 消融,R1-Distill-Qwen-1.5B):
   - **段级 vs token 级**:Our(段级 strength+consistency)46.9/length 13506 > High-Abs-IG Tokens 46.1/14612 > High-Orig-IG Tokens 45.2/14747 → 段级保连贯更优,且绝对 IG 优于原始 IG。

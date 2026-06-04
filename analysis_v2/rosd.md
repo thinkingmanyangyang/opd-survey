@@ -17,15 +17,15 @@ rosd | ROSD: Reflective On-Policy Self-Distillation for Language Model Reasoning
 - **方法流水线(输入→输出,逐模块)**:
   1. **采样 + 分组**(§3.1):对每题 \(x\),当前策略 \(\pi_\theta\) 采 \(G\) 条 on-policy rollout \(Y(x)=\{y_1,\dots,y_G\}\)(实现:\(G=8\)),按最终答案对错切成正确集 \(Y^+(x)\) 与错误集 \(Y^-(x)\)。**输出**:对错标签 + 两个子集。
   2. **错误聚焦自反思**(§3.1,核心组件 1):对每条错误 rollout \(y^-\in Y^-(x)\),配同组**最短**正确 rollout \(y^*\in Y^+(x)\)(选最短意在鼓励反思偏向更高效推理路径);self-reflector(复用同一 base 权重)接收 \((x,y^*,y^-)\),按固定模板(Fig.2:`<error_quote>` + `<explanation>`)输出
-     \[(e,q)\sim\pi_\theta(\cdot\mid x,y^*,y^-)\]
+     \(\displaystyle (e,q)\sim\pi_\theta(\cdot\mid x,y^*,y^-)\)
      其中 \(e\)=纠错关键思路(为何错 + 怎么修 + 正确逻辑),\(q\)=错误引语(从 \(y^-\) 抄出的**精确子串**,标第一处出错跨度)。对正确 rollout \(y^+\) 用另一模板只反思得 \(e\sim\pi_\theta(\cdot\mid x,y^+)\)(总结"为何有效"),**不直接复用整条 \(y^+\) 当教师上下文**——保留成功推理信息而不诱发全解模仿。**输出**:每条 rollout 配一个 \(e\),错误 rollout 额外配 \(q\)。
   3. **quote 定位 + masking**(§3.2,核心组件 2):对错误 rollout,把 \(q\) 对齐回 \(y^-\) 得起始 token 下标
-     \[k=\mathrm{Locate}(q,y^-)\]
+     \(\displaystyle k=\mathrm{Locate}(q,y^-)\)
      匹配失败则回退全响应蒸馏(\(k=0\));再构 mask
-     \[m_t=\begin{cases}0,& t<k,\\ 1,& t\ge k.\end{cases}\]
+     \(\displaystyle m_t=\begin{cases}0,& t<k,\\ 1,& t\ge k.\end{cases}\)
      正确 rollout 无 \(q\),取 \(m_t=1\)(全 token)。**输出**:每条 rollout 的 token 级 mask。
   4. **掩码 token 级蒸馏**(§3.2):自教师条件于 \(e\) 并被指示"输出修正解";在位置 \(t\),学生分布 \(\pi_\theta(\cdot\mid x,y_{<t})\)、自教师分布 \(\pi_\theta(\cdot\mid x,e,y_{<t})\)(教师取 stopgrad)。训练目标
-     \[\mathcal{L}_{\mathrm{ROSD}}(\theta)=\sum_{t=1}^{T} m_t\,\mathrm{KL}\!\Big(\pi_\theta(\cdot\mid x,y_{<t})\ \big\|\ \mathrm{stopgrad}\big[\pi_\theta(\cdot\mid x,e,y_{<t})\big]\Big).\]
+     \(\displaystyle \mathcal{L}_{\mathrm{ROSD}}(\theta)=\sum_{t=1}^{T} m_t\,\mathrm{KL}\!\Big(\pi_\theta(\cdot\mid x,y_{<t})\ \big\|\ \mathrm{stopgrad}\big[\pi_\theta(\cdot\mid x,e,y_{<t})\big]\Big).\)
      对照 SDPO 的全响应目标 \(\mathcal{L}_{\mathrm{SDPO}}(\theta)=\sum_{t=1}^{T}\mathrm{KL}\big(\pi_\theta(\cdot\mid x,y_{<t})\,\|\,\mathrm{stopgrad}[\pi_\theta(\cdot\mid x,c,y_{<t})]\big)\)(Eq.3):ROSD 把条件上下文 \(c\to e\)、并乘上 mask \(m_t\)。**实现细节**(附录 B):散度实例化为 **Jensen–Shannon divergence (JSD),\(\alpha=0.5\)**,distillation top-\(k=100\),自教师/反思器训练期**冻结**。**输出**:学生参数更新。
 - **逐组件必要性(基于 Table 4 真实消融,4B/8B,mean@16%)**:
   - **error-focused reflector(\(e+q\))**:w/o Reflection(保留 \(q\) 定位 + 局部化,但教师退回条件于正确解,如 SDPO)→ 域内与 SDPO 相当、OOD 大幅改善(说明"局部化"本身就压住了全响应蒸馏的泛化损伤);但其 Chemistry 列 OOD 仍明显弱于完整 ROSD(4B 31.80 vs 38.54)——证 \(e\) 这条"纠错思路替代正确解条件"提供了更有信息、更少噪声的教师信号。【原文】§4.5、Table 4

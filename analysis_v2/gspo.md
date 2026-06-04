@@ -25,31 +25,21 @@ gspo | Group Sequence Policy Optimization (GSPO) | Qwen Team, Alibaba（通讯 C
 **符号**：x=query；{yi}_{i=1}^G=对 x 采的 G 条响应（组大小 G）；πθold=rollout 旧策略；πθ=待优化策略；r(x,y)∈[0,1]=verifier 奖励；|y|=响应 token 数。
 
 1. **组采样 + 组相对优势**（同 GRPO，免 value，式6）：对每个 x 用 πθold 采 G 条响应，整条响应共享同一优势
-   \[
-   \hat A_i=\frac{r(x,y_i)-\mathrm{mean}\big(\{r(x,y_j)\}_{j=1}^{G}\big)}{\mathrm{std}\big(\{r(x,y_j)\}_{j=1}^{G}\big)}.
-   \]
+   \(\displaystyle \hat A_i=\frac{r(x,y_i)-\mathrm{mean}\big(\{r(x,y_j)\}_{j=1}^{G}\big)}{\mathrm{std}\big(\{r(x,y_j)\}_{j=1}^{G}\big)}.\)
 2. **算序列级重要性比**（式7，承重公式 = 长度归一的 token-比几何平均）：
-   \[
-   s_i(\theta)=\Big(\frac{\pi_\theta(y_i\mid x)}{\pi_{\theta_{\text{old}}}(y_i\mid x)}\Big)^{1/|y_i|}=\exp\!\Big(\frac{1}{|y_i|}\sum_{t=1}^{|y_i|}\log\frac{\pi_\theta(y_{i,t}\mid x,y_{i,<t})}{\pi_{\theta_{\text{old}}}(y_{i,t}\mid x,y_{i,<t})}\Big).
-   \]
+   \(\displaystyle s_i(\theta)=\Big(\frac{\pi_\theta(y_i\mid x)}{\pi_{\theta_{\text{old}}}(y_i\mid x)}\Big)^{1/|y_i|}=\exp\!\Big(\frac{1}{|y_i|}\sum_{t=1}^{|y_i|}\log\frac{\pi_\theta(y_{i,t}\mid x,y_{i,<t})}{\pi_{\theta_{\text{old}}}(y_{i,t}\mid x,y_{i,<t})}\Big).\)
    直觉：si 度量整条响应从 πθold 到 πθ 偏离了多远，**天然匹配序列级奖励**；1/|y| 把不同长度的 si 收进统一数值区间——否则少数 token 的似然变化会让 si 剧烈抖动、且不同长度需不同裁剪窗(§4.1)。
 3. **序列级裁剪 + 优化**（式5，GSPO 主目标）：
-   \[
-   J_{\text{GSPO}}(\theta)=\mathbb{E}_{x\sim D,\,\{y_i\}\sim\pi_{\theta_{\text{old}}}}\Big[\frac{1}{G}\sum_{i=1}^{G}\min\big(s_i(\theta)\hat A_i,\ \mathrm{clip}(s_i(\theta),1-\varepsilon,1+\varepsilon)\hat A_i\big)\Big].
-   \]
+   \(\displaystyle J_{\text{GSPO}}(\theta)=\mathbb{E}_{x\sim D,\,\{y_i\}\sim\pi_{\theta_{\text{old}}}}\Big[\frac{1}{G}\sum_{i=1}^{G}\min\big(s_i(\theta)\hat A_i,\ \mathrm{clip}(s_i(\theta),1-\varepsilon,1+\varepsilon)\hat A_i\big)\Big].\)
    裁剪施于**整条响应**而非单 token。实战裁剪窗 ε：GSPO 用 **3e-4/4e-4**(左/右)，GRPO 用 **0.2/0.27**——因 si 定义不同**差一个数量级**(§5.1)。
 4. **mini-batch off-policy**：大 rollout batch 切 4 个 mini-batch 做梯度更新（§5.1），故 y 采自 πθold≠πθ，clip 即为此设。
 
 ### 关键梯度分析（式10 vs 式12，解释「为何稳」）
 - **GSPO 梯度**（式10，clip 略）：
-  \[
-  \nabla_\theta J_{\text{GSPO}}=\mathbb{E}\Big[\frac{1}{G}\sum_i \Big(\tfrac{\pi_\theta(y_i\mid x)}{\pi_{\theta_{\text{old}}}(y_i\mid x)}\Big)^{1/|y_i|}\hat A_i\cdot\frac{1}{|y_i|}\sum_{t=1}^{|y_i|}\nabla_\theta\log\pi_\theta(y_{i,t}\mid x,y_{i,<t})\Big].
-  \]
+  \(\displaystyle \nabla_\theta J_{\text{GSPO}}=\mathbb{E}\Big[\frac{1}{G}\sum_i \Big(\tfrac{\pi_\theta(y_i\mid x)}{\pi_{\theta_{\text{old}}}(y_i\mid x)}\Big)^{1/|y_i|}\hat A_i\cdot\frac{1}{|y_i|}\sum_{t=1}^{|y_i|}\nabla_\theta\log\pi_\theta(y_{i,t}\mid x,y_{i,<t})\Big].\)
   整条响应里**所有 token 权重压成同一个 si**、等权。
 - **GRPO 梯度**（式12）：
-  \[
-  \nabla_\theta J_{\text{GRPO}}=\mathbb{E}\Big[\frac{1}{G}\sum_i \hat A_i\cdot\frac{1}{|y_i|}\sum_{t=1}^{|y_i|}\frac{\pi_\theta(y_{i,t}\mid x,y_{i,<t})}{\pi_{\theta_{\text{old}}}(y_{i,t}\mid x,y_{i,<t})}\nabla_\theta\log\pi_\theta(y_{i,t}\mid x,y_{i,<t})\Big].
-  \]
+  \(\displaystyle \nabla_\theta J_{\text{GRPO}}=\mathbb{E}\Big[\frac{1}{G}\sum_i \hat A_i\cdot\frac{1}{|y_i|}\sum_{t=1}^{|y_i|}\frac{\pi_\theta(y_{i,t}\mid x,y_{i,<t})}{\pi_{\theta_{\text{old}}}(y_{i,t}\mid x,y_{i,<t})}\nabla_\theta\log\pi_\theta(y_{i,t}\mid x,y_{i,<t})\Big].\)
   每 token 权重是各自的 πθ/πθold（对 \(\hat A_i>0\) 落 (0,1+ε]、对 \(\hat A_i<0\) 落 [1−ε,+∞)），**不可忽略、会累积出不可预测后果**——这就是 GRPO 的不稳定源，GSPO 把它消掉(§4.2)。
 
 ### GSPO-token 变体（§4.3，多轮/agent 需 token 级优势时）

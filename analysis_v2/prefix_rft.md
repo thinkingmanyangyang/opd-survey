@@ -30,14 +30,14 @@ prefix_rft | Prefix-RFT: Blending Supervised and Reinforcement Fine-Tuning with 
   - **前缀长度余弦衰减调度(vs Uniform)**:有消融(Fig.6b)。缓解"只学开头 token"的位置偏置 + 内置课程(从"几乎给全 demo"过渡到"几乎纯 RFT",对应 SFT→RFT 配方)。默认 high=0.95、low 从 0.95 余弦衰减到近 0。【§6+§A.4】
 - 关键机制/公式(真实符号,从 PDF 抄准 + 直觉):
   - **统一视角(§2)——三种更新都是"对 log-prob 加梯度,只差权重"**:
-    \[ \nabla_\theta L_{\mathrm{SFT}}=-\sum_t \nabla_\theta\log\pi_\theta(y^*_t|x,y^*_{<t})\quad(\text{隐式视优势}\equiv1,\ \text{在专家序列}y^*\text{上}), \]
-    \[ \nabla_\theta L_{\mathrm{PG}}=\sum_t \hat A_t\,\nabla_\theta\log\pi_\theta(y_t|x,y_{<t})\quad(\text{优势加权},\ \text{在自采轨迹上}), \]
-    \[ \nabla_\theta L_{\mathrm{PPO}}=\sum_t \mathbb{I}_{\mathrm{clip}}(r_t,\hat A_t)\,\hat A_t\,r_t\,\nabla_\theta\log\pi_\theta(y_t|x,y_{<t}),\quad r_t=\frac{\pi_\theta(y_t|x,y_{<t})}{\pi_{\theta_{\mathrm{old}}}(y_t|x,y_{<t})}, \]
+    \(\displaystyle \nabla_\theta L_{\mathrm{SFT}}=-\sum_t \nabla_\theta\log\pi_\theta(y^*_t|x,y^*_{<t})\quad(\text{隐式视优势}\equiv1,\ \text{在专家序列}y^*\text{上}),\)
+    \(\displaystyle \nabla_\theta L_{\mathrm{PG}}=\sum_t \hat A_t\,\nabla_\theta\log\pi_\theta(y_t|x,y_{<t})\quad(\text{优势加权},\ \text{在自采轨迹上}),\)
+    \(\displaystyle \nabla_\theta L_{\mathrm{PPO}}=\sum_t \mathbb{I}_{\mathrm{clip}}(r_t,\hat A_t)\,\hat A_t\,r_t\,\nabla_\theta\log\pi_\theta(y_t|x,y_{<t}),\quad r_t=\frac{\pi_\theta(y_t|x,y_{<t})}{\pi_{\theta_{\mathrm{old}}}(y_t|x,y_{<t})},\)
     其中 clipping 指示子 \(\mathbb{I}_{\mathrm{clip}}(r_t,\hat A_t)=\mathbb{I}\big[\{\hat A_t>0\wedge r_t\le1+\epsilon\}\vee\{\hat A_t<0\wedge r_t\ge1-\epsilon\}\big]\)。
   - **混合梯度统一式**(Eq.2,把每条响应的 token 分成探索集 \(T^{(i)}_{\mathrm{exp}}\)(模型生成)与模仿集 \(T^{(i)}_{\mathrm{imit}}\)(示范)):
-    \[ \nabla_\theta L_{\mathrm{Hybrid}}=-\frac{1}{N}\sum_{i=1}^{N}\!\sum_{t\in T^{(i)}_{\mathrm{exp}}}\!\!\alpha_{i,t}\nabla_\theta\log\pi_\theta(y^{(i)}_t|x,y^{(i)}_{<t})\;-\;\frac{1}{N}\sum_{i=1}^{N}\!\sum_{t\in T^{(i)}_{\mathrm{imit}}}\!\!\beta_{i,t}\nabla_\theta\log\pi_\theta(y^{(i)}_t|x,y^{(i)}_{<t}). \]
+    \(\displaystyle \nabla_\theta L_{\mathrm{Hybrid}}=-\frac{1}{N}\sum_{i=1}^{N}\!\sum_{t\in T^{(i)}_{\mathrm{exp}}}\!\!\alpha_{i,t}\nabla_\theta\log\pi_\theta(y^{(i)}_t|x,y^{(i)}_{<t})\;-\;\frac{1}{N}\sum_{i=1}^{N}\!\sum_{t\in T^{(i)}_{\mathrm{imit}}}\!\!\beta_{i,t}\nabla_\theta\log\pi_\theta(y^{(i)}_t|x,y^{(i)}_{<t}).\)
   - **Prefix-RFT 实例化**(Eq.3,**命门**:令 \(\alpha_{i,t}=\beta_{i,t}=W^{\mathrm{PPO}}_{i,t}=\mathbb{I}_{\mathrm{clip}}(r_t,\hat A_t)\hat A_t r_t\),即前缀 token 也用整条混合轨迹的 PPO 权重):
-    \[ -\frac{1}{N}\!\left(\underbrace{\sum_{i=1}^{N-1}\sum_t W^{\mathrm{PPO}}_{i,t}\nabla\log\pi+\sum_{t\ge L} W^{\mathrm{PPO}}_{N,t}\nabla\log\pi}_{\text{Exploration: 标准 rollout + 续写}}\;+\;\underbrace{\sum_{t<L} W^{\mathrm{PPO}}_{N,t}\nabla\log\pi}_{\text{Imitation: 前缀引导}}\right). \]
+    \(\displaystyle -\frac{1}{N}\!\left(\underbrace{\sum_{i=1}^{N-1}\sum_t W^{\mathrm{PPO}}_{i,t}\nabla\log\pi+\sum_{t\ge L} W^{\mathrm{PPO}}_{N,t}\nabla\log\pi}_{\text{Exploration: 标准 rollout + 续写}}\;+\;\underbrace{\sum_{t<L} W^{\mathrm{PPO}}_{N,t}\nabla\log\pi}_{\text{Imitation: 前缀引导}}\right).\)
     直觉:前缀 token(\(t<L\))虽来自 off-policy 专家,却用"整条混合轨迹估出的 advantage"强化——所以对"模型解不好的题",高质量前缀会拿到更高梯度权重(advantage 大),模型从这段部分示范获益更多;同时 PPO 的 ratio+clip 抑制示范数据带来的过大更新。
   - **熵约束裁剪的梯度直觉**(§A.4):示范 token 目标 logit 的梯度幅度 \(|\partial\ell/\partial z|=1-p_{a^*}\)——低熵 token 要么已匹配(\(p_{a^*}\!\to\!1\),梯度≈0)要么自信错配(尖锐覆写),只留高熵 token(模型不确定处);实现上把其余 token 的 advantage 直接置 0。
   - **前缀长度调度**:\(L=\lfloor l\cdot|y^*|\rfloor\),\(l\sim U(\text{low},\text{high})\),high 常数、low 从 high 余弦衰减到近 0——既消位置偏置又内置 SFT→RFT 课程。【原文 §2+§3+Eq.(2)(3)】

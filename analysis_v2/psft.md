@@ -25,9 +25,7 @@ psft | Proximal Supervised Fine-Tuning (PSFT) | 上海交大 + 上海创智学�
   - **输入**:离线长 CoT 数据集 \(D\)(实验用 OpenR1-Math-8192);基座 policy \(\pi_\theta\)(Qwen2.5-7B-Instruct / Llama3.1-8B-Instruct)。**输出**:微调后 policy,熵不坍缩、OOD 泛化更好、可作 RL/DPO 更优起点。
   - **MDP 形式化**(§2):把自回归生成建成 MDP——状态 \(s_t=(x,y_{<t})\)(当前前缀),动作 \(a_t\in A\)(下一 token),policy \(\pi_\theta(y\mid x)=\prod_{t=1}^{n}\pi_\theta(a_t\mid s_t)\)。
   - **核心目标(Eq.6)**:把 SFT 改写为带重要性比裁剪的代理目标——
-    \[
-    L_{\text{PSFT}}(\theta)=\mathbb{E}_{(s_t,a_t)\sim D}\!\left[\min\!\left(\frac{\pi_\theta(a_t\mid s_t)}{\pi_{\theta_{\text{old}}}(a_t\mid s_t)},\ \operatorname{clip}\!\Big(\frac{\pi_\theta(a_t\mid s_t)}{\pi_{\theta_{\text{old}}}(a_t\mid s_t)},\,1-\epsilon,\,1+\epsilon\Big)\right)\right]
-    \]
+    \(\displaystyle L_{\text{PSFT}}(\theta)=\mathbb{E}_{(s_t,a_t)\sim D}\!\left[\min\!\left(\frac{\pi_\theta(a_t\mid s_t)}{\pi_{\theta_{\text{old}}}(a_t\mid s_t)},\ \operatorname{clip}\!\Big(\frac{\pi_\theta(a_t\mid s_t)}{\pi_{\theta_{\text{old}}}(a_t\mid s_t)},\,1-\epsilon,\,1+\epsilon\Big)\right)\right]\)
     其中 advantage 恒正且简化为 \(\hat A_t=1\)(对应"所有离线 token 视为正确"),\((s_t,a_t)\) 采自固定 \(D\)。注意:因 \(\hat A_t=1>0\),min 实际只在**上侧**起作用——这把 SFT 的"无界对数似然上推"封顶到 \(1+\epsilon\)。
   - **clip 参数**:\(\epsilon=0.2\) 或 **0.28**(实验主用 0.28,与 DAPO clip-higher 同思路鼓励探索);**\(\text{use\_kl}=\text{False}\),\(\text{kl\_coef}=0\)**(靠 trust-region,非显式 KL)。"更大 \(\epsilon\) → 更大梯度"(行 202)。
   - **\(\pi_{\theta_{\text{old}}}\) 动态更新(关键)**:让旧策略**动态演化**(每 4/8/16 步刷新一次快照),而非固定为初始 \(\pi_{\theta_{\text{ref}}}\);固定会把优化局限在 ref 中心的信任域、限制可学知识(§3 行 176-180,§5.3 实证)。
@@ -43,10 +41,7 @@ psft | Proximal Supervised Fine-Tuning (PSFT) | 上海交大 + 上海创智学�
   - **SFT 即 \(\hat A\equiv1\) 的 PG**(§2.1):标准 SFT 损失 \(L_{\text{SFT}}=-\hat{\mathbb E}_{(s_t,a_t^*)\sim D}[\log\pi_\theta(a_t^*\mid s_t)]\);PG 目标 \(L_{\text{PG}}=\hat{\mathbb E}_{(s_t,a_t)\sim\pi_\theta}[\log\pi_\theta(a_t\mid s_t)\,\hat A_t]\)。令采样自固定 \(D\) 且 \(\hat A_t=1\),PG 即退化为最大似然=SFT。
   - **clip 在此是正则器,不是 off-policy 修正**:原文明确"PSFT 不是 PG-RL"(§3 行 171-175)——SFT 没有 advantage 估计/分布偏移问题,clip 主要当**正则器限制 token 概率剧烈变化 + 重加权梯度**。
   - **梯度门控(Eq.7,核心直觉)**:
-    \[
-    \nabla_\theta L_{\text{PSFT}}(\theta)=\mathbb{E}_{(s_t,a_t)\sim D}\big[r_t(\theta)\cdot I_{\text{trust}}(r_t(\theta))\cdot\nabla_\theta\log\pi_\theta(a_t\mid s_t)\big],\quad
-    I_{\text{trust}}(r_t)=\begin{cases}0,& r_t>1+\epsilon\\[2pt]1,&\text{otherwise}\end{cases}
-    \]
+    \(\displaystyle \nabla_\theta L_{\text{PSFT}}(\theta)=\mathbb{E}_{(s_t,a_t)\sim D}\big[r_t(\theta)\cdot I_{\text{trust}}(r_t(\theta))\cdot\nabla_\theta\log\pi_\theta(a_t\mid s_t)\big],\quad I_{\text{trust}}(r_t)=\begin{cases}0,& r_t>1+\epsilon\\[2pt]1,&\text{otherwise}\end{cases}\)
     直觉:模型已基本同意的 token(\(r_t\) 适中)正常推;模型**强烈不同意**的 token(\(r_t>1+\epsilon\),即离线分布远偏于模型)**梯度置零**,避免"次优 demo 把原能力硬覆写"——这正是保泛化 + 防熵坍缩的来源。
   - **被裁剪的是什么 token(§5.1 的精彩观察)**:Figure 7 显示被 clip 的 token 集中在 **"wait"、"alternatively"** 等不确定性词——即"长思考模式(long thinking pattern)"标志词;随训练推进这些 token 的 clip 权重更显著、其它 token 变小。解读:PSFT 把"思考模式"**平滑、渐进**地注入模型,而对通用能力扰动最小。〔这是"clip 到底在管什么"的直接证据,比抽象 Eq.7 更可感〕。【原文 §5.1 行 953-962】
 - 实验与证据(所有数字均已对 Table 1/2/6 逐项核对):

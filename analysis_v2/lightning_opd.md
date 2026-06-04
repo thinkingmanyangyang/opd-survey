@@ -22,15 +22,9 @@ lightning_opd | Lightning OPD: Efficient Post-Training for Large Reasoning Model
 - 核心算法/损失(真实形式 + 直觉,符号从 PDF §3.1/§3.3 抄准):
   - **per-token reverse-KL advantage**(Eq.2):\(\ A_t(\theta)=\log\pi_T(a_t\mid s_t)-\log\pi_\theta(a_t\mid s_t)\)。直觉:teacher 比学生更自信处为正(该学)、否则为负。\(A_t\) 当**固定标量(stop-gradient)**,梯度只走 \(\nabla\log\pi_\theta\)。
   - **在线 vs 离线目标**(Eq.3/4,只差 rollout 分布):
-    \[
-    J_{\mathrm{on}}(\theta)=\mathbb E_{q\sim p,\,x\sim\pi_\theta}\!\Big[\textstyle\sum_{t=1}^{T}A_t(\theta)\Big],\qquad
-    J_{\mathrm{off}}(\theta)=\mathbb E_{q\sim p,\,x\sim\pi_{\mathrm{ref}}}\!\Big[\textstyle\sum_{t=1}^{T}A_t(\theta)\Big].
-    \]
+    \(\displaystyle J_{\mathrm{on}}(\theta)=\mathbb E_{q\sim p,\,x\sim\pi_\theta}\!\Big[\textstyle\sum_{t=1}^{T}A_t(\theta)\Big],\qquad J_{\mathrm{off}}(\theta)=\mathbb E_{q\sim p,\,x\sim\pi_{\mathrm{ref}}}\!\Big[\textstyle\sum_{t=1}^{T}A_t(\theta)\Big].\)
   - **重要性采样分解(全篇支点)**:令每轨迹梯度 \(f(x;\theta)=\sum_t A_t(\theta)\nabla\log\pi_\theta(a_t\mid s_t)\)、IS 权重 \(w(x;\theta)=\pi_\theta(x)/\pi_{\mathrm{ref}}(x)\),则
-    \[
-    \nabla J_{\mathrm{on}}(\theta)=\mathbb E_{x\sim\pi_{\mathrm{ref}}}\big[w(x;\theta)\cdot f(x;\theta)\big],\qquad
-    \nabla J_{\mathrm{off}}(\theta)=\mathbb E_{x\sim\pi_{\mathrm{ref}}}\big[f(x;\theta)\big],
-    \]
+    \(\displaystyle \nabla J_{\mathrm{on}}(\theta)=\mathbb E_{x\sim\pi_{\mathrm{ref}}}\big[w(x;\theta)\cdot f(x;\theta)\big],\qquad \nabla J_{\mathrm{off}}(\theta)=\mathbb E_{x\sim\pi_{\mathrm{ref}}}\big[f(x;\theta)\big],\)
     **离线版正是令 \(w\equiv 1\) 的特例**——这一句把"离线化"精确还原为"丢掉 IS 权重"。
   - **梯度差界**(Thm 3.5):\(\ \big\|\nabla J_{\mathrm{on}}(\theta)-\nabla J_{\mathrm{off}}(\theta)\big\|_2\le G\cdot\sigma_A\cdot\sqrt{\chi^2(\pi_\theta\,\|\,\pi_{\mathrm{ref}})}\),其中 \(\chi^2(\pi_\theta\|\pi_{\mathrm{ref}})=\mathbb E_{x\sim\pi_{\mathrm{ref}}}[w(x;\theta)^2]-1\)。初始 \(\pi_\theta=\pi_{\mathrm{ref}}\) 时 \(\chi^2=0\)、两梯度**严格相等**;drift 增大才偏离,但 KL 正则下保持小。
   - **共享零点**(Thm 3.6):\(\ J_{\mathrm{on}}(\theta)=-D_{\mathrm{KL}}(\pi_\theta\,\|\,\pi_T)\le 0\),全局最大在 \(\theta^\ast\in\arg\min_\theta D_{\mathrm{KL}}(\pi_\theta\|\pi_T)\);当 teacher 可表示(\(\pi_T\in\Pi_\Theta\))时 \(A_t(\theta^\ast)=0\) a.s.,\(\theta^\ast\) 是在线与离线更新的**共同零点**。

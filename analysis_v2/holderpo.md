@@ -25,19 +25,13 @@ holderpo | Hölder Policy Optimisation (HölderPO) | UCL / 上海交大 / 港科
 
 1. **组采样 + 组相对优势**(同 GRPO)。
 2. **Hölder p-mean 聚合**(式1，承重公式)——把 token 比聚合成序列级标量 \(\rho_{i,p}(\theta)\)：
-   \[
-   \rho_{i,p}(\theta)=\begin{cases}\Big(\dfrac{1}{|y_i|}\sum_{t=1}^{|y_i|}r_{i,t}(\theta)^p\Big)^{1/p}, & p\neq0,\\[6pt]\exp\Big(\dfrac{1}{|y_i|}\sum_{t=1}^{|y_i|}\log r_{i,t}(\theta)\Big), & p=0\ (\text{几何均,p→0 极限,附录G.4}).\end{cases}
-   \]
+   \(\displaystyle \rho_{i,p}(\theta)=\begin{cases}\Big(\dfrac{1}{|y_i|}\sum_{t=1}^{|y_i|}r_{i,t}(\theta)^p\Big)^{1/p}, & p\neq0,\\[6pt]\exp\Big(\dfrac{1}{|y_i|}\sum_{t=1}^{|y_i|}\log r_{i,t}(\theta)\Big), & p=0\ (\text{几何均,p→0 极限,附录G.4}).\end{cases}\)
 3. **PPO 式序列级 clip 目标**(式2)：
-   \[
-   J_{H_s}(\theta)=\mathbb{E}_{x,\{y_i\}}\Big[\frac{1}{G}\sum_{i=1}^{G}\min\big(\rho_{i,p}(\theta)\hat A_i,\ \mathrm{clip}(\rho_{i,p}(\theta),1-\epsilon,1+\epsilon)\hat A_i\big)\Big].
-   \]
+   \(\displaystyle J_{H_s}(\theta)=\mathbb{E}_{x,\{y_i\}}\Big[\frac{1}{G}\sum_{i=1}^{G}\min\big(\rho_{i,p}(\theta)\hat A_i,\ \mathrm{clip}(\rho_{i,p}(\theta),1-\epsilon,1+\epsilon)\hat A_i\big)\Big].\)
    选序列级 clip 是为控梯度方差(附录D/I.2)。p=1 恢复 GRPO、p→0 恢复 GSPO。
 4. **按调度 p(t) 退火**(§3.4)：默认 **linear 2→−2**(也提供 constant/sin/cos/quad/cubic)。单调递减:\(p(0)=p_{\text{high}},\ p(T)=p_{\text{low}},\ p(t_1)\ge p(t_2)\)。
 5. **梯度**(式3)：变 p **不改 per-token 对数梯度方向，只重分配权重**：
-   \[
-   \nabla_\theta\rho_{i,p}(\theta)=\rho_{i,p}(\theta)\sum_{t=1}^{|y_i|}W_{i,t}(p)\,\nabla_\theta\log\pi_\theta(y_{i,t}\mid x,y_{i,<t}),\qquad W_{i,t}(p):=\frac{r_{i,t}(\theta)^p}{\sum_{k=1}^{|y_i|}r_{i,k}(\theta)^p}.
-   \]
+   \(\displaystyle \nabla_\theta\rho_{i,p}(\theta)=\rho_{i,p}(\theta)\sum_{t=1}^{|y_i|}W_{i,t}(p)\,\nabla_\theta\log\pi_\theta(y_{i,t}\mid x,y_{i,<t}),\qquad W_{i,t}(p):=\frac{r_{i,t}(\theta)^p}{\sum_{k=1}^{|y_i|}r_{i,k}(\theta)^p}.\)
    \(W_{i,t}(p)\) 是 token 上的概率分布(权重)。
 
 ### 关键理论（直觉 + 真实陈述，§3.2-3.4）
@@ -46,9 +40,7 @@ holderpo | Hölder Policy Optimisation (HölderPO) | UCL / 上海交大 / 港科
   - **Uniform Dispersion (p→0)**：每 token 等权。
   - **Downward Concentration (p<0)**：反转——集中到**比值<1** 的 token(模型「犹豫」、非常规但有效的决策点)，「迫使模型 consolidate alternative pathways、促推理多样性」(§3.2 原话)。
 - **Thm 2（方差界，§3.3）**：设 token 对数梯度有界 \(\|\nabla_\theta\log\pi_\theta\|\le M\)，则
-  \[
-  \big\|\mathrm{Var}(\hat\nabla_\theta J_{H_s})\big\|\le\frac{M^2}{B}\,\mathbb{E}\big[\hat A_i^2\,\rho_{i,p}^2(\theta)\big],
-  \]
+  \(\displaystyle \big\|\mathrm{Var}(\hat\nabla_\theta J_{H_s})\big\|\le\frac{M^2}{B}\,\mathbb{E}\big[\hat A_i^2\,\rho_{i,p}^2(\theta)\big],\)
   该界**随 p 单调增**。又(Cor.7，假设 token 梯度近似正交)方差本身在某 \(p^*\le0\) 取全局最小(非 −∞)——故 plow 不能太负。
 - **集中 vs 稳定的结构性 trade-off**：Thm1+2 ⇒ 大 p 放大稀疏信号但方差界松、小/负 p 收紧方差但削弱稀疏响应，**无固定 p 两全**。
 - **Thm 3（动态调度优越性，§3.4）**：任何静态 \(p_{\text{stat}}\) 必牺牲其一——① 早期信号放大:若 yi 有高比值 token \(t^*\)(\(r_{i,t^*}\gg1\))且其余比值常数有界，在 pre-saturation 条件 \(r_{i,t^*}^{p_{\text{high}}}\ll n-1\) 下，从 \(p_{\text{stat}}\) 移到 \(p_{\text{high}}\) 指数放大其梯度权重:\(\dfrac{W_{i,t^*}(p_{\text{high}})}{W_{i,t^*}(p_{\text{stat}})}\ge C\cdot r_{i,t}^{\,p_{\text{high}}-p_{\text{stat}}}\)(式5)；② 后期方差收缩:\(V(p_{\text{low}})<V(p_{\text{stat}})\)(式6，\(V(p):=\mathbb{E}[\hat A_i^2\rho_{i,p}^2]\))。动态 schedule 早期继承 p=+2 的集中、后期收敛到 p=−2 的受控方差，绕过两难。

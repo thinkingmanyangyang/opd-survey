@@ -21,23 +21,23 @@ asft | ASFT: Anchored Supervised Fine-Tuning | 南方科技大学 / 北京大学
 ### 0. RWR 框架与问题设定（§3，全文理论地基）
 - 设定：轨迹 \(\tau=(x,y)\)，自回归策略 \(\pi_\theta(\tau)=\pi_\theta(y|x)=\prod_{t=1}^{|y|}\pi_\theta(y_t|y_{<t},x)\)；RL 目标 \(J(\theta)=\mathbb{E}_{\tau\sim\pi_\theta}[R(\tau)]\)，\(R(\tau):\mathcal{X}\times\mathcal{Y}\to[0,1]\)；SFT 是对专家示范 \(D=\{(x,y^*)\}\sim\pi_{\mathrm{ref}}\) 做 behavior cloning \(L_{\mathrm{SFT}}(\theta)=-\mathbb{E}_{(x,y^*)\sim D}[\log\pi_\theta(y^*|x)]\)。
 - **Proposition 1（SFT 是 RL 下界）**：稀疏奖励 \(R(\tau)=\mathbb{I}[y=y^*]\) 且 \(\mathrm{supp}(\pi_\theta)\subseteq\mathrm{supp}(\pi_{\mathrm{ref}})\) 下，
-  \[ J(\theta)\ge c_{\mathrm{ref}}\cdot\mathbb{E}_{\tau\in D_+}[\log\pi_\theta(\tau)] \quad(\text{Eq.1}) \]
+  \(\displaystyle J(\theta)\ge c_{\mathrm{ref}}\cdot\mathbb{E}_{\tau\in D_+}[\log\pi_\theta(\tau)] \quad(\text{Eq.1})\)
   其中 \(D_+=\{(x,y^*)|R(x,y^*)=1\}\)、\(c_{\mathrm{ref}}=P_{\pi_{\mathrm{ref}}}(\tau\in D_+)\)。即 SFT 隐式最大化 RL 目标的一个**松**下界(\(\pi_\theta\) 偏离 \(\pi_{\mathrm{ref}}\) 越远越松)。
 - **更紧下界(任意 auxiliary 分布 \(q\))**：
-  \[ J(\theta)\ge c_{\mathrm{ref}}\cdot\mathbb{E}_{\tau\in D_+}\Big[\frac{q(\tau)}{\pi_{\mathrm{ref}}(\tau)}\log\pi_\theta(\tau)\Big] \quad(\text{Eq.2}) \]
+  \(\displaystyle J(\theta)\ge c_{\mathrm{ref}}\cdot\mathbb{E}_{\tau\in D_+}\Big[\frac{q(\tau)}{\pi_{\mathrm{ref}}(\tau)}\log\pi_\theta(\tau)\Big] \quad(\text{Eq.2})\)
   \(q\) 的选择同时决定**下界紧度**与**优化稳定性**——这是全文要平衡的 validity-tightness 权衡。
 - **DFT 回顾**：SFT 隐式 reward \(r_{\mathrm{SFT}}(y|x)=\frac{\mathbb{I}[y=y^*]}{\pi_\theta(y|x)}\)(逆概率加权→\(\pi_\theta\to0\) 时方差无界)；DFT 用 stop-gradient 重加权修复：
-  \[ L_{\mathrm{DFT}}(\theta)=-\mathbb{E}_{(x,y^*)\sim D}\big[\mathrm{sg}[\pi_\theta(y^*|x)]\,\log\pi_\theta(y^*|x)\big] \quad(\text{Eq.3}) \]
+  \(\displaystyle L_{\mathrm{DFT}}(\theta)=-\mathbb{E}_{(x,y^*)\sim D}\big[\mathrm{sg}[\pi_\theta(y^*|x)]\,\log\pi_\theta(y^*|x)\big] \quad(\text{Eq.3})\)
 
 ### 1. DFT 的 RWR 诊断（§4.1，三个 Key Finding）
 - **Key Finding 1（DFT = 特定 auxiliary 分布）**：DFT 目标等价于选
-  \[ q(\tau)=\frac{\pi_{\mathrm{ref}}(\tau|D_+)\,\mathrm{sg}[p_\theta(\tau)]}{\mathbb{E}_{\tau\sim\pi_{\mathrm{ref}}(\cdot|D_+)}[\mathrm{sg}[p_\theta(\tau)]]} \quad(\text{Eq.4}) \]
+  \(\displaystyle q(\tau)=\frac{\pi_{\mathrm{ref}}(\tau|D_+)\,\mathrm{sg}[p_\theta(\tau)]}{\mathbb{E}_{\tau\sim\pi_{\mathrm{ref}}(\cdot|D_+)}[\mathrm{sg}[p_\theta(\tau)]]} \quad(\text{Eq.4})\)
   代回 Eq.2 恰好复现 DFT 序列级目标 \(L_{\mathrm{DFT}}(\theta)=-\mathbb{E}_{\tau\in D_+}[\mathrm{sg}(p_\theta(\tau))\log p_\theta(\tau)]\)（Eq.5）。
 - **Key Finding 2（DFT 严格更紧，Theorem 1）**：当 \(\mathrm{Var}(p_\theta(\tau))>0\) on \(D_+\) 时，该 auxiliary 分布给出比 SFT **严格更紧**的下界(证明附录 D.4)。解释了 DFT 在策略分布跨样本方差足够大的域(推理)上更优。
 - **Key Finding 3（DFT 漂移，失稳根因）**：训练中 \(q\) 越来越集中在高 \(p_\theta(\tau)\) 轨迹→正反馈→盯住缩小的样本子集→下界越来越松、重要性权重方差越来越大、有效样本数萎缩。形式化:推导下界用的不等式 \(u\ge1+\log u\) **仅当 \(u=1\) 取等**，这里 \(u=\frac{\pi_\theta(\tau)}{q_\theta(\tau)}\)，即仅当 \(p_\theta(\tau)\) 在 \(D_+\) 上**恒定**时紧;训练越久 \(p_\theta\) 越非均匀→不等式越松→失稳。
 
 ### 2. ASFT = DFT 重加权 + forward-KL 锚定（§4.2，核心）
-\[ L_{\mathrm{ASFT}}(\theta)=L_{\mathrm{DFT}}(\theta)+\lambda\,\mathbb{E}_s\big[D_{\mathrm{KL}}(\pi_{\mathrm{base}}(\cdot|s)\,\|\,\pi_\theta(\cdot|s))\big] \quad(\text{Eq.6}) \]
+\(\displaystyle L_{\mathrm{ASFT}}(\theta)=L_{\mathrm{DFT}}(\theta)+\lambda\,\mathbb{E}_s\big[D_{\mathrm{KL}}(\pi_{\mathrm{base}}(\cdot|s)\,\|\,\pi_\theta(\cdot|s))\big] \quad(\text{Eq.6})\)
 - \(\pi_{\mathrm{base}}\)=固定 reference(通常预训练模型)，\(\lambda>0\) 控锚定强度。
 - **理论保证**:KL 项**不改下界结构**(故保紧)，只提供显式方差控制、阻止 pure DFT 的指数增长——在 reference 周围造 trust region，允许"受控地探更紧下界"而不丢分布稳定性。
 - **token 级实现**:遵循标准做法(Ouyang 2022/Shao 2024)，把序列级权重按位置归一分摊到 token，保证与序列级理论数学等价又高效。

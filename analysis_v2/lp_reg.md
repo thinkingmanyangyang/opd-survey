@@ -22,18 +22,10 @@ lp_reg | Low-probability Tokens Sustain Exploration in RL with Verifiable Reward
   - ① **构造 \(\pi_{\text{proxy}}\)(两步)**(§4.1):
     - (a) **过滤噪声**——定义"噪声 token"为概率 \(\pi_\theta(o|\cdot)\le\tau\) 者并丢弃。阈值 \(\tau\) 两种:**固定**(常数,如 \(\tau=0.02\));**min-p**(Nguyen 2025,随分布锐度自适应)\(\tau=\kappa\cdot\max_{o'}\pi_\theta(o'|\cdot)\),主实验 \(\kappa=0.02\)。
     - (b) **重归一化**——把丢弃 token 的质量重分到剩余 token(Eq.5):
-    \[
-    \pi_{\text{proxy}}(o|\cdot)=
-    \begin{cases}
-    \dfrac{\pi_\theta(o|\cdot)}{\sum_{o'\,:\,\pi_\theta(o'|\cdot)>\tau}\pi_\theta(o'|\cdot)} & \text{if }\pi_\theta(o|\cdot)>\tau\\
-    0 & \text{otherwise.}
-    \end{cases}
-    \]
+    \(\displaystyle \pi_{\text{proxy}}(o|\cdot)= \begin{cases} \dfrac{\pi_\theta(o|\cdot)}{\sum_{o'\,:\,\pi_\theta(o'|\cdot)>\tau}\pi_\theta(o'|\cdot)} & \text{if }\pi_\theta(o|\cdot)>\tau\\ 0 & \text{otherwise.} \end{cases}\)
     直觉:把低相对概率 token 当噪声清零,剩下的"高置信参考"被整体放大——其中真正的 spark(平均概率高于 noise)被保留并相对加权(§Fig.2)。注:proxy 由数据生成策略 \(\pi_{\theta_{\text{old}}}\) 构造(§5.1)。
   - ② **目标函数**(§4.2,Eq.6):第一项 GRPO 策略梯度,但**去掉裁剪下界**(改为 \(\mathrm{clip}(r_{i,t},0,U)\),避免裁掉低概率探索动作)、加大上界 \(U=10\)(数值稳定);第二项 Lp-Reg 惩罚——**仅对三条件同时满足的 token 触发**前向 KL:
-  \[
-  J_{\text{Lp-Reg}}(\theta)=\mathbb{E}\!\left[\frac{1}{\sum_i|o_i|}\sum_{i=1}^{G}\sum_{t=1}^{|o_i|}\Big(\mathrm{clip}(r_{i,t},0,U)\,A_{i,t}-\beta\cdot\mathbb{I}[\,\cdot\,]\cdot D_{\mathrm{KL}}\big(\pi_{\text{proxy}}(\cdot|q,o_{i,<t})\,\|\,\pi_\theta(\cdot|q,o_{i,<t})\big)\Big)\right],
-  \]
+  \(\displaystyle J_{\text{Lp-Reg}}(\theta)=\mathbb{E}\!\left[\frac{1}{\sum_i|o_i|}\sum_{i=1}^{G}\sum_{t=1}^{|o_i|}\Big(\mathrm{clip}(r_{i,t},0,U)\,A_{i,t}-\beta\cdot\mathbb{I}[\,\cdot\,]\cdot D_{\mathrm{KL}}\big(\pi_{\text{proxy}}(\cdot|q,o_{i,<t})\,\|\,\pi_\theta(\cdot|q,o_{i,<t})\big)\Big)\right],\)
   其中指示器 \(\mathbb{I}[\,\cdot\,]\) 同时要求:**低概率** \(\pi_\theta(o_{i,t}|\cdot)<\delta_B^\rho\)(\(\delta_B^\rho\)=当前批 \(B\) 内所有 token 采样概率的最低 \(\rho\) 分位)∧ **非噪声** \(\pi_{\text{proxy}}(o_{i,t}|\cdot)>0\) ∧ **负优势** \(A_{i,t}<0\)。第三条件确保只在"负学习信号"上施正则(防止把正确探索过度惩罚,同时不动正样本更新)。
 - 逐组件必要性(消融 §5.3):
   - **噪声过滤阈值 \(\tau\)(min-p)**:关键。去掉过滤(对所有低于 \(\tau\) 的 token 也"fork"进来保护)→ 放大噪声、性能不稳(§5.3 "Importance of Noise Filtering");min-p 动态阈值优于固定阈值(§5.3 + Fig.8,dynamic \(\tau\) > fixed \(\tau\),因 min-p 跨题对模型置信的估计更稳)。

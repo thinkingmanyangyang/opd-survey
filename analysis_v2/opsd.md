@@ -39,23 +39,23 @@ opsd | Self-Distilled Reasoner: On-Policy Self-Distillation for Large Language M
 
 - 关键机制/公式(真实符号,从 PDF 抄准 + 直觉):
   - **师生条件分布**(同参 \(\theta\),仅上下文不同):
-    \[ p_T(\cdot\mid x,y^\star)\triangleq p_\theta(\cdot\mid x,y^\star),\qquad p_S(\cdot\mid x)\triangleq p_\theta(\cdot\mid x). \]
+    \(\displaystyle p_T(\cdot\mid x,y^\star)\triangleq p_\theta(\cdot\mid x,y^\star),\qquad p_S(\cdot\mid x)\triangleq p_\theta(\cdot\mid x).\)
   - **GRPO 组归一优势**(Eq.4,作为对照——它正是 OPSD 要替代的稀疏信号):
-    \[ A_i=\frac{r_i-\operatorname{mean}(\{r_j\}_{j=1}^{G})}{\operatorname{std}(\{r_j\}_{j=1}^{G})},\qquad r_i\in\{0,1\}. \]
+    \(\displaystyle A_i=\frac{r_i-\operatorname{mean}(\{r_j\}_{j=1}^{G})}{\operatorname{std}(\{r_j\}_{j=1}^{G})},\qquad r_i\in\{0,1\}.\)
     原文用 value-function 视角解读:\(\operatorname{mean}(\{r_j\})\) 是 \(V(x)\) 的 \(G\)-样本 MC 估计,\(r_i\) 是 \((x,o_i)\) 的(无折扣)\(Q\) 值;一组内所有 token 共享同一 \(A_i\)。
   - **核心目标——轨迹平均的逐 token 散度**(Eq.6):
-    \[ D\!\left(p_T\,\|\,p_S\right)(\hat y\mid x)\;\triangleq\;\frac{1}{|\hat y|}\sum_{n=1}^{|\hat y|} D\!\Big(p_T(\cdot\mid x,y^\star,\hat y_{<n})\,\big\|\,p_S(\cdot\mid x,\hat y_{<n})\Big), \]
+    \(\displaystyle D\!\left(p_T\,\|\,p_S\right)(\hat y\mid x)\;\triangleq\;\frac{1}{|\hat y|}\sum_{n=1}^{|\hat y|} D\!\Big(p_T(\cdot\mid x,y^\star,\hat y_{<n})\,\big\|\,p_S(\cdot\mid x,\hat y_{<n})\Big),\)
     其中 \(\hat y_{<n}\triangleq(\hat y_1,\dots,\hat y_{n-1})\)。直觉:老师因偷看了答案,对"下一步该往哪个推理分支走"有更尖锐分布,学生在自己写出的每一步上被拉向"看过答案的自己"会怎么续写。
   - **散度可选 generalized JSD**(Eq.7):
-    \[ \mathrm{JSD}_\beta(p_T\|p_S)=\beta D_{\mathrm{KL}}(p_T\|m)+(1-\beta)D_{\mathrm{KL}}(p_S\|m),\quad m=\beta p_T+(1-\beta)p_S, \]
+    \(\displaystyle \mathrm{JSD}_\beta(p_T\|p_S)=\beta D_{\mathrm{KL}}(p_T\|m)+(1-\beta)D_{\mathrm{KL}}(p_S\|m),\quad m=\beta p_T+(1-\beta)p_S,\)
     但消融后主实验取 forward KL(\(\beta\to1\) 极限的方向)。
   - **总损失**(Eq.8,期望在 on-policy 学生样本上,梯度只过 \(p_S\)):
-    \[ L(\theta)=\mathbb{E}_{(x,y^\star)\sim S}\Big[\mathbb{E}_{\hat y\sim p_S(\cdot|x)}\big[D(p_T\|p_S)(\hat y\mid x)\big]\Big]. \]
+    \(\displaystyle L(\theta)=\mathbb{E}_{(x,y^\star)\sim S}\Big[\mathbb{E}_{\hat y\sim p_S(\cdot|x)}\big[D(p_T\|p_S)(\hat y\mid x)\big]\Big].\)
   - **per-token pointwise clipping**(防风格 token 主导;\(D_f\) 为 \(f\)-散度):对每个位置 \(n\)、词表项 \(v\) 定义单点贡献 \(\ell^{(f)}_{n,v}=p_T(v|\cdot)\,f\!\big(\tfrac{p_S(v|\cdot)}{p_T(v|\cdot)}\big)\),再裁剪求和
-    \[ D^{(f)}_{\mathrm{clip}}(p_T\|p_S)=\frac{1}{|\hat y|}\sum_{n=1}^{|\hat y|}\sum_{v\in V}\min\!\big(\ell^{(f)}_{n,v},\;\tau\big). \]
+    \(\displaystyle D^{(f)}_{\mathrm{clip}}(p_T\|p_S)=\frac{1}{|\hat y|}\sum_{n=1}^{|\hat y|}\sum_{v\in V}\min\!\big(\ell^{(f)}_{n,v},\;\tau\big).\)
     直觉:把"少数高散度词表项"的贡献钳到上限 \(\tau\),让数学 token 不被风格 token 淹没。
   - **等价视角——稠密逐 token reward 的 policy gradient**(Eq.9):把 \(A_n(x,\hat y)=\log p_T(\hat y_n|x,y^\star,\hat y_{<n})-\log p_S(\hat y_n|x,\hat y_{<n})\) 当 stop-gradient 优势:
-    \[ L(\theta)=-\,\mathbb{E}_{(x,y^\star)\sim S}\Big[\mathbb{E}_{\hat y\sim p_S(\cdot|x)}\Big(\tfrac{1}{|\hat y|}\sum_{n=1}^{|\hat y|}A_n(x,\hat y)\,\nabla_\theta\log p_S(\hat y_n|x,\hat y_{<n})\Big)\Big], \]
+    \(\displaystyle L(\theta)=-\,\mathbb{E}_{(x,y^\star)\sim S}\Big[\mathbb{E}_{\hat y\sim p_S(\cdot|x)}\Big(\tfrac{1}{|\hat y|}\sum_{n=1}^{|\hat y|}A_n(x,\hat y)\,\nabla_\theta\log p_S(\hat y_n|x,\hat y_{<n})\Big)\Big],\)
     即"看过答案的老师 log-prob 减学生 log-prob"作为每 token 的稠密奖励——这把 OPSD 与 RL 桥接,也解释了它为何能在 GRPO 失效(组内 reward 全同→\(A_i=0\))处仍有信号。【原文】Eq.(4)(6)(7)(8)(9)+clipping 段
 
 - 实验与证据:训练用 OpenThoughts 数学子集(采 ≤30K 题-解对,含 CoT);评测 AIME24/AIME25/HMMT25,主表 Table 2 报 **Avg@12**(温度 1.0、thinking、max gen 38k);模型 Qwen3-1.7B/4B/8B instruct。关键数字(Table 2,基→OPSD,Avg):1.7B 37.1→**43.4**(>GRPO 37.7、SFT 35.8);4B 61.2→**63.6**(>GRPO 62.7、SFT 58.6);8B 61.8→**64.8**(>GRPO 64.0、SFT 59.8)。逐项:8B 上 AIME24 75.8→77.8、AIME25 65.6→70.8、HMMT25 43.9→45.8。token 效率(Fig.3):OPSD 每题 **1 rollout × 1024 token**、~100 步收敛(1.7B 在 4×H100 约 15 分钟,带 LoRA);GRPO 用 **8 rollouts × 16k token**,且 100 步内过半 batch 组内 reward 标准差=0、梯度消失("reward diversity collapse",Fig.3 最右)。SFT 全面降:作者归因 ground-truth 解风格简洁→测试期生成变短。baseline 公平性:SFT/GRPO 同数据集、同样本数——较公平;但 GRPO 报"500 步内峰值"、OPSD 报"100 步内每 20 步评估的最佳",评估口径不完全对齐(表注明确)。【原文】Table 2+Table 3-4+Fig.3+表注

@@ -19,10 +19,10 @@ simplerl_zoo | SimpleRL-Zoo: Investigating and Taming Zero RL for Open Base Mode
 
 ## 怎么做(到可复现粒度)
 - **算法 = GRPO,直接从 base 起训(无 SFT cold start)**【原文 §2.1、附录 A】。本文用 **token-level、length-rectified GRPO** 目标(去掉原始 GRPO 的长度归一项,因其引入长度偏置;这是 adapted veRL 的默认实现,与 Yu 2025/Liu 2025 等并行工作一致):
-  \[ \mathcal{J}_{\mathrm{GRPO}}(\theta)=\frac{1}{\sum_{i=1}^{G}|o_i|}\sum_{i=1}^{G}\sum_{t=1}^{|o_i|}\underbrace{\min\!\Big(r_{i,t}(\theta)\hat{A}_i,\ \mathrm{clip}\big(r_{i,t}(\theta);1\!-\!\epsilon,1\!+\!\epsilon\big)\hat{A}_i\Big)}_{\text{Clipped policy update}}\;-\;\underbrace{\beta\,D_{\mathrm{KL}}[\pi_\theta\|\pi_{\mathrm{ref}}]}_{\text{KL penalty}} \]
+  \(\displaystyle \mathcal{J}_{\mathrm{GRPO}}(\theta)=\frac{1}{\sum_{i=1}^{G}|o_i|}\sum_{i=1}^{G}\sum_{t=1}^{|o_i|}\underbrace{\min\!\Big(r_{i,t}(\theta)\hat{A}_i,\ \mathrm{clip}\big(r_{i,t}(\theta);1\!-\!\epsilon,1\!+\!\epsilon\big)\hat{A}_i\Big)}_{\text{Clipped policy update}}\;-\;\underbrace{\beta\,D_{\mathrm{KL}}[\pi_\theta\|\pi_{\mathrm{ref}}]}_{\text{KL penalty}}\)
   其中比率 \(r_{i,t}(\theta)=\dfrac{\pi_\theta(o_{i,t}|q,o_{i,<t})}{\pi_{\theta_{\mathrm{old}}}(o_{i,t}|q,o_{i,<t})}\)。**关键点**:归一化分母是组内**总 token 数** \(\sum_i|o_i|\)(token-level,length-rectified),而非每条响应各自除以 \(|o_i|\)(后者会偏向短响应)。
 - **组内相对优势(无 value 网络)**【原文 Eq.2】:对 query \(q\) 采一组 \(O=\{o_1,\dots,o_G\}\),用组内奖励 \(\{r_1,\dots,r_G\}\) 标准化:
-  \[ \hat{A}_i=\frac{r_i-\mathrm{mean}(\{r_1,\dots,r_G\})}{\mathrm{std}(\{r_1,\dots,r_G\})} \]
+  \(\displaystyle \hat{A}_i=\frac{r_i-\mathrm{mean}(\{r_1,\dots,r_G\})}{\mathrm{std}(\{r_1,\dots,r_G\})}\)
   直觉:衡量 \(o_i\) 比组内平均好多少,省掉 critic。
 - **奖励:仅正确性二值(无 format reward)**【原文 §2.1、B.2】:最终答案正确 \(+1\)、错误 \(0\)。**显式不加 format-based 规则**(如强制 `\boxed{}`)——因许多 base 初期跟不上格式约束,format reward 会**惩罚大量正确探索**、压低上限(§3.1)。
 - **数据难度分档 + 与模型能力匹配**【原文 §2.1、B.1】:从 GSM8K+MATH 取数据,按 MATH 自带 1–5 难度切三档,各约 8K:**Easy**(GSM8K + MATH lv.1)、**Medium**(MATH lv.1–4)、**Hard**(MATH lv.3–5)。**主实验按 base 能力分配难度**(可复现关键):Easy → Llama-3.1-8B / Mistral-v0.1-7B / DeepSeek-Math-7B;Medium → Qwen2.5-0.5B;Hard → Mistral-Small-24B / Qwen2.5-Math-7B / Qwen2.5-1.5B/7B/14B/32B。难度须与 base 探索能力匹配,否则 zero RL 崩(Mistral-7B 在 Hard 上崩溃)。

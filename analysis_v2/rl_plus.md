@@ -19,24 +19,24 @@ rl_plus | RL-PLUS: Countering Capability Boundary Collapse of LLMs in Reinforcem
 
 ### A. MDP 与 GRPO 基底
 把推理生成建为 MDP:状态 \(s_t=q\oplus y_{<t}\),动作 \(a_t\) = 选下一 token \(y_t\),策略 \(\pi_\theta\),reward \(R(q,y)\) 仅在序列完成时给(RLVR 下稀疏二元:答对 1 否则 0)。标准 GRPO 目标:
-\[J_{\text{RL}}(\theta)=\mathbb E_{(q,y)\sim\mathcal D_{\text{on}}}\Big[\sum_{t=1}^{|y|}\min\!\big(r_{i,t}(\theta)A_i,\ \mathrm{clip}(r_{i,t}(\theta),1-\epsilon,1+\epsilon)A_i\big)\Big]-\beta D_{\mathrm{KL}}[\pi_\theta\Vert\pi_{\text{ref}}],\]
+\(\displaystyle J_{\text{RL}}(\theta)=\mathbb E_{(q,y)\sim\mathcal D_{\text{on}}}\Big[\sum_{t=1}^{|y|}\min\!\big(r_{i,t}(\theta)A_i,\ \mathrm{clip}(r_{i,t}(\theta),1-\epsilon,1+\epsilon)A_i\big)\Big]-\beta D_{\mathrm{KL}}[\pi_\theta\Vert\pi_{\text{ref}}],\)
 其中比率 \(r_{i,t}(\theta)=\dfrac{\pi_\theta(o_{i,t}\mid q,o_{i,<t})}{\pi_{\theta_{\text{old}}}(o_{i,t}\mid q,o_{i,<t})}\),组相对 advantage \(A_i=\dfrac{R_i-\mathrm{mean}(\{R_1,\dots,R_G\})}{\mathrm{std}(\{R_1,\dots,R_G\})}\)。评测用 pass@k(k 次采样至少一对,衡量可解问题集而非只 pass@1)。【§2.1 式1-3】
 
 ### B. 组件1:MIS 驯服 off-policy(§3.1,方差护栏 + 贝叶斯估计)
 - **问题**:从静态外部集 \(\mathcal D_e=\{e_i\}\) 学习时,目标策略 \(\pi_\theta\) 与未知行为策略 \(\pi_\omega\) 有分布漂移。on-policy IS(分母用 \(\pi_{\theta_{\text{old}}}\) 代理)对外部数据有系统偏差(Lemma A.5);正确的 off-policy 权重 \(r^e_t(\theta)=\pi_\theta(e_t\mid e_{<t})/\pi_\omega(e_t\mid e_{<t})\) 又支撑失配(A.6)+ 高方差(A.7);且 \(\pi_\omega\) 未知。
 - **MIS 比率**:把外部样本视作 \(\pi_{\theta_{\text{old}}}\) 与 \(\pi_\omega\) 的混合策略生成,逐 token 比率
-\[r^m_{i,t}(\theta)=\frac{2\,\pi_\theta(e_{i,t}\mid q,e_{i,<t})}{\pi_\omega(e_{i,t}\mid q,e_{i,<t})+\pi_{\theta_{\text{old}}}(e_{i,t}\mid q,e_{i,<t})}.\]
+\(\displaystyle r^m_{i,t}(\theta)=\frac{2\,\pi_\theta(e_{i,t}\mid q,e_{i,<t})}{\pi_\omega(e_{i,t}\mid q,e_{i,<t})+\pi_{\theta_{\text{old}}}(e_{i,t}\mid q,e_{i,<t})}.\)
 **直觉**:分母里 \(\pi_{\theta_{\text{old}}}\)(被刻意保持接近 \(\pi_\theta\))起"方差护栏"——即便 \(\pi_\omega\) 烂到天上,比值也有上界,把"理论正确但高方差的 off-policy"驯成"可稳定训练"(Remarks A.8/A.9 的 bounded distortion error)。【Theorem 3.1:只要行为池里有一个策略≈\(\pi_\theta\),MIS 方差就低,且对其他任意"坏"行为策略不敏感】
 - **估计未知 \(\pi_\omega\)(贝叶斯)**:把 \(\pi_\omega\) 的模型空间设为两候选——具体代理 \(\pi_{\theta_{\text{old}}}\)(可用信息)与无信息均匀策略 \(U(\tau)=1/V\)(最大不确定)。按 Principle of Indifference 赋等先验 \(P(\pi_\omega=\pi_{\theta_{\text{old}}})=P(\pi_\omega=U)=\frac12\),最小化 Bayes 风险(期望 L2 误差)的估计器即贝叶斯模型平均:
-\[\hat\pi^*_\omega(\tau)=\tfrac12\,\pi_{\theta_{\text{old}}}(\tau)+\tfrac12\,U(\tau).\] 【Theorem 3.2,证在附录A.5】
+\(\displaystyle \hat\pi^*_\omega(\tau)=\tfrac12\,\pi_{\theta_{\text{old}}}(\tau)+\tfrac12\,U(\tau).\) 【Theorem 3.2,证在附录A.5】
 
 ### C. 组件2:Exploration-Based Advantage(§3.2,focal 重加权)
 给外部 token 的 advantage 乘 focal 权重以放大"正确但难探索(低概率)"路径:
-\[A^c_{i,t}=\underbrace{\frac{R_i-\mathrm{mean}(\{R_1,\dots,R_G\})}{\mathrm{std}(\{R_1,\dots,R_G\})}}_{\text{标准化 reward(含内/外轨迹)}}\cdot\ C_{i,t},\qquad C_{i,t}=\big(1-\mathrm{detach}(\pi_\theta(e_{i,t}\mid q,e_{i,<t}))\big)^{\gamma}.\]
+\(\displaystyle A^c_{i,t}=\underbrace{\frac{R_i-\mathrm{mean}(\{R_1,\dots,R_G\})}{\mathrm{std}(\{R_1,\dots,R_G\})}}_{\text{标准化 reward(含内/外轨迹)}}\cdot\ C_{i,t},\qquad C_{i,t}=\big(1-\mathrm{detach}(\pi_\theta(e_{i,t}\mid q,e_{i,<t}))\big)^{\gamma}.\)
 **直觉**(借 focal loss):模型对某正确外部 token 越没把握(\(\pi_\theta\) 小)权重 \(C_{i,t}\) 越大 → 把优势信号放大到"被忽视的低概率正确区域"。**detach/stop-gradient** 防梯度经概率项回传,增稳定性。\(\gamma\) 控强度,默认 \(\gamma=0.5\)。【§3.2 式5/6】
 
 ### D. 复合目标 + 去 clip(§3.3)
-\[J_{\text{RL-PLUS}}(\theta)=\underbrace{\mathbb E_{(o_i,A_i)\sim\mathcal D_o}\big[r_{i,t}(\theta)A_i\big]}_{\text{内部利用(Thinking)}}\ +\ \underbrace{\mathbb E_{(e_i,A^c_{i,t})\sim\mathcal D_e}\big[r^m_{i,t}(\theta)A^c_{i,t}\big]}_{\text{外部数据探索(Learning)}}.\]
+\(\displaystyle J_{\text{RL-PLUS}}(\theta)=\underbrace{\mathbb E_{(o_i,A_i)\sim\mathcal D_o}\big[r_{i,t}(\theta)A_i\big]}_{\text{内部利用(Thinking)}}\ +\ \underbrace{\mathbb E_{(e_i,A^c_{i,t})\sim\mathcal D_e}\big[r^m_{i,t}(\theta)A^c_{i,t}\big]}_{\text{外部数据探索(Learning)}}.\)
 内部项=标准 GRPO PG(稳住并精炼已有能力);外部项=MIS 比率 × focal advantage(吸收外部新知识)。**去掉 clip**:\(\mathrm{clip}(r_t,1-\epsilon,1+\epsilon)\) 会砍掉"高信息低概率事件"的梯度=正想学的新知识;去 clip 后模型遇外部有价值信息时可迈更大步,加速吸收、更有效扩边界。**梯度直觉**(附录):梯度 \(\propto A_i\cdot(1-p_t)^\gamma\),\(p_t\to0\) 权重→1、\(p_t\to1\) 权重→0,即聚焦低概率正确动作。【§3.3 式7 + 附录梯度分析】
 
 ### E. 逐组件必要性(Table4 消融,base=Qwen2.5-Math-7B,Avg over 6 数学基准)

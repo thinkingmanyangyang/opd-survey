@@ -19,23 +19,23 @@ sed_sft | SED-SFT: Selectively Encouraging Diversity in Supervised Fine-Tuning |
 ## 怎么做(到可复现粒度)
 - **方法定位**:仅替换 SFT 阶段的训练目标,其余 SFT 超参与下游 RL 全保持与对照一致(§4.1 "vary only the SFT objective")。整条流程 = 改后的目标做 SFT → 标准 GRPO(verl)做 RL。
 - **第 0 步:标准 CE(被改造的基线,Eq. §2.1)**【原文】:
-  \[ \mathcal{L}_{\mathrm{CE}}(\theta)=-\mathbb{E}_{(x,y^*)\sim D}\!\left[\sum_{t=1}^{|y^*|}\log\pi_\theta(y^*_t\,|\,x,y^*_{<t})\right] \]
+  \(\displaystyle \mathcal{L}_{\mathrm{CE}}(\theta)=-\mathbb{E}_{(x,y^*)\sim D}\!\left[\sum_{t=1}^{|y^*|}\log\pi_\theta(y^*_t\,|\,x,y^*_{<t})\right]\)
   问题:它把策略快速收敛到唯一正确路径 \(y^*\),致 mode collapse、生成多样性骤降(O'Mahony 2024)。
 - **第 1 步:量化 token 探索空间 + 构造 Top-k 掩码 \(M_t\)(§2.3 + §3)**【原文】:
   - **位置 \(t\) 的探索空间代理** = Top-k 累积概率(对语义等价分支鲁棒,Kuhn 2023):
-    \[ P_{\mathrm{Top}\text{-}k}(t)=\sum_{j\in K_t}\pi_\theta(y_j\,|\,x,y^*_{<t}) \]
+    \(\displaystyle P_{\mathrm{Top}\text{-}k}(t)=\sum_{j\in K_t}\pi_\theta(y_j\,|\,x,y^*_{<t})\)
     其中 \(K_t\)=该步概率最高的 \(k\) 个 token 的下标集合。
   - **二值掩码**(累积概率低 = 探索空间大 = 该鼓励多样性):
-    \[ M_t=\mathbb{1}\big[P_{\mathrm{Top}\text{-}k}(t)<\tau\big] \]
+    \(\displaystyle M_t=\mathbb{1}\big[P_{\mathrm{Top}\text{-}k}(t)<\tau\big]\)
   - **阈值 \(\tau\) 用分位数自适应确定**:设掩码比例 \(r\),令 \(P=\{P_{\mathrm{Top}\text{-}k}(t)\}_{t=1}^{T}\) 为训练数据采样子集上所有位置的累积概率集合,则
-    \[ \tau=\mathrm{Quantile}(P,\,1-r) \]
+    \(\displaystyle \tau=\mathrm{Quantile}(P,\,1-r)\)
     直觉:在所有位置里,挑累积概率最低的那 \(r\) 比例位置打开多样性鼓励(它们有替代路径),其余高置信位置关闭。
   - **\(k\) 的取值直觉**(§2.3 + Fig.3,100 道数学题分析):\(k=1\) 区分度最高但"看不到替代路径"信息;\(k\) 太大累积概率趋于均匀、失去区分 restricted vs flexible 的能力 → 取 **\(k=2\) 或 3**。
 - **第 2 步:多样性鼓励函数 \(L_{DE}(p)\)(§3)**【原文,受 CHORD 启发的二次惩罚】:
-  \[ L_{DE}(p)=\Big(p-\tfrac{1}{2}\Big)^2 \]
+  \(\displaystyle L_{DE}(p)=\Big(p-\tfrac{1}{2}\Big)^2\)
   其中 \(p=\pi_\theta(y^*_t\,|\,x,y^*_{<t})\) 是赋给 ground-truth token 的概率。**直觉**:把 \(y^*\) 的选择看成二值事件,则 \(p=0.5\) 正是该二值分布的最大熵点;此二次惩罚在 \(p=0.5\) 处最小、\(p=1\) 或 \(p=0\) 处最大,故最小化它会把 \(p\) 往 0.5 推,从而把概率质量分给替代的合理路径。
 - **第 3 步:总损失 \(\mathcal{L}_{\text{SED-SFT}}\)(§3)**【原文,所有实验 \(\lambda=1\)】:
-  \[ \mathcal{L}_{\text{SED-SFT}}(\theta)=\sum_{t=1}^{|y^*|}\Big[\underbrace{-\log\pi_\theta(y^*_t\,|\,x,y^*_{<t})}_{\text{CE 拟合}}\;+\;\lambda\cdot M_t\cdot \underbrace{L_{DE}\big(\pi_\theta(y^*_t\,|\,x,y^*_{<t})\big)}_{\text{选择性多样性}}\Big] \]
+  \(\displaystyle \mathcal{L}_{\text{SED-SFT}}(\theta)=\sum_{t=1}^{|y^*|}\Big[\underbrace{-\log\pi_\theta(y^*_t\,|\,x,y^*_{<t})}_{\text{CE 拟合}}\;+\;\lambda\cdot M_t\cdot \underbrace{L_{DE}\big(\pi_\theta(y^*_t\,|\,x,y^*_{<t})\big)}_{\text{选择性多样性}}\Big]\)
   数据流:每个 token 位置先算 CE;同时算 Top-k 累积概率定 \(M_t\);仅当 \(M_t=1\)(高探索空间)才叠加 \((p-0.5)^2\) 惩罚把 \(p\) 拉向 0.5。两项相加反传,改的是 SFT 策略参数。
 - **第 4 步:下游 RL(§4.1)**:SFT 后用 **verl 的 GRPO**,batch 256、其余默认;RL 数据见下。整条 SFT→RL 仅"SFT 目标"一处变量。
 - 逐组件必要性:

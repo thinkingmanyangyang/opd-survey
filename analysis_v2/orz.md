@@ -31,12 +31,12 @@ orz | Open-Reasoner-Zero: An Open Source Approach to Scaling Up Reinforcement Le
 - 关键机制/公式(真实符号,从 PDF 抄准 + 直觉):
   - **轨迹与稀疏奖励**:每个响应 \(o_i\) 是轨迹 \(\tau_i=(s_0,a_0,\dots,s_{T_i-1},a_{T_i-1})\),\(s_t\)=prompt+已生成 token,\(a_t\)=第 \(t\) 个 token;只在末端给二值 reward \(R_i\in\{0,1\}\)(\(r_t=0\) for \(t<T_i-1\),\(r_{T_i-1}=R_i\))。
   - **GAE 一般式**(Eq.1):
-    \[ \hat A^{\mathrm{GAE}(\gamma,\lambda)}_t=\sum_{k=0}^{T-t-1}(\gamma\lambda)^k\,\delta_{t+k},\qquad \delta_{t+k}=r_{t+k}+\gamma V_\phi(s_{t+k+1})-V_\phi(s_{t+k}). \]
+    \(\displaystyle \hat A^{\mathrm{GAE}(\gamma,\lambda)}_t=\sum_{k=0}^{T-t-1}(\gamma\lambda)^k\,\delta_{t+k},\qquad \delta_{t+k}=r_{t+k}+\gamma V_\phi(s_{t+k+1})-V_\phi(s_{t+k}).\)
   - **PPO 策略目标**(Eq.2,clipped surrogate;\(\epsilon=0.2\)):
-    \[ J_{\mathrm{PPO}}(\theta)=\mathbb{E}_{\tau\sim\pi_{\theta_{\mathrm{old}}}}\Big[\sum_{t=0}^{T-1}\min\big(\rho_t(\theta)\hat A_t,\;\mathrm{clip}(\rho_t(\theta),1-\epsilon,1+\epsilon)\hat A_t\big)\Big],\quad \rho_t(\theta)=\frac{\pi_\theta(a_t|s_t)}{\pi_{\theta_{\mathrm{old}}}(a_t|s_t)}. \]
+    \(\displaystyle J_{\mathrm{PPO}}(\theta)=\mathbb{E}_{\tau\sim\pi_{\theta_{\mathrm{old}}}}\Big[\sum_{t=0}^{T-1}\min\big(\rho_t(\theta)\hat A_t,\;\mathrm{clip}(\rho_t(\theta),1-\epsilon,1+\epsilon)\hat A_t\big)\Big],\quad \rho_t(\theta)=\frac{\pi_\theta(a_t|s_t)}{\pi_{\theta_{\mathrm{old}}}(a_t|s_t)}.\)
   - **value 目标**(Eq.3):\( J_{\mathrm{value}}(\phi)=\tfrac{1}{2}\mathbb{E}_{\tau\sim\pi_{\theta_{\mathrm{old}}}}\big[\sum_{t=0}^{T-1}(V_\phi(s_t)-V^{\mathrm{target}}_t)^2\big]\),其中 \(V^{\mathrm{target}}_t=G_t=\hat A^{\mathrm{GAE}(\gamma,\lambda)}_t+V_\phi(s_t)\)。
   - **λ=γ=1 下的关键简化**(Eq.4-5——全文"为何稳"的算法核心):
-    \[ \hat A^{\mathrm{GAE}(\gamma=1,\lambda=1)}_t=R-V_\phi(s_t),\qquad J_{\mathrm{value}}(\phi)=\tfrac{1}{2}\mathbb{E}_{\tau\sim\pi_{\theta_{\mathrm{old}}}}\Big[\sum_{t=0}^{T-1}(V_\phi(s_t)-R)^2\Big], \]
+    \(\displaystyle \hat A^{\mathrm{GAE}(\gamma=1,\lambda=1)}_t=R-V_\phi(s_t),\qquad J_{\mathrm{value}}(\phi)=\tfrac{1}{2}\mathbb{E}_{\tau\sim\pi_{\theta_{\mathrm{old}}}}\Big[\sum_{t=0}^{T-1}(V_\phi(s_t)-R)^2\Big],\)
     \(R\) 为单一末端 reward。直觉:这就是"无偏 Monte-Carlo 回报 \(R\) 减 critic 基线 \(V_\phi\)"——本来最高方差(\(\lambda=1\)),但大数据量自然压方差使该无偏配置可行,从而吃满长程依赖;critic 负责把"重复/退化片段"识别出来打低分,在 token 级精确扣分。【原文】Eq.(1)(2)(3)(4)(5)+§3.3
 - 实验与证据:base Qwen2.5-{0.5,1.5,7,32}B,直接大规模 RL 跳过 SFT。主结果(Table 1):ORZ-32B AIME2024 **48.1** / AIME2025 36.0 / MATH500 **92.2** / GPQA Dia. **55.5**,vs DeepSeek-R1-Zero-Qwen-32B 47.0/-/91.6/55.0(且仅 ~1/10 步);Table 4 各尺寸单调上升(0.5B→32B);Table 2 泛化 MMLU 84.9 / MMLU_PRO 74.4 超 Qwen2.5-Instruct-32B;Table 3 对蒸馏模型续做(ORZ-R1-Distill-Qwen-14B)超更大的 R1-Distill-Qwen-32B。baseline 公平性:DAPO* 用作者自己 metric 在 released ckpt 上重测(较公平);但"1/10 步"对比 DeepSeek 跨实现/跨数据,严格可比性有限。【原文】Table 1-4+§3.4
 - 假设与失效边界:

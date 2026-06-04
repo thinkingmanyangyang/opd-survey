@@ -27,15 +27,15 @@ adaspec | AdaSPEC: Selective Knowledge Distillation for Efficient Speculative De
 - **输入**：下游数据集 \(D\)、（同族/对齐 tokenizer 的）target \(M_p\)、draft \(M_q\)、保留比例 \(k\)。**输出**：训好的 draft \(M_q\)，直接插入 SD。
 - **Step 1 — 微调 target**：先在 \(D\) 上用标准 LM 微调把 \(M_p\) 调成强基线 \(M_p^*\)（论文假设 target 已为下游充分微调）。
 - **Step 2 — 训参考模型 \(M_{\mathrm{ref}}\)（难度探针）**：把 \(M_{\mathrm{ref}}\) **初始化为 draft 的拷贝**（与 \(M_q\) 同规模同初始化，这是公平性关键），用 DistillSpec 的 forward-KL 从 \(M_p^*\) 蒸馏：
-  \[ L_{\mathrm{KD}}=\mathbb{E}_{x\sim D,\;y\sim P(y\mid x)}\big[\,\mathrm{K}\big(P(y\mid x)\,\|\,R(y\mid x)\big)\big] \quad(\text{Eq.6}) \]
+  \(\displaystyle L_{\mathrm{KD}}=\mathbb{E}_{x\sim D,\;y\sim P(y\mid x)}\big[\,\mathrm{K}\big(P(y\mid x)\,\|\,R(y\mid x)\big)\big] \quad(\text{Eq.6})\)
   这里 \(\mathrm{K}\) 是 forward-KL，\(P\)=target 分布、\(R\)=参考模型分布。\(M_{\mathrm{ref}}\) 的角色：充当"该 draft 规模**充分蒸馏后能学成什么样**"的上界探针。
 - **Step 3 — 选择性蒸馏 draft**：
   - (a) 逐 token 算两条 forward-KL 损失（target 当 teacher）：
-    \[ L_{\mathrm{ref}}(w)=\mathrm{K}\big(P(w\mid \text{ctx})\,\|\,R(w\mid \text{ctx})\big),\quad L_{\mathrm{draft}}(w)=\mathrm{K}\big(P(w\mid \text{ctx})\,\|\,Q(w\mid \text{ctx})\big) \quad(\text{Eq.7-8}) \]
+    \(\displaystyle L_{\mathrm{ref}}(w)=\mathrm{K}\big(P(w\mid \text{ctx})\,\|\,R(w\mid \text{ctx})\big),\quad L_{\mathrm{draft}}(w)=\mathrm{K}\big(P(w\mid \text{ctx})\,\|\,Q(w\mid \text{ctx})\big) \quad(\text{Eq.7-8})\)
   - (b) 算可学性差分 \(\Delta L(w)=L_{\mathrm{draft}}(w)-L_{\mathrm{ref}}(w)\)（Eq.9）。
   - (c) 取 \(\Delta L\) **最大的 top-\(k\)%** 组成子集 \(S=\{w\mid \Delta L(w)\ \text{在所有 token 的前}\ k\times100\%\}\)，\(k\in[0,1]\) 默认 0.4。
   - (d) draft **仅对 \(S\) 内 token** 求蒸馏损失（其余位置梯度为 0）：
-    \[ L_{\mathrm{distill}}=\frac{1}{k\cdot|y|}\sum_{i=1}^{|y|}\mathbb{I}\big[y_i\in S\big]\cdot L_{\mathrm{draft}}(y_i) \quad(\text{Eq.10}) \]
+    \(\displaystyle L_{\mathrm{distill}}=\frac{1}{k\cdot|y|}\sum_{i=1}^{|y|}\mathbb{I}\big[y_i\in S\big]\cdot L_{\mathrm{draft}}(y_i) \quad(\text{Eq.10})\)
     \(\mathbb{I}[\cdot]\) 是指示函数；分母 \(k\cdot|y|\) 把损失对"被选中的 token 数"归一（保留下来约 \(k|y|\) 个）。
 
 ### 2. 数据/训练如何流动（一句话）

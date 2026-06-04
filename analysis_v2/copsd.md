@@ -28,18 +28,12 @@ copsd | Crosslingual On-Policy Self-Distillation for Multilingual Reasoning (COP
 - 关键公式（真实形式 + 直觉）：
   - **OPSD 两策略**（§3.1）：\(p_S(\cdot\mid x)\triangleq p_\theta(\cdot\mid x)\)，\(p_T(\cdot\mid x,y^*)\triangleq p_\theta(\cdot\mid x,y^*)\)——共享参数 \(\theta\)，teacher 多 condition 在特权信息 \(y^*\) 上。
   - **轨迹平均逐 token 散度**（§3.3 / §4.2）：
-    \[
-    D_{\text{COPSD}}(\hat y^{(L)}\mid x^{(L)})=\frac{1}{|\hat y^{(L)}|}\sum_{n=1}^{|\hat y^{(L)}|}D\bigl(p^n_T\,\Vert\,p^n_S\bigr)
-    \]
+    \(\displaystyle D_{\text{COPSD}}(\hat y^{(L)}\mid x^{(L)})=\frac{1}{|\hat y^{(L)}|}\sum_{n=1}^{|\hat y^{(L)}|}D\bigl(p^n_T\,\Vert\,p^n_S\bigr)\)
   - **总目标**（梯度只过 student）：
-    \[
-    \mathcal{L}_{\text{COPSD}}(\theta)=\mathbb{E}_{(x^{(L)},x^{(H)},y^*)\sim D}\;\mathbb{E}_{\hat y^{(L)}\sim p_S(\cdot\mid x^{(L)})}\Bigl[D_{\text{COPSD}}(\hat y^{(L)}\mid x^{(L)})\Bigr]
-    \]
+    \(\displaystyle \mathcal{L}_{\text{COPSD}}(\theta)=\mathbb{E}_{(x^{(L)},x^{(H)},y^*)\sim D}\;\mathbb{E}_{\hat y^{(L)}\sim p_S(\cdot\mid x^{(L)})}\Bigl[D_{\text{COPSD}}(\hat y^{(L)}\mid x^{(L)})\Bigr]\)
     直觉：teacher 看着答案"边讲边纠"，student 在自己走的目标语路径上每步对齐这个更靠谱的分布。
   - **散度的真实实现**（代码核查，generalized JSD，docstring 引 GKD 论文 2306.13649）：用插值系数 \(\beta\)，发布脚本全部取 \(\beta=0\)：
-    \[
-    D=\sum_t \texttt{F.kl\_div}(\log p^t_S,\;\log p^t_T,\;\text{log\_target=True})=\sum_t\sum_v p^t_T(v)\bigl(\log p^t_T(v)-\log p^t_S(v)\bigr)
-    \]
+    \(\displaystyle D=\sum_t \texttt{F.kl\_div}(\log p^t_S,\;\log p^t_T,\;\text{log\_target=True})=\sum_t\sum_v p^t_T(v)\bigl(\log p^t_T(v)-\log p^t_S(v)\bigr)\)
     即 \(D_{KL}(p_T\Vert p_S)\)（teacher 作 target 的 KL）。【待核】论文正文称此为 **"reverse KL"**（§5.3 L698），但按 PyTorch `F.kl_div(input,target)` 约定 \(\beta=0\) 分支以 teacher 为 target、是 GKD 习惯下的"前向/teacher-anchored KL"——命名取决于"以谁为参照"的视角，复现以代码 \(\beta=0\) 分支为准（本次直接核 `multilingual_opsd_trainer.py` L467-468 确认）。
 - 逐组件必要性：
   - **特权英文上下文（\(x^{(H)}+y^*\)）**：核心，teacher 强分布来源；无它退回普通自蒸馏、无跨语言迁移。无单独"\(x^{(H)}\) vs \(y^*\)"消融，但概念上 \(y^*\) 是关键。

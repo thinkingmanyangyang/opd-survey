@@ -21,7 +21,7 @@ dr_grpo | Understanding R1-Zero-Like Training: A Critical Perspective (Dr. GRPO)
 - **核心目标的真实形式 + 直觉**：
   - RL 目标(token 级 MDP,Eq.1):\(\mathcal{J}(\pi_\theta)=\mathbb{E}_{q\sim p_Q}\big[\mathbb{E}_{o\sim\pi_\theta(\cdot\mid q)}[R(q,o)]-\beta D_{\mathrm{KL}}[\pi_\theta(\cdot\mid q)\|\pi_{\mathrm{ref}}(\cdot\mid q)]\big]\),本文全程取 \(\beta=0\)(规则验证器无分布漂移之虞,可去 KL)。
   - PPO 代理(Eq.2):\(\mathcal{J}_{\mathrm{PPO}}=\mathbb{E}\sum_{t=1}^{|o|}\min\big(\tfrac{\pi_\theta(o_t\mid q,o_{<t})}{\pi_{\theta_{\mathrm{old}}}}\hat A_t,\;\mathrm{clip}(\tfrac{\pi_\theta}{\pi_{\theta_{\mathrm{old}}}},1-\epsilon,1+\epsilon)\hat A_t\big)\)。
-  - **GRPO(有偏,Eq.3)**:\[\mathcal{J}_{\mathrm{GRPO}}=\mathbb{E}\,\frac{1}{G}\sum_{i=1}^{G}\frac{1}{|o_i|}\sum_{t=1}^{|o_i|}\min\!\big(\cdots\hat A_{i,t},\,\mathrm{clip}(\cdots)\hat A_{i,t}\big),\quad \hat A_{i,t}=\frac{R(q,o_i)-\mathrm{mean}(\{R(q,o_j)\})}{\mathrm{std}(\{R(q,o_j)\})}.\]
+  - **GRPO(有偏,Eq.3)**:\(\displaystyle \mathcal{J}_{\mathrm{GRPO}}=\mathbb{E}\,\frac{1}{G}\sum_{i=1}^{G}\frac{1}{|o_i|}\sum_{t=1}^{|o_i|}\min\!\big(\cdots\hat A_{i,t},\,\mathrm{clip}(\cdots)\hat A_{i,t}\big),\quad \hat A_{i,t}=\frac{R(q,o_i)-\mathrm{mean}(\{R(q,o_j)\})}{\mathrm{std}(\{R(q,o_j)\})}.\)
   - **Dr. GRPO(无偏,Fig.1 左)**:删掉 \(\tfrac{1}{|o_i|}\) 与 \(\mathrm{std}(\{R\})\),即 \(\hat A_{i,t}=R(q,o_i)-\mathrm{mean}(\{R(q,o_j)\})\),且 loss 用常数 `MAX_TOKENS`(生成预算)归一化。原文证明:这恰好**恢复 PPO 目标 Eq.2**,优势为"蒙特卡洛回报 + 无偏 baseline"(Sutton & Barto)。
   - **偏置分解(Fig.4,核心机制)**:GRPO 的每 token 有效优势 \(a_{i,t}=\tilde A_{i,t}\cdot\tfrac{1}{|o_i|}\cdot\tfrac{1}{\mathrm{std}(R)}\),其中 \(\tilde A_{i,t}=R(q,o_i)-\mathrm{mean}(R)\)。两个偏置:
     - **响应级长度偏置(来自 \(1/|o_i|\))**:正优势(正确)时短响应每 token 梯度被放大→偏好简短正确;**负优势(错误)时长响应因 \(|o_i|\) 大被罚得轻→偏好把错误答案拖长**(overthinking 的优化根源)。

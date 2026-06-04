@@ -20,22 +20,11 @@ dasd | Distribution-Aligned Sequence Distillation for Superior Long-CoT Reasonin
 
 ### 0. 理论锚点:为什么"SFT on teacher data"本身就是蒸馏(Eq.1-5,本文立论基石)
 给输入 \(x\),序列级蒸馏让 student \(p_S\) 在**整条响应**层面逼近 teacher \(p_T\)【原文 §2, Eq.1-5】:
-\[
-\min_{\theta}\;D_{\mathrm{KL}}\!\big(p_T(y\in\mathcal Y\mid x)\,\|\,p_S(y\in\mathcal Y\mid x)\big),\qquad \mathcal Y=\text{teacher 对 }x\text{ 所有可能响应}
-\tag{1}
-\]
+\(\displaystyle \min_{\theta}\;D_{\mathrm{KL}}\!\big(p_T(y\in\mathcal Y\mid x)\,\|\,p_S(y\in\mathcal Y\mid x)\big),\qquad \mathcal Y=\text{teacher 对 }x\text{ 所有可能响应} \tag{1}\)
 展开 KL 并丢掉与 \(\theta\) 无关的常数项 \(p_T\log p_T\):
-\[
-\mathcal L_{\mathrm{SEQ}}=\sum_{y\in\mathcal Y}p_T(y\mid x)\big[\log p_T(y\mid x)-\log p_S(y\mid x)\big]
-\;\;\longrightarrow\;\;
-\mathcal L_{\mathrm{SEQ}}=-\sum_{y\in\mathcal Y}p_T(y\mid x)\log p_S(y\mid x)
-\tag{2,3}
-\]
+\(\displaystyle \mathcal L_{\mathrm{SEQ}}=\sum_{y\in\mathcal Y}p_T(y\mid x)\big[\log p_T(y\mid x)-\log p_S(y\mid x)\big] \;\;\longrightarrow\;\; \mathcal L_{\mathrm{SEQ}}=-\sum_{y\in\mathcal Y}p_T(y\mid x)\log p_S(y\mid x) \tag{2,3}\)
 \(\mathcal Y\) 指数大、不可枚举,故用**采样响应 \(\hat y\) 的点质量**近似 teacher 分布:
-\[
-p_T(y\mid x)\approx \mathbf 1\{y=\hat y\}\;\Longrightarrow\;\mathcal L_{\mathrm{SEQ}}\sim-\sum_{y\in\mathcal Y}\mathbf 1\{y=\hat y\}\log p_S(y\mid x)=-\log p_S(\hat y\mid x)
-\tag{4,5}
-\]
+\(\displaystyle p_T(y\mid x)\approx \mathbf 1\{y=\hat y\}\;\Longrightarrow\;\mathcal L_{\mathrm{SEQ}}\sim-\sum_{y\in\mathcal Y}\mathbf 1\{y=\hat y\}\log p_S(y\mid x)=-\log p_S(\hat y\mid x) \tag{4,5}\)
 Eq.5 **正好就是 teacher 数据上的标准 SFT loss**——这一步是全文的"立论"：它解释了为何"SFT on teacher 数据"有效(本质是用单样本点质量近似 teacher 序列分布),也直接推出"**怎么选 \(\hat y\)(采样策略)决定了对 \(p_T\) 的近似质量**"——这是温度调度与 DAS 的出发点。Kim&Rush 用 beam search 取 \(\hat y\)≈众数,近期工作用随机采样;两者都只覆盖 \(p_T\) 的窄子集。
 
 ### 1. 温度调度学习(Temperature-scheduled Learning,补"覆盖不足")

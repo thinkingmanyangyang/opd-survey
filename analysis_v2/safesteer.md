@@ -20,15 +20,15 @@ safesteer | SafeSteer: Localized On-Policy Distillation for Efficient Safety Ali
 ## 怎么做 + 靠不靠谱
 - **方法流水线(输入→输出,逐模块)**:
   1. **构造 steering 安全 teacher \(\pi_t\)**(§3.1):按 Arditi 2024,用 160 条有害 + 160 条无害指令对比隐表征,提取 refusal direction \(d\in\mathbb{R}^{d_{\mathrm{model}}}\) 与注入层 \(\ell\);在 \(\ell\) 注册 forward pre-hook,把进入第 \(\ell\) 块的残差流 \(h_\ell\) 替换为
-     \[h^\star_\ell=h_\ell+d,\]
+     \(\displaystyle h^\star_\ell=h_\ell+d,\)
      对**所有 token 位**持续注入 → \(\pi_t\) 对有害无害都**稳定拒答**(设计上会 over-refuse)。**输出**:免训练的稳定拒答 teacher。
   2. **挑稀疏安全 token 子集 \(S\)**(§3.3):在 harmless 指令(Alpaca,160 条)上用 \(\pi_t\) 采 \(N\) 条拒答轨迹(每条长度 \(\le H\));对第 \(n\) 条轨迹的每个有效 step \(j\)、每个 token \(v\in V\),算 teacher vs base 的**对比 log 概率**
-     \[\Delta^{(x,n)}_j(v)=\log\frac{p_t(v\mid x,r^{(n)}_{<j})}{p_0(v\mid x,r^{(n)}_{<j})};\]
+     \(\displaystyle \Delta^{(x,n)}_j(v)=\log\frac{p_t(v\mid x,r^{(n)}_{<j})}{p_0(v\mid x,r^{(n)}_{<j})};\)
      每位置取 top-\(K'\) 入候选集 \(C^{(x,n)}_j\),跨 harmless 数据 / \(N\) 轨迹 / 各 step 做**投票聚合**
-     \[\mathrm{vote}(v)=\sum_{x\in D_{\mathrm{harmless}}}\sum_{n=1}^{N}\sum_{j=1}^{H_{x,n}}\mathbb{1}\big[v\in C^{(x,n)}_j\big],\qquad S=\arg\max_{S'\subset V,\,|S'|=K}\sum_{v\in S'}\mathrm{vote}(v).\]
+     \(\displaystyle \mathrm{vote}(v)=\sum_{x\in D_{\mathrm{harmless}}}\sum_{n=1}^{N}\sum_{j=1}^{H_{x,n}}\mathbb{1}\big[v\in C^{(x,n)}_j\big],\qquad S=\arg\max_{S'\subset V,\,|S'|=K}\sum_{v\in S'}\mathrm{vote}(v).\)
      取 \(|S|=50\)。**输出**:离线固定的 50 个安全 token。**为何投票而非单点最大 \(\Delta\)**:离散投票 + 多 rollout 防极端 \(\Delta\) 主导排序。
   3. **token-localized reverse-KL OPD**(§3.4):student \(\pi_s\) 在有害指令(PKU-SafeRLHF,**仅 100 条**)上 on-policy 采 \(M=8\) 条响应 \(\{y^{(m)}\}\);标准 OPD 在全词表算 \(L^{(m)}_t(\theta_s)=\sum_{v\in V}p_s(v)\log\frac{p_s(v)}{p_t(v)}\)(Eq.5),SafeSteer **只对 \(S\) 求和**:
-     \[L^{(m)}_t(\theta_s)=\sum_{v\in S}p_s(v)\log\frac{p_s(v)}{p_t(v)},\qquad L(\theta_s)=\mathbb{E}_{b,m}\Big[\frac{1}{T^{(b,m)}}\sum_{t=1}^{T^{(b,m)}}L^{(b,m)}_t(\theta_s)\Big].\]
+     \(\displaystyle L^{(m)}_t(\theta_s)=\sum_{v\in S}p_s(v)\log\frac{p_s(v)}{p_t(v)},\qquad L(\theta_s)=\mathbb{E}_{b,m}\Big[\frac{1}{T^{(b,m)}}\sum_{t=1}^{T^{(b,m)}}L^{(b,m)}_t(\theta_s)\Big].\)
      即按有效步平均、对 batch 与 \(M\) rollout 取期望。**输出**:只在安全 token 上更新过的学生 \(\pi_s\)。
 - **逐组件必要性(基于真实消融)**:
   - **steering teacher(Eq.1)vs system-prompt teacher**:Table 3 证 steering teacher 把平均 ASR 压到近 0.00%,而 prompt-based 版本 ASR 显著更高——prompt 难维持稳定拒答,steering 在表征空间直接诱发拒答更稳。【原文】§4.3、Table 3

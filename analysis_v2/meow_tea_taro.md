@@ -23,9 +23,7 @@ meow_tea_taro | A Practitioner's Guide to Multi-turn Agentic Reinforcement Learn
   - 多轮 agentic 任务建为 \((S,A,T,R,\Omega,O,\gamma)\):隐状态 \(s_t\in S\)、动作 \(a_t\in A\)、文本观测 \(o_t\in\Omega\)(\(o_t\) 是 \(s_t\) 的部分描述);转移 \(T:S\times A\to S\) 设为确定性;标量奖励 \(r_t=R(s_t,a_t)\);目标最大化 \(\mathbb{E}\big[\sum_t \gamma^t r_t\big]\)。
   - 轨迹历史 \(h_t=(u,s_0,a_0,s_1,a_1,\dots,s_t)\)(\(u\)=任务 prompt);LLM 策略 \(\pi_\theta\) 采**动作 token 序列** \(a_t\sim\pi_\theta(\cdot|h_t)\),其中 \(a_t=(a_t^1,\dots,a_t^{n_t},a_t^{\text{eos}})\),每 token \(a_t^i\) 按 \(\pi_\theta(\cdot|h_t,a_t^{<i})\) 生成。
   - **奖励挂命令边界**:环境只在命令完成(`<eos>` token)时执行并给奖励,故 per-token 奖励
-  \[
-  r_t^i=\begin{cases}r_t & \text{if }a_t^i=\texttt{<eos>}\\ 0 & \text{otherwise.}\end{cases}
-  \]
+  \(\displaystyle r_t^i=\begin{cases}r_t & \text{if }a_t^i=\texttt{<eos>}\\ 0 & \text{otherwise.}\end{cases}\)
   并**mask 掉所有状态 token**,只让 action token 进 loss。
   - 直觉:把稀疏的"轮级奖励"精确锚在 `<eos>`,再由 PPO 的 value/GAE 把它 bootstrap 回该轮每个 action token——这是 PPO 在多轮稳健的根因;无偏 RLOO 没有 value 自举,故更不稳/样本效率低。
 - 方法流水线(消融即贡献):① POMDP 形式化(上)→ ② 在 TextWorld(可控 \(w\)/\(o\)/\(q\) 复杂度)/ALFWorld(6 类家务)/SWE-Gym(5 类真实仓库任务)上,分别消融:**环境**(复杂度 §5.1、简→繁泛化 §5.2、任务多样性 §5.3、探索预算 §5.1 末)、**策略**(SFT 先验与 SFT:RL 配比 §6.1、PPO vs RLOO vs GRPO vs REINFORCE++ §6.2)、**奖励**(稠密度 §7.1、验证 vs 模型评判 §7.2)→ ③ 汇成配方(§8)。基座 Qwen2.5-1.5B/7B-Instruct、Qwen3-8B,8×H100;rollout 温度 0.7;关键:agent 须**从观测自己生成可执行 NL 命令**(不给 admissible-action 列表,逼真探索)。

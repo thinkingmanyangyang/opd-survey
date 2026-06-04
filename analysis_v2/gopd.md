@@ -30,35 +30,25 @@ gopd | Learning beyond Teacher: Generalized On-Policy Distillation with Reward E
 2. **选 πref**：① 多 teacher 合并→base：πref **自然=原 base**，此时 reward=log(π*/π_base) 恰是式10 的「良定义隐式奖励」；② 强弱蒸馏默认：πref=**学生 base** πstudent_base（只需 π* 与学生 base 两个模型）；③ 强弱蒸馏 + reward correction：πref=**teacher 的 pre-RL base** πteacher_base（需额外持有该模型）。
 3. **on-policy 采样**：学生自采轨迹 y~πθ(·|x)（temperature 1.0, top-p 1.0, max_response 16384；math 每题 32 解、code 每题 4 解用于评测）。训练中对 GRPO 与 G-OPD 都做 **token-level rollout correction**（Liu 2025b "When speed kills stability"）以缓解 train-inference mismatch。
 4. **逐 token 算 G-OPD advantage**（式14，承重公式）：
-   \[
-   A_t^{\text{G-OPD}}=\big[\log\pi_\theta(y_t\mid x,y_{<t})-\log\pi^*(y_t\mid x,y_{<t})\big]+(\lambda-1)\big[\log\pi_{\text{ref}}(y_t\mid x,y_{<t})-\log\pi^*(y_t\mid x,y_{<t})\big].
-   \]
+   \(\displaystyle A_t^{\text{G-OPD}}=\big[\log\pi_\theta(y_t\mid x,y_{<t})-\log\pi^*(y_t\mid x,y_{<t})\big]+(\lambda-1)\big[\log\pi_{\text{ref}}(y_t\mid x,y_{<t})-\log\pi^*(y_t\mid x,y_{<t})\big].\)
    直觉：第一项=原 OPD 的 token 级 advantage（学生 log-prob 减 teacher log-prob 的负向偏离）；第二项=外推位移，把目标从「对齐 teacher」推到「teacher 之外 (λ−1)·(teacher−ref) 方向」。λ=1 时第二项消失。
 5. **policy gradient 更新**（式13/14 的梯度形式）：
-   \[
-   \nabla_\theta J_{\text{G-OPD}}(\theta)=\mathbb{E}_{x\sim D,\,y\sim\pi_\theta(\cdot\mid x)}\Big[\textstyle\sum_{t=1}^{T}A_t^{\text{G-OPD}}\,\nabla_\theta\log\pi_\theta(y_t\mid x,y_{<t})\Big].
-   \]
+   \(\displaystyle \nabla_\theta J_{\text{G-OPD}}(\theta)=\mathbb{E}_{x\sim D,\,y\sim\pi_\theta(\cdot\mid x)}\Big[\textstyle\sum_{t=1}^{T}A_t^{\text{G-OPD}}\,\nabla_\theta\log\pi_\theta(y_t\mid x,y_{<t})\Big].\)
    在 veRL 实现里：开关 `only_reverse_kl_advantages=True`、传 `lambda_vals=λ`。**注**：discount factor=0（只看 next-token 优化，沿用 Lu & Lab 2025 / Xiao 2026），即式5 的双重求和被近似为式6 的单 token 形式。
 
 ### 关键算法/损失的真实形式 + 直觉（全部从 §3.2 抄准）
 - **OPD 目标（出发点，式4）**：\(J_{\text{OPD}}(\theta)=\min_\theta \mathbb{E}_{x\sim D,\,y\sim\pi_\theta(\cdot\mid x)}\big[D_{\mathrm{KL}}(\pi_\theta(y\mid x)\,\|\,\pi^*(y\mid x))\big]\)。注意 y 由学生自采 ⇒ on-policy；用 **reverse KL**（学生在前、teacher 在后）。
 - **核心恒等变形（式7，全篇支点）**：引入第三方 πref，把 reverse KL 拆成「隐式奖励 − KL-to-ref」：
-  \[
-  J_{\text{OPD}}(\theta)=\max_\theta \mathbb{E}\Big[\underbrace{\log\tfrac{\pi^*(y\mid x)}{\pi_{\text{ref}}(y\mid x)}}_{r(x,y)}-D_{\mathrm{KL}}\big(\pi_\theta(y\mid x)\,\|\,\pi_{\text{ref}}(y\mid x)\big)\Big].
-  \]
+  \(\displaystyle J_{\text{OPD}}(\theta)=\max_\theta \mathbb{E}\Big[\underbrace{\log\tfrac{\pi^*(y\mid x)}{\pi_{\text{ref}}(y\mid x)}}_{r(x,y)}-D_{\mathrm{KL}}\big(\pi_\theta(y\mid x)\,\|\,\pi_{\text{ref}}(y\mid x)\big)\Big].\)
   **Remark**：这正是式2 的 KL-约束 RL，其中 reward \(r=\log(\pi^*/\pi_{\text{ref}})\)、KL 在 πθ 与 πref 之间、且 reward:KL **永远 1:1（β=1）**。πref 任选不影响化简回式4（因 log πref 项在两处抵消）。
 - **token 级隐式奖励（式9）**：\(r_t^{\text{OPD}}=\log\dfrac{\pi^*(y_t\mid x,y_{<t})}{\pi_{\text{ref}}(y_t\mid x,y_{<t})}\)，与 DPO 隐式奖励（式10：\(r=\beta\log\tfrac{\pi_\theta}{\pi_{\text{ref}}}+\beta\log Z(x)\)）同形——log Z(x) 只依赖 x 故 log-ratio 是真奖励的良定义代理。对比 RL 的稀疏奖励（式8：仅末 token 有 outcome reward，其余为 0），OPD 是 **dense 每 token 有奖励**。
 - **G-OPD 目标（式11，加 λ）**：\(J_{\text{G-OPD}}(\theta)=\max_\theta \mathbb{E}\big[\lambda\log\tfrac{\pi^*(y\mid x)}{\pi_{\text{ref}}(y\mid x)}-D_{\mathrm{KL}}(\pi_\theta\,\|\,\pi_{\text{ref}})\big]\)，其中 \(\lambda=1/\beta\)。
 - **最优解（式12，解释插值/外推的关键）**：
-  \[
-  \log\pi_\theta(y\mid x)=\lambda\log\pi^*(y\mid x)+(1-\lambda)\log\pi_{\text{ref}}(y\mid x)=\log\pi^*(y\mid x)+(\lambda-1)\big(\log\pi^*(y\mid x)-\log\pi_{\text{ref}}(y\mid x)\big).
-  \]
+  \(\displaystyle \log\pi_\theta(y\mid x)=\lambda\log\pi^*(y\mid x)+(1-\lambda)\log\pi_{\text{ref}}(y\mid x)=\log\pi^*(y\mid x)+(\lambda-1)\big(\log\pi^*(y\mid x)-\log\pi_{\text{ref}}(y\mid x)\big).\)
   - \(0<\lambda<1\)（**reward interpolation**）：学生 log-prob = teacher 与 ref 的**线性插值**；等价于把 reward 换成 λ·r+(1−λ)·0。学生行为（精度、长度）落在 base 与 teacher 之间且随 λ 单调逼近 teacher → 可做 **budget-controlled reasoning**（图2/3/4）。
   - \(\lambda>1\)（**reward extrapolation = ExOPD**）：在匹配 teacher 之外**额外加位移** (λ−1)(log π*−log πref)，把学生推到 teacher 分布之外。
 - **reward correction 的等价改写（式13，强弱蒸馏关键）**：
-  \[
-  J_{\text{G-OPD}}(\theta)=\max_\theta \mathbb{E}\Big[(\lambda-1)\log\tfrac{\pi^*(y\mid x)}{\pi_{\text{ref}}(y\mid x)}-D_{\mathrm{KL}}\big(\pi_\theta\,\|\,\pi^*\big)\Big].
-  \]
+  \(\displaystyle J_{\text{G-OPD}}(\theta)=\max_\theta \mathbb{E}\Big[(\lambda-1)\log\tfrac{\pi^*(y\mid x)}{\pi_{\text{ref}}(y\mid x)}-D_{\mathrm{KL}}\big(\pi_\theta\,\|\,\pi^*\big)\Big].\)
   在同等 KL 强度下，选 \(\pi_{\text{ref}}=\pi^{\text{teacher}}_{\text{base}}\) 更合理：reward \(\log(\pi^*/\pi^{\text{teacher}}_{\text{base}})\) 恰是 teacher 自身 RL 后训练诱导的**良定义隐式奖励**（按式10）；而 \(\log(\pi^*/\pi^{\text{student}}_{\text{base}})\) 因师生 base 间存在**内在知识/容量鸿沟**而更 noisy。做法：给默认 reward 加上修正项 \(\log(\pi^{\text{student}}_{\text{base}}/\pi^{\text{teacher}}_{\text{base}})\) 即得校正后 reward。代价：需 πteacher_base + 算更大 ref 的 logprob。
 
 ### 逐组件必要性（消融与失效边界）

@@ -26,30 +26,22 @@ gigpo | Group-in-Group Policy Optimization for LLM Agent Training (GiGPO) | 南�
 ### 1. Episode 级（宏观，§4.1）
 - 总回报 \(R(\tau_i)=\sum_t r^{(i)}_t\)（二值终局奖励时即 0/1）。组成 episode 组 \(G_E=\{(\tau_i,R(\tau_i))\}_{i=1}^N\)（Eq.2）。
 - **episode 相对优势**（Eq.3）：
-\[
-A_E(\tau_i)=\frac{R(\tau_i)-\mathrm{mean}\{R(\tau_j)\}_{j=1}^N}{F_{\text{norm}}\{R(\tau_j)\}_{j=1}^N}.
-\]
+\(\displaystyle A_E(\tau_i)=\frac{R(\tau_i)-\mathrm{mean}\{R(\tau_j)\}_{j=1}^N}{F_{\text{norm}}\{R(\tau_j)\}_{j=1}^N}.\)
 \(F_{\text{norm}}=\text{std}\)（默认，同 GRPO）或 \(F_{\text{norm}}=1\)（给无偏 Leave-One-Out 估计、缓解 difficulty bias，难任务更稳）。
 
 ### 2. Step 级（微观，anchor state grouping，§4.2）
 - 令 \(\mathcal{U}=\{\tilde s_1,\dots,\tilde s_U\}\) 为轨迹组里出现的所有**不同**环境状态。每个 \(\tilde s\) 当 anchor，用 hashmap 把所有"状态恰为 \(\tilde s\)"的 (动作,奖励) 聚成 step 组（Eq.4）：
-\[
-G_S(\tilde s)=\big\{(a^{(i)}_t,r^{(i)}_t)\ \big|\ s^{(i)}_t=\tilde s,\ 1\le i\le N,\ 1\le t\le T\big\}.
-\]
+\(\displaystyle G_S(\tilde s)=\big\{(a^{(i)}_t,r^{(i)}_t)\ \big|\ s^{(i)}_t=\tilde s,\ 1\le i\le N,\ 1\le t\le T\big\}.\)
 **零额外 rollout、纯离线、只做 hashmap key 聚合。**
 - **折扣回报**（Eq.5，把稀疏即时奖励变成捕捉长期影响的信号）：\(R^{(i)}_t=\sum_{k=t}^{T}\gamma^{k-t}r^{(i)}_k\)，\(\gamma\in(0,1]\)；组更新为 \(G_S(\tilde s)=\{(a^{(i)}_t,R^{(i)}_t)\mid s^{(i)}_t=\tilde s\}\)（Eq.6）。
 - **step 相对优势**（Eq.7，对同 anchor 状态下的动作组内归一）：
-\[
-A_S(a^{(i)}_t)=\frac{R^{(i)}_t-\mathrm{mean}\{R^{(j)}_t\mid (a^{(j)}_t,R^{(j)}_t)\in G_S(\tilde s)\}}{F_{\text{norm}}\{R^{(j)}_t\mid \cdots\in G_S(\tilde s)\}}.
-\]
+\(\displaystyle A_S(a^{(i)}_t)=\frac{R^{(i)}_t-\mathrm{mean}\{R^{(j)}_t\mid (a^{(j)}_t,R^{(j)}_t)\in G_S(\tilde s)\}}{F_{\text{norm}}\{R^{(j)}_t\mid \cdots\in G_S(\tilde s)\}}.\)
 - **直觉（Fig.3，WebShop）**：同一搜索结果页(anchor)下，τ1 先点"2nd Item"(错)→返回→点"1st Item"(对)成功，τ2 点"Next Page"失败；因时间折扣，早期次优动作折扣回报更低，于是组内得到清晰排序 \(A_S(\text{1st Item})>A_S(\text{2nd Item})>A_S(\text{Next Page})\)——这正是 episode 级单一 advantage 给不出的细粒度信用。
 
 ### 3. 合并 + 优化目标（§4.3）
 - **group-in-group 优势**（Eq.8）：\(A(a^{(i)}_t)=A_E(\tau_i)+\omega\cdot A_S(a^{(i)}_t)\)，\(\omega\ge0\) 平衡两级（默认 **\(\omega=1\) 不调**）。
 - **clipped 目标**（Eq.9）：
-\[
-J_{\text{GiGPO}}(\theta)=\mathbb{E}\Big[\tfrac{1}{NT}\textstyle\sum_{i,t}\min\big(\rho_\theta(a^{(i)}_t)A(a^{(i)}_t),\ \mathrm{clip}(\rho_\theta(a^{(i)}_t),1\pm\epsilon)A(a^{(i)}_t)\big)\Big]-\beta D_{\text{KL}}\big(\pi_\theta(\cdot\mid x)\Vert\pi_{\text{ref}}(\cdot\mid x)\big),
-\]
+\(\displaystyle J_{\text{GiGPO}}(\theta)=\mathbb{E}\Big[\tfrac{1}{NT}\textstyle\sum_{i,t}\min\big(\rho_\theta(a^{(i)}_t)A(a^{(i)}_t),\ \mathrm{clip}(\rho_\theta(a^{(i)}_t),1\pm\epsilon)A(a^{(i)}_t)\big)\Big]-\beta D_{\text{KL}}\big(\pi_\theta(\cdot\mid x)\Vert\pi_{\text{ref}}(\cdot\mid x)\big),\)
 其中 \(\rho_\theta(a^{(i)}_t)=\dfrac{\pi_\theta(a^{(i)}_t\mid s^{(i)}_t,x)}{\pi_{\theta_{\text{old}}}(a^{(i)}_t\mid s^{(i)}_t,x)}\) 为重要性比，\(\beta\) 控 KL 向 ref 正则。
 - **similarity-based 变体**：状态难精确匹配时（如 QA），用最长匹配子序列相似度 >0.9 判同状态。
 

@@ -27,9 +27,7 @@ magistral | Magistral(Mistral 首个推理模型与自建可扩展 RLVR 流水�
   - **Clip-Higher(放宽上界)**:把上裁阈值升到 \(\varepsilon_{\text{high}}\),给低概率 token 增长空间、提熵促探索(核心);\(\varepsilon_{\text{high}}\) 调在 0.26-0.28 以稳住 group entropy。
   - **过滤零优势组**:全对/全错组优势为 0、无梯度且噪声敏感 → 组 batch 时剔除。
   - 最终改造后 loss(§2.1,把红色修改全合进来):
-  \[
-  J_{\text{GRPO}}(\theta)=\mathbb{E}_{q,\{o_i\}}\!\left[\frac{1}{\sum_{i=1}^{G}|o_i|}\sum_{i=1}^{G}\sum_{t=1}^{|o_i|}\min\!\Big(r_{i,t}\hat A_{i,t}^{\text{norm}},\ \mathrm{clip}(r_{i,t},1-\varepsilon_{\text{low}},1+\varepsilon_{\text{high}})\,\hat A_{i,t}^{\text{norm}}\Big)\right],
-  \]
+  \(\displaystyle J_{\text{GRPO}}(\theta)=\mathbb{E}_{q,\{o_i\}}\!\left[\frac{1}{\sum_{i=1}^{G}|o_i|}\sum_{i=1}^{G}\sum_{t=1}^{|o_i|}\min\!\Big(r_{i,t}\hat A_{i,t}^{\text{norm}},\ \mathrm{clip}(r_{i,t},1-\varepsilon_{\text{low}},1+\varepsilon_{\text{high}})\,\hat A_{i,t}^{\text{norm}}\Big)\right],\)
   约束 \(\ \text{s.t. }\exists\,1\le m<n\le G,\ r_m\neq r_n\)(即只保留"组内有奖励差异"的非平凡组)。注意:相对标准 GRPO,这里**没有 KL 项**、上下裁剪不对称(\(\varepsilon_{\text{low}}\) vs \(\varepsilon_{\text{high}}\))、优势用 minibatch 归一版。
 - 四维奖励整形(§2.2,真实数值):
   - **格式**(§2.2.1):必须含 `<think></think>` 且答案段有 `\boxed{}`(代码题为代码块),任一条件不满足 → reward \(=0\) 且不再评分;满足得 **0.1** 进入评分。

@@ -21,9 +21,9 @@ rethink_opd | Rethinking On-Policy Distillation of Large Language Models: Phenom
 
 ### A. OPD 的三种监督粒度(数据流动 + 显存代价)
 统一目标=**学生自采轨迹上的序列级 reverse-KL**:给 prompt \(x\sim\mathcal D_x\),学生 autoregressive 采样 \(\hat y=(\hat y_1,\dots,\hat y_T)\sim\pi_\theta(\cdot\mid x)\);在学生生成的前缀 \(\hat y_{<t}\) 上同时取学生/teacher 的下一 token 分布 \(p_t(v)\triangleq\pi_\theta(v\mid x,\hat y_{<t})\)、\(q_t(v)\triangleq\pi_T(v\mid x,\hat y_{<t})\)。序列目标
-\[\mathcal L_{\text{OPD}}(\theta)=\mathbb E_{x\sim\mathcal D_x}\big[D_{\mathrm{KL}}\!\big(\pi_\theta(\cdot\mid x)\,\Vert\,\pi_T(\cdot\mid x)\big)\big],\]
+\(\displaystyle \mathcal L_{\text{OPD}}(\theta)=\mathbb E_{x\sim\mathcal D_x}\big[D_{\mathrm{KL}}\!\big(\pi_\theta(\cdot\mid x)\,\Vert\,\pi_T(\cdot\mid x)\big)\big],\)
 按 autoregressive 因子分解为逐 token 之和(注意 KL 方向是 \(p\Vert q\) = reverse-KL):
-\[\mathcal L_{\text{OPD}}(\theta)=\mathbb E_{x\sim\mathcal D_x,\ \hat y\sim\pi_\theta(\cdot\mid x)}\Big[\textstyle\sum_{t=1}^{T}D_{\mathrm{KL}}(p_t\Vert q_t)\Big].\]
+\(\displaystyle \mathcal L_{\text{OPD}}(\theta)=\mathbb E_{x\sim\mathcal D_x,\ \hat y\sim\pi_\theta(\cdot\mid x)}\Big[\textstyle\sum_{t=1}^{T}D_{\mathrm{KL}}(p_t\Vert q_t)\Big].\)
 三种实现只差"每个位置评多少 token"(输入都是同一批学生 rollout,输出都是回传给 \(\theta\) 的梯度):
 1. **Sampled-token OPD(最常用、最轻)**:只评学生实际采到的那个 token \(\hat y_t\sim p_t\),逐 token 损失 \(\ell^{\text{sample}}_t\triangleq\log p_t(\hat y_t)-\log q_t(\hat y_t)\)。因 \(\mathbb E_{\hat y_t\sim p_t}[\ell^{\text{sample}}_t]=D_{\mathrm{KL}}(p_t\Vert q_t)\),它是逐 token reverse-KL 的**无偏单样本估计**;每位置只查 teacher 1 个 log-prob,代价最低。Thinking Machines blog/MiMo/Yang2026b 都用这个。【§2.2 式3】
 2. **Full-vocabulary OPD**:每个前缀算全词表 KL,梯度最稠密,但显存 \(O(BTM)\)(\(B\) batch、\(T\) 序列长、\(M=|\mathcal V|\) 词表)——大词表下昂贵。【§2.2 式4】

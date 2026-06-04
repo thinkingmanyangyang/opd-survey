@@ -29,19 +29,19 @@ opsa | Reducing the Safety Tax in LLM Safety Alignment with On-Policy Self-Disti
   - **对称 KL 混合(α=0.5)**:沿用 nemo-rl on-policy 蒸馏默认,**非纯 forward KL**(注:与原 OPSD 主实验的 forward KL 不同),无单独消融。【原文】§4 实现段
 - 关键机制/公式(真实符号,从 PDF 抄准 + 直觉):
   - **SFT 基线目标**(Eq.1,本文要超越的对象——全序列均匀求和,无位置/词汇加权):
-    \[ L_{\mathrm{SFT}}(\theta)=-\!\!\sum_{(q,y)\in D_{\mathrm{SFT}}}\sum_{t=1}^{|y|}\log p_\theta(y_t\mid q,y_{<t}),\qquad D_{\mathrm{SFT}}=(Q_h,Y_h)\cup(Q_b,Y_b). \]
+    \(\displaystyle L_{\mathrm{SFT}}(\theta)=-\!\!\sum_{(q,y)\in D_{\mathrm{SFT}}}\sum_{t=1}^{|y|}\log p_\theta(y_t\mid q,y_{<t}),\qquad D_{\mathrm{SFT}}=(Q_h,Y_h)\cup(Q_b,Y_b).\)
   - **OPSA 核心目标**(Eq.2,harmful/benign 双分支共一逐 token KL,梯度只过学生):
-    \[ \begin{aligned} L_{\mathrm{OPSA}}(\theta)=\;&\sum_{q_h\in Q_h}\mathbb{E}_{y\sim p_\theta(\cdot|q_h)}\sum_{t=1}^{|y|} D_{\mathrm{KL}}\!\big(p_{\bar\theta}(\cdot\mid c^\star_h,q_h,y_{<t})\,\|\,p_\theta(\cdot\mid q_h,y_{<t})\big)\\ +\;&\sum_{q_b\in Q_b}\mathbb{E}_{y\sim p_\theta(\cdot|q_b)}\sum_{t=1}^{|y|} D_{\mathrm{KL}}\!\big(p_{\bar\theta}(\cdot\mid c^\star_b,q_b,y_{<t})\,\|\,p_\theta(\cdot\mid q_b,y_{<t})\big). \end{aligned} \]
+    \(\displaystyle \begin{aligned} L_{\mathrm{OPSA}}(\theta)=\;&\sum_{q_h\in Q_h}\mathbb{E}_{y\sim p_\theta(\cdot|q_h)}\sum_{t=1}^{|y|} D_{\mathrm{KL}}\!\big(p_{\bar\theta}(\cdot\mid c^\star_h,q_h,y_{<t})\,\|\,p_\theta(\cdot\mid q_h,y_{<t})\big)\\ +\;&\sum_{q_b\in Q_b}\mathbb{E}_{y\sim p_\theta(\cdot|q_b)}\sum_{t=1}^{|y|} D_{\mathrm{KL}}\!\big(p_{\bar\theta}(\cdot\mid c^\star_b,q_b,y_{<t})\,\|\,p_\theta(\cdot\mid q_b,y_{<t})\big). \end{aligned}\)
     其中 \(p_{\bar\theta}\) 是学生的 frozen 副本,\(c^\star_h/c^\star_b\) 是只给 teacher 的特权上下文;\(y_{<t}\) 来自学生自采 rollout。
   - **safety 纠正强度度量**(Eq.3,只在 safety-critical token 集 \(S\) 上累 KL):
-    \[ \Delta_{\mathrm{safety}}(c^\star;q,y)=\sum_{t=1}^{|y|}\mathbf{1}[y_t\in S]\;D_{\mathrm{KL}}\!\big(p_{\bar\theta}(\cdot\mid c^\star,q,y_{<t})\,\|\,p_\theta(\cdot\mid q,y_{<t})\big). \]
+    \(\displaystyle \Delta_{\mathrm{safety}}(c^\star;q,y)=\sum_{t=1}^{|y|}\mathbf{1}[y_t\in S]\;D_{\mathrm{KL}}\!\big(p_{\bar\theta}(\cdot\mid c^\star,q,y_{<t})\,\|\,p_\theta(\cdot\mid q,y_{<t})\big).\)
     直觉:好的特权上下文必须"恰在 comply-or-refuse 决策处"制造师生行为差。
   - **teacher flip rate(TFR,Eq.4——\(\Delta_{\mathrm{safety}}\) 的可计算训练前代理)**:
-    \[ \mathrm{TFR}(c)=\frac{1}{|Q_h|}\sum_i \mathbf{1}\!\Big[f_{\bar\theta}(q^{(i)}_h)\in Y_{\mathrm{unsafe}}\;\wedge\;f_{\bar\theta}(c,q^{(i)}_h)\in Y_{\mathrm{safe}}\Big], \]
+    \(\displaystyle \mathrm{TFR}(c)=\frac{1}{|Q_h|}\sum_i \mathbf{1}\!\Big[f_{\bar\theta}(q^{(i)}_h)\in Y_{\mathrm{unsafe}}\;\wedge\;f_{\bar\theta}(c,q^{(i)}_h)\in Y_{\mathrm{safe}}\Big],\)
     \(f_{\bar\theta}(\cdot)\) 为 frozen teacher 的贪婪解码;即"加 \(c\) 后把贪婪解从 unsafe 翻成 safe"的比例。
   - **上下文选择**(Eq.5):\(c^\star=\arg\max_{c\in C}\mathrm{TFR}(c)\),\(C\) 是 \(K=30\) 个沿五轴生成的候选池。
   - **复合安全分**(Eq.6,五项率均值取补):
-    \[ S=1-\tfrac{1}{5}\big[\text{HarmBench}+\text{StrongReject}+\text{WildJailbreak}+\text{XSTest}+\text{WildBenign}\big],\quad S\in[0,1]. \]
+    \(\displaystyle S=1-\tfrac{1}{5}\big[\text{HarmBench}+\text{StrongReject}+\text{WildJailbreak}+\text{XSTest}+\text{WildBenign}\big],\quad S\in[0,1].\)
   直觉总览:逐 token KL 天然让"师生已一致的位置贡献小梯度",优化自动聚焦到师生发散的少数关键 token(早期 refusal 窗口),这就是"减少安全税=减少对无关能力破坏"的机制根。【原文】Eq.(1)(2)(3)(4)(5)(6)
 - 实验与证据:两推理模型家族×五规模——Qwen3(0.6/1.7/8B)+ R1-Distill(1.5/8B)。prompt 全取 SafeChain(harmful \(D_h\) + benign \(D_b\))。三轴评测:Harmfulness↓(HarmBench/StrongReject/WildJailbreak,Llama-Guard 判)、Over-refusal↓(XSTest safe / WildBenign,WildGuard 判)、Reasoning↑(GSM8K/MATH500/GPQA + HumanEval/MBPP)。关键数字(Table 1,OPSA 相对 ThinkSafe 五配置平均):**安全 +4.00、推理 +3.04**;小模型增益最大——R1-Distill-1.5B 复合安全 +8.85、Qwen3-0.6B +5.49。排序 SafeChain<ThinkSafe<OPSA 在复合安全与推理上均成立。自适应越狱(Table 2,HarmBench 4 攻击族,159 behaviors):**Prefilling**(攻击早期 token,正中机制)增益最清晰——Qwen3-1.7B/8B 的 mean ASR 与 pass@N 双双归零;R1-Distill-1.5B Prefilling mean ASR 14.30→3.60。但 20 个 model×attack 格中 OPSA 仅 13/20(mean ASR)、14/20(pass@N)优于 ThinkSafe,PAIR(迭代攻击者-目标-裁判搜索)最难、多处回退。baseline 公平性:ThinkSafe 用 full-param FT(比原 LoRA 更强基线)、同 prompt 源、同超参——较公平。【原文】Table 1+Table 2
 - 假设与失效边界:

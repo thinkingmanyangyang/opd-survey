@@ -24,24 +24,16 @@ icrl | ICRL: Learning to Internalize Self-Critique with Reinforcement Learning |
 - 核心算法/损失(真实形式 + 直觉,符号从 PDF §2.2/§3 抄准):
   - **总目标**(Eq.1):\(\ J(\theta)=\mathbb E_{\tau\sim\pi_\theta}\!\left[r(\tau)\right]\)。
   - **GRPO 组内优势 + clipped 目标**(Eq.2):令 \(\hat A_i=\dfrac{r(\tau_i)-\mathrm{mean}_j\,r(\tau_j)}{\mathrm{std}_j\,r(\tau_j)+\delta}\),重要性比 \(\rho_t(\theta)=\dfrac{\pi_\theta(y_t\mid q,y_{<t})}{\pi_{\theta_{\mathrm{old}}}(y_t\mid q,y_{<t})}\),则
-    \[
-    J_{\mathrm{GRPO}}(\theta)=\mathbb E_{i,t}\!\left[\min\!\Big(\rho_t(\theta)\,\hat A_i,\ \mathrm{clip}\big(\rho_t(\theta),1-\epsilon,1+\epsilon\big)\hat A_i\Big)\right].
-    \]
+    \(\displaystyle J_{\mathrm{GRPO}}(\theta)=\mathbb E_{i,t}\!\left[\min\!\Big(\rho_t(\theta)\,\hat A_i,\ \mathrm{clip}\big(\rho_t(\theta),1-\epsilon,1+\epsilon\big)\hat A_i\Big)\right].\)
   - **utility-based critic 奖励**(Eq.3,直觉=因"实际带来修订成功"而非"听起来合理"而得分):
-    \[
-    r(c_i)=\begin{cases}1, & \text{若 }\tau_{i+1}\text{ 成功},\\[2pt] r(\tau_{i+1})-r(\tau_i), & \text{否则}.\end{cases}
-    \]
+    \(\displaystyle r(c_i)=\begin{cases}1, & \text{若 }\tau_{i+1}\text{ 成功},\\[2pt] r(\tau_{i+1})-r(\tau_i), & \text{否则}.\end{cases}\)
     第二支(时间增量)**只在环境给非二值 dense reward 时非零**,否则退化为 0/1。
   - **核心:token 级分布校准重加权比**(Eq.4,全篇支点)。对一个自改进轮 \((\tau_i,c_i,\tau_{i+1})\),其中 \(\tau_i\sim\pi^S_{\theta_{\mathrm{rollout}}}(\cdot\mid q)\)、\(\tau_{i+1}\sim\pi^S_{\theta_{\mathrm{rollout}}}(\cdot\mid q,c_i)\):
-    \[
-    w_t=\begin{cases}\dfrac{\pi^S_{\theta_{\mathrm{rollout}}}(y_t\mid q,y_{<t})}{\pi^S_{\theta_{\mathrm{rollout}}}(y_t\mid q,c,y_{<t})}, & \text{critique-guided solver token},\\[10pt] 1, & \text{otherwise}.\end{cases}
-    \]
+    \(\displaystyle w_t=\begin{cases}\dfrac{\pi^S_{\theta_{\mathrm{rollout}}}(y_t\mid q,y_{<t})}{\pi^S_{\theta_{\mathrm{rollout}}}(y_t\mid q,c,y_{<t})}, & \text{critique-guided solver token},\\[10pt] 1, & \text{otherwise}.\end{cases}\)
     分子=**去掉 critique** 后该 token 的概率,分母=**有 critique** 时的概率。比值衡量"该 critique-guided token 在无 critique 分布下本就有多 plausible"。
   - **逐角色优势**(Eq.5,治"混合前缀不可比"):对每个 \(q\) 与角色 \(g\in\{S,C\}\),在角色专属组 \(\mathcal G^g(q)\) 内单独算 \(\ \hat A^g_i=\dfrac{r(\tau^g_i)-\mathrm{mean}_j\,r(\tau^g_j)}{\mathrm{std}_j\,r(\tau^g_j)+\delta}\)。
   - **最终多角色目标**(Eq.6):
-    \[
-    J(\theta)=\mathbb E_{\tau,t}\!\left[\min\!\big(w_t,\,w_{\max}\big)\cdot\min\!\Big(\rho_t(\theta)\,\hat A(\tau),\ \mathrm{clip}\big(\rho_t(\theta),1-\epsilon,1+\epsilon\big)\hat A(\tau)\Big)\right],
-    \]
+    \(\displaystyle J(\theta)=\mathbb E_{\tau,t}\!\left[\min\!\big(w_t,\,w_{\max}\big)\cdot\min\!\Big(\rho_t(\theta)\,\hat A(\tau),\ \mathrm{clip}\big(\rho_t(\theta),1-\epsilon,1+\epsilon\big)\hat A(\tau)\Big)\right],\)
     其中**只有 critique-guided 修订 solver token 拿 \(w_t\)**,初解 solver 与 critic token 一律 \(w_t=1\);solver 的 \(\rho_t\) 在**去掉 critique 后**的 \((q,y_{<t})\) 上算,critic 的 \(\rho_t\) 在原 \((q,\tau_i)\) 上算。\(w_{\max}\) 是上界,防止 critique-free 概率远大于 critique-conditioned 时 \(w_t\) 爆炸、界住梯度方差。
 - 模块如何咬合:**solver↔critic 经 session 数据流互锁**(solver 失败产生 critic 输入,critic 输出又改变 solver 修订分布);**Eq.5 与 Eq.4 分工互补**——Eq.5 解决"三类前缀不可同组归一"(横向角色隔离),Eq.4 解决"修订轨迹来自条件分布、迁移到无条件策略有偏"(纵向分布校准);两者都嵌在同一个 Eq.6 里、对同一份 θ 做一次联合策略梯度。
 - 关键超参与默认值:并行 env server 32 个(端口 36001–36032,`env_nums=32`);group size \(G\)、最大轮数 \(K\)、clip \(\epsilon\)、\(w_{\max}\) 为方法超参(具体取值原文正文未列表,以仓内 config 为准〔待核〕);backbone Qwen3-4B/8B。

@@ -34,21 +34,13 @@ spear | SPEAR: Learn the Ropes, Then Trust the Wins — Self-imitation with Prog
   - **总目标(Eq.5)**:\(J_{\text{Total}}(\pi_\theta)=J_{\text{GRPO}}(\pi_\theta)+\gamma\cdot\tilde J^{\text{SIL}}_{\text{GRPO}}(\pi_\theta)\)——on-policy GRPO 主项 + γ 加权的 off-policy SIL 项。
   - **复合奖励(Eq.6/15)**:\(R_i=R^i_{\text{outcome}}+\mu\cdot R^i_{\text{tool-call}}+R^i_{\text{format}}\),outcome 为二值 \(\{+1,-1\}\)(Eq.15),tool-call 正比工具调用轮数(促多轮交互)。
   - **课程 cosine 调度(Appendix A.6,Eq.13/14,本轮新补)**:
-    \[
-    \gamma=\begin{cases}\tfrac12\big(1-\cos(\pi\,\tfrac{t_{\text{iter}}}{T_{\text{warm-up}}})\big),&t_{\text{iter}}\le T_{\text{warm-up}}\\ 1,&t_{\text{iter}}>T_{\text{warm-up}}\end{cases}
-    \qquad
-    \mu=\begin{cases}\tfrac12\big(\cos(\pi\,\tfrac{t_{\text{iter}}}{T_{\text{decay}}})+1\big),&t_{\text{iter}}\le T_{\text{decay}}\\ 0,&t_{\text{iter}}>T_{\text{decay}}\end{cases}
-    \]
+    \(\displaystyle \gamma=\begin{cases}\tfrac12\big(1-\cos(\pi\,\tfrac{t_{\text{iter}}}{T_{\text{warm-up}}})\big),&t_{\text{iter}}\le T_{\text{warm-up}}\\ 1,&t_{\text{iter}}>T_{\text{warm-up}}\end{cases} \qquad \mu=\begin{cases}\tfrac12\big(\cos(\pi\,\tfrac{t_{\text{iter}}}{T_{\text{decay}}})+1\big),&t_{\text{iter}}\le T_{\text{decay}}\\ 0,&t_{\text{iter}}>T_{\text{decay}}\end{cases}\)
     γ **cosine 升**(0→1):早期少模仿保探索、后期强自模仿固化;µ **cosine 降**(1→0,前 200 步衰完):早期促工具学习、后期聚焦精度防 hacking。
   - **covariance 正则化(Appendix A.5,Eq.18-21,本轮新补)**:对带正则的 SIL 目标 \(\tilde J^{\text{SIL-R}}_{\text{GRPO}}\) 乘逐 token mask \(M_j\)(Eq.18-19):
-    \[
-    \mathrm{Cov}(\log\pi_\theta(a^i_t|x,s^i_t),\tilde A^i_t)=\Big(\log\pi_\theta(a^i_t|x,s^i_t)-\tfrac1G\textstyle\sum_j\log\pi_\theta(a^j_t|\cdot)\Big)\Big(\tilde A^i_t-\tfrac1G\textstyle\sum_j\tilde A^j_t\Big)
-    \]
+    \(\displaystyle \mathrm{Cov}(\log\pi_\theta(a^i_t|x,s^i_t),\tilde A^i_t)=\Big(\log\pi_\theta(a^i_t|x,s^i_t)-\tfrac1G\textstyle\sum_j\log\pi_\theta(a^j_t|\cdot)\Big)\Big(\tilde A^i_t-\tfrac1G\textstyle\sum_j\tilde A^j_t\Big)\)
     把"log-prob 与 advantage 协方差落在高区间 \([\omega_{lb},\omega_{ub}]\)"的过自信 token **uniform 采样出 \(N_{\text{clip}}=\lambda N_i\) 个并 mask 出 loss**(Eq.20),防其为博 advantage 而激进改 log-prob、压低熵。ω 经验取 top 20%/top 0.02% 协方差的整数;此 masking 引入的随机性还利于 RL 收敛。
   - **Theorem 1(Appendix A.9,surrogate 改进下界,本轮新补)**:warm-up γ 从 0 升 1 实现"向好响应分布的约束投影",在策略变化受 clip 界、优势无偏两假设下,
-    \[
-    J(\pi_{\theta_{t+1}})-J(\pi_{\theta_t})\ge\underbrace{\mathbb{E}_{a\sim\pi_{\theta_t}}[\tilde r(a)A^{\pi_{\theta_t}}(a)]}_{\text{GRPO improvement}}+\gamma(t)\underbrace{\mathbb{E}_{j\sim D}[\mathbb{1}_j\log r(a_j)]}_{\text{SIL improvement}}-\epsilon R_{\max}
-    \]
+    \(\displaystyle J(\pi_{\theta_{t+1}})-J(\pi_{\theta_t})\ge\underbrace{\mathbb{E}_{a\sim\pi_{\theta_t}}[\tilde r(a)A^{\pi_{\theta_t}}(a)]}_{\text{GRPO improvement}}+\gamma(t)\underbrace{\mathbb{E}_{j\sim D}[\mathbb{1}_j\log r(a_j)]}_{\text{SIL improvement}}-\epsilon R_{\max}\)
     保证 SIL 项带来单调改进(\(\mathbb{1}_j=\mathbb{1}(\hat A_j>0\&\tilde A_j>0)\))。
   - 直觉:① SIL=反复回放成功经验沿 promising decision path 学新策略(非随机游走/分叉);② P50 基线比均值在高方差 agent RL 下更稳;③ 课程把探索→利用做成平滑 cosine 旋钮。
 - 实验与证据:

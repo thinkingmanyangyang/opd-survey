@@ -26,29 +26,18 @@ csd | Distillation of Large Language Models via Concrete Score Matching (CSD) | 
 - 关键公式（真实形式 + 直觉）：
   - **概率与 KD 通用目标**（式1-2）：\(q_\theta(y_t\mid c,y_{<t})=\dfrac{\exp(f_\theta[y_t])}{\sum_{x\in V}\exp(f_\theta[x])}\)；KD = \(\mathbb{E}_{(c,y)}\bigl[\frac1L\sum_t D(p_T\Vert q_\theta)\bigr]\)。
   - **concrete score**（Meng 2022，离散版 Stein score）：
-    \[
-    s_\theta(y)\triangleq\left[\frac{q_\theta(x)}{q_\theta(y)}\right]_{x\in V}
-    \]
+    \(\displaystyle s_\theta(y)\triangleq\left[\frac{q_\theta(x)}{q_\theta(y)}\right]_{x\in V}\)
     刻画"从当前 token \(y\) 换到其它 token \(x\)"的相对概率变化，唯一确定分布且无需算配分函数 \(Z_\theta\)【§2.2 L192-200】。
   - **朴素 concrete score matching**（式6，不稳）：\(L_{\text{CSM}}=\frac12\sum_y\sum_x w(y,x)\bigl(\frac{q_\theta(x)}{q_\theta(y)}-\frac{p_{\text{data}}(x)}{p_{\text{data}}(y)}\bigr)^2\)。
   - **CSD 目标**（式7→式8，核心；取 log 后变 logit MSE）：
-    \[
-    L_{\text{CSD}}(\theta;p_T,w)=\frac12\sum_{y_t\in V}\sum_{x\in V}w(y_t,x)\Bigl(\log\tfrac{q_\theta(x\mid c,y_{<t})}{q_\theta(y_t\mid c,y_{<t})}-\log\tfrac{p_T(x\mid c,y_{<t})}{p_T(y_t\mid c,y_{<t})}\Bigr)^2
-    =\frac12\sum_{y_t\in V}\sum_{x\in V}w(y_t,x)\bigl(f_\theta[x]-f_\theta[y_t]-f_T[x]+f_T[y_t]\bigr)^2
-    \]
+    \(\displaystyle L_{\text{CSD}}(\theta;p_T,w)=\frac12\sum_{y_t\in V}\sum_{x\in V}w(y_t,x)\Bigl(\log\tfrac{q_\theta(x\mid c,y_{<t})}{q_\theta(y_t\mid c,y_{<t})}-\log\tfrac{p_T(x\mid c,y_{<t})}{p_T(y_t\mid c,y_{<t})}\Bigr)^2 =\frac12\sum_{y_t\in V}\sum_{x\in V}w(y_t,x)\bigl(f_\theta[x]-f_\theta[y_t]-f_T[x]+f_T[y_t]\bigr)^2\)
     第二个等号是关键：log 概率比 = logit 差，所以目标 = 匹配"所有词表对 \((y_t,x)\) 的相对 logit 差"，对 \(f_\theta\) 整体加常数 \(C\) 不变【§3.1 L240-267】。
   - **高效梯度**（Thm 3，式9，可分权重 \(w(y_t,x)=w_1(y_t)w_2(x)\) 下 \(O(|V|)\)）：
-    \[
-    \nabla_\theta L_{\text{CSD}}(\theta;p_T,w)=\sum_{y_t\in V}\mathbf{w}(y_t)^{\!\top}\bigl(\tilde f_\theta[y_t]-\tilde f_T[y_t]\bigr)\nabla_\theta f_\theta[y_t]
-    \]
+    \(\displaystyle \nabla_\theta L_{\text{CSD}}(\theta;p_T,w)=\sum_{y_t\in V}\mathbf{w}(y_t)^{\!\top}\bigl(\tilde f_\theta[y_t]-\tilde f_T[y_t]\bigr)\nabla_\theta f_\theta[y_t]\)
     其中 \(\mathbf{w}(y_t)=(w_1(y_t),w_2(y_t))^{\!\top}\)，归一化（centering）logit \(\tilde f^w_\theta[y_t]=f_\theta[y_t]-\mathbb{E}_{w(x)}[f_\theta[x]]\)，teacher 同理。Algorithm 1 每步只需线性时间（算加权均值 logit→减去做 centering→组合）。不接受可分假设则退回 **Monte Carlo 估计**（Algorithm 2：按 \(w_1\) 采单个 \(y_t\)，可建模联合权重空间、不需独立性，但 batch 内方差更大、收敛略慢，Fig.5c）【§3.2 L370-410】。
   - **CSD vs KL 梯度对照**（取 uniform 权重 \(U\)，直觉关键）：
-    \[
-    \nabla_\theta D_{KL}(p_T\Vert q_\theta)=\sum_{y_t}\Bigl(\underbrace{\tfrac{\exp(f_\theta[y_t])}{\sum_x\exp(f_\theta[x])}}_{\text{softmax 归一 student}}-\underbrace{\tfrac{\exp(f_T[y_t])}{\sum_x\exp(f_T[x])}}_{\text{softmax 归一 teacher}}\Bigr)\nabla_\theta f_\theta[y_t]
-    \]
-    \[
-    \nabla_\theta L_{\text{CSD}}(\theta;p_T,U)=\sum_{y_t}\frac{2}{|V|}\Bigl(\underbrace{f_\theta[y_t]-\tfrac{\sum_x f_\theta[x]}{|V|}}_{\text{centering 归一 student}}-\underbrace{\bigl(f_T[y_t]-\tfrac{\sum_x f_T[x]}{|V|}\bigr)}_{\text{centering 归一 teacher}}\Bigr)\nabla_\theta f_\theta[y_t]
-    \]
+    \(\displaystyle \nabla_\theta D_{KL}(p_T\Vert q_\theta)=\sum_{y_t}\Bigl(\underbrace{\tfrac{\exp(f_\theta[y_t])}{\sum_x\exp(f_\theta[x])}}_{\text{softmax 归一 student}}-\underbrace{\tfrac{\exp(f_T[y_t])}{\sum_x\exp(f_T[x])}}_{\text{softmax 归一 teacher}}\Bigr)\nabla_\theta f_\theta[y_t]\)
+    \(\displaystyle \nabla_\theta L_{\text{CSD}}(\theta;p_T,U)=\sum_{y_t}\frac{2}{|V|}\Bigl(\underbrace{f_\theta[y_t]-\tfrac{\sum_x f_\theta[x]}{|V|}}_{\text{centering 归一 student}}-\underbrace{\bigl(f_T[y_t]-\tfrac{\sum_x f_T[x]}{|V|}\bigr)}_{\text{centering 归一 teacher}}\Bigr)\nabla_\theta f_\theta[y_t]\)
     两者都"student 大处降、teacher 大处升"，**唯一差别是系数归一化**：KL 用 softmax（抹平 logit 信息），CSD 用 centering（保留）。\((w_1,w_2)\) 提供归一化设计空间：\(w_1\) 控梯度更新时词表加权、\(w_2\) 控系数归一化（角色再反序作用）【§3.2 L411-471】。
   - **三条定理**：
     - **Prop.1（一致性）**：\(|\Theta|\to\infty\)、任意 \(w>0\)，最优解处 \(L_{\text{CSD}}(\theta^*)=0\) 且 \(q_{\theta^*}=p_T\)——保证 student 收敛到 teacher【§3.1 L342-350】。

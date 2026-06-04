@@ -22,29 +22,19 @@ deepseekmath | DeepSeekMath: Pushing the Limits of Mathematical Reasoning in Ope
 
 ### A. GRPO 目标函数(§4.1.1,Eq.3,读完可实现)
 对每题 \(q\),从旧策略 \(\pi_{\theta_{\mathrm{old}}}\) 采一组 \(G\) 个输出 \(\{o_1,\dots,o_G\}\),最大化:
-\[
-\mathcal J_{\mathrm{GRPO}}(\theta)=\mathbb E_{q\sim P(Q),\,\{o_i\}_{i=1}^{G}\sim\pi_{\theta_{\mathrm{old}}}(O|q)}\frac1G\sum_{i=1}^{G}\frac{1}{|o_i|}\sum_{t=1}^{|o_i|}\Big[\min\Big(\tfrac{\pi_\theta(o_{i,t}|q,o_{i,<t})}{\pi_{\theta_{\mathrm{old}}}(o_{i,t}|q,o_{i,<t})}\hat A_{i,t},\ \mathrm{clip}\big(\tfrac{\pi_\theta(o_{i,t}|q,o_{i,<t})}{\pi_{\theta_{\mathrm{old}}}(o_{i,t}|q,o_{i,<t})},1-\varepsilon,1+\varepsilon\big)\hat A_{i,t}\Big)-\beta D_{\mathrm{KL}}(\pi_\theta\|\pi_{\mathrm{ref}})\Big]
-\tag{3}
-\]
+\(\displaystyle \mathcal J_{\mathrm{GRPO}}(\theta)=\mathbb E_{q\sim P(Q),\,\{o_i\}_{i=1}^{G}\sim\pi_{\theta_{\mathrm{old}}}(O|q)}\frac1G\sum_{i=1}^{G}\frac{1}{|o_i|}\sum_{t=1}^{|o_i|}\Big[\min\Big(\tfrac{\pi_\theta(o_{i,t}|q,o_{i,<t})}{\pi_{\theta_{\mathrm{old}}}(o_{i,t}|q,o_{i,<t})}\hat A_{i,t},\ \mathrm{clip}\big(\tfrac{\pi_\theta(o_{i,t}|q,o_{i,<t})}{\pi_{\theta_{\mathrm{old}}}(o_{i,t}|q,o_{i,<t})},1-\varepsilon,1+\varepsilon\big)\hat A_{i,t}\Big)-\beta D_{\mathrm{KL}}(\pi_\theta\|\pi_{\mathrm{ref}})\Big] \tag{3}\)
 两处关键设计:(i)优势 \(\hat A_{i,t}\) **只由组内相对奖励**估计(无价值函数),契合奖励模型的比较本质;(ii)KL **直接加损失**(不像 PPO 那样把 KL 加进奖励),避免复杂化 \(\hat A_{i,t}\) 的计算。
 
 ### B. KL 无偏估计器(§4.1.1,Eq.4)
 不同于 PPO 在奖励里加 KL,GRPO 用 Schulman(2020)的**保证非负**的无偏估计器:
-\[
-D_{\mathrm{KL}}\big(\pi_\theta\|\pi_{\mathrm{ref}}\big)=\frac{\pi_{\mathrm{ref}}(o_{i,t}|q,o_{i,<t})}{\pi_\theta(o_{i,t}|q,o_{i,<t})}-\log\frac{\pi_{\mathrm{ref}}(o_{i,t}|q,o_{i,<t})}{\pi_\theta(o_{i,t}|q,o_{i,<t})}-1
-\tag{4}
-\]
+\(\displaystyle D_{\mathrm{KL}}\big(\pi_\theta\|\pi_{\mathrm{ref}}\big)=\frac{\pi_{\mathrm{ref}}(o_{i,t}|q,o_{i,<t})}{\pi_\theta(o_{i,t}|q,o_{i,<t})}-\log\frac{\pi_{\mathrm{ref}}(o_{i,t}|q,o_{i,<t})}{\pi_\theta(o_{i,t}|q,o_{i,<t})}-1 \tag{4}\)
 直觉:形如 \(x-\log x-1\geq 0\)(当 \(x=\pi_{\mathrm{ref}}/\pi_\theta\)),恒非负,数值稳定。
 
 ### C. 优势估计两变体
 - **结果监督(§4.1.2)**:奖励模型对每条输出打分得 \(\mathbf r=\{r_1,\dots,r_G\}\),组内归一后,**整条输出所有 token 优势相同**:
-\[
-\hat A_{i,t}=\tilde r_i=\frac{r_i-\mathrm{mean}(\mathbf r)}{\mathrm{std}(\mathbf r)}
-\]
+\(\displaystyle \hat A_{i,t}=\tilde r_i=\frac{r_i-\mathrm{mean}(\mathbf r)}{\mathrm{std}(\mathbf r)}\)
 - **过程监督(§4.1.3)**:过程奖励模型对每个推理步末 token 打分 \(\{r_i^{\mathrm{index}(j)}\}\)(\(\mathrm{index}(j)\)=第 \(j\) 步末 token 索引),组内归一 \(\tilde r_i^{\mathrm{index}(j)}\);每 token 优势 = **其后续各步标准化奖励之和**(step-aware 信用分配):
-\[
-\hat A_{i,t}=\sum_{\mathrm{index}(j)\ge t}\tilde r_i^{\mathrm{index}(j)}
-\]
+\(\displaystyle \hat A_{i,t}=\sum_{\mathrm{index}(j)\ge t}\tilde r_i^{\mathrm{index}(j)}\)
 - **迭代 RL(§4.1.4)**:随训练用策略采样结果**重训奖励模型**(replay 含 10% 历史数据),再把 reference 设为当前策略、用新奖励模型续训。
 
 ### D. 训练流程(Algorithm 1,逐步)
@@ -52,10 +42,7 @@ D_{\mathrm{KL}}\big(\pi_\theta\|\pi_{\mathrm{ref}}\big)=\frac{\pi_{\mathrm{ref}}
 
 ### E. 统一梯度范式(§5.2.1,Eq.5——本文第二大贡献)
 任何训练方法对 \(\theta\) 的梯度可写成统一形式:
-\[
-\nabla_\theta\mathcal J_{\mathcal A}(\theta)=\mathbb E_{\underbrace{(q,o)\sim\mathcal D}_{\text{Data Source}}}\left(\frac{1}{|o|}\sum_{t=1}^{|o|}\underbrace{GC_{\mathcal A}(q,o,t,\pi_{rf})}_{\text{Gradient Coefficient}}\,\nabla_\theta\log\pi_\theta(o_t|q,o_{<t})\right)
-\tag{5}
-\]
+\(\displaystyle \nabla_\theta\mathcal J_{\mathcal A}(\theta)=\mathbb E_{\underbrace{(q,o)\sim\mathcal D}_{\text{Data Source}}}\left(\frac{1}{|o|}\sum_{t=1}^{|o|}\underbrace{GC_{\mathcal A}(q,o,t,\pi_{rf})}_{\text{Gradient Coefficient}}\,\nabla_\theta\log\pi_\theta(o_t|q,o_{<t})\right) \tag{5}\)
 三组件:**数据源 \(\mathcal D\)**(决定训练数据)、**奖励函数 \(\pi_{rf}\)**(奖励信号源)、**算法 \(\mathcal A\)**(把数据+奖励处理成梯度系数 \(GC\),决定强化/惩罚的幅度)。据此 Table 10 把方法归一:SFT(\(GC\equiv1\),数据=人选 SFT 集)/ RFT(数据=SFT 模型离线采样,Rule 奖励)/ Online-RFT(数据=实时策略采样)/ PPO(Model 奖励)/ GRPO(组采样 + Model 奖励)——**差异仅在这三点**。
 
 ### 逐组件必要性(§5.2 系统对照,均有 Fig.5/6)

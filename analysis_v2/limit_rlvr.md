@@ -17,9 +17,7 @@ limit_rlvr | Does RL Really Incentivize Reasoning Capacity in LLMs Beyond the Ba
 - 方法流水线(具体到测什么→怎么测):① 用 pass@k(**无偏低方差估计器**)度量 base 与其 RLVR 后版本在多 benchmark 上的整条 \(k\)-曲线;② 防"蒙对":数学对"易猜中"风险题(如 AIME 数值答案)**人工核查 CoT 正确性**(把 AIME24 30 题过滤到 18 题验证,Fig.13),代码用编译器+单测;③ 定义**采样效率差距 ΔSE** 量化 RL 模型距 base 上界还差多远(Fig.8 top);④ 覆盖度 + perplexity 分析验证 RLVR 路径是否已在 base 采样分布内;⑤ 蒸馏对照区分"蒸馏扩边界 ≠ RLVR 仅提效率"。
 - 核心度量/公式(真实形式 + 直觉,符号从 PDF §2 / §A.2 抄准):
   - **无偏低方差 pass@k 估计器**(Eq.2,§A.2,沿用 Chen 2021):对每题采 \(n\ge k\) 个样本、数出正确数 \(c_i\),则
-    \[
-    \mathrm{pass@}k:=\mathbb E_{x_i\sim D}\!\left[\,1-\frac{\dbinom{n-c_i}{k}}{\dbinom{n}{k}}\,\right].
-    \]
+    \(\displaystyle \mathrm{pass@}k:=\mathbb E_{x_i\sim D}\!\left[\,1-\frac{\dbinom{n-c_i}{k}}{\dbinom{n}{k}}\,\right].\)
     直觉:\(\dbinom{n-c_i}{k}/\dbinom{n}{k}\) 是"随机抽 \(k\) 个全落在错误样本里"的概率,\(1-(\cdot)\) 即"\(k\) 抽里至少一个对"。实验取 \(n\) 为曲线最右端 \(k\)(典型 128/256/1024),可对所有 \(k\le n\) 低方差估计。
   - **边界判别式(证伪逻辑)**:pass@k 在大 \(k\) 时 \(\approx\) "采样足够多次能否撞对",逼近**潜在可解集**。若 RLVR 真扩能力,其 pass@k 应在**所有 \(k\)** 上 \(\ge\) base;若只是把概率质量挪到 base 已能解的路径上,就会"小 \(k\) 赢(更高效)、大 \(k\) 输(可解集反变小)"——正是用来证伪的判别式(§3.1)。
   - **采样效率差距 ΔSE**(§4 / Fig.8):\(\ \Delta_{\mathrm{SE}}=\text{pass@}1_{\,\mathrm{RL}}-\text{pass@}k_{\,\mathrm{base}}\big|_{k=256}\),以 base 的 pass@256 当**上界代理**,衡量 RL 把概率集中得多接近最优;ΔSE 一致偏大=RL 远未触及 base 边界、还有大量"base 能解 RL 没采到"的空间。

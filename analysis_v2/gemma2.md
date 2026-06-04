@@ -21,18 +21,14 @@ gemma2 | Gemma 2: Improving Open Language Models at a Practical Size | Gemma Tea
 ## 怎么做（细到可复现的程度——技术报告，部分配方闭源）
 ### 1. 预训练蒸馏（§3.2）
 - 给定大教师，逐 token 用教师对下一 token 的分布 \(P_T(x\mid x_c)\) 当软目标，最小化教师与学生分布的负对数似然（=逐 token 软标签交叉熵）：
-\[
-\min_{P_S}\ \sum_{x}\ -\,P_T(x\mid x_c)\,\log P_S(x\mid x_c).
-\]
+\(\displaystyle \min_{P_S}\ \sum_{x}\ -\,P_T(x\mid x_c)\,\log P_S(x\mid x_c).\)
 - 2B/9B 用此蒸馏；27B 用标准 next-token（无更大同族教师）。预训练 token：27B 用 13T、9B 用 8T、2B 用 2T（英文为主 web/code/science）；SentencePiece 256k 词表。
 
 ### 2. 架构要点（§2，非蒸馏核心但影响复现）
 - **local/global 注意力逐层交替**：局部滑窗(4096) 与全局(8192) 每隔一层交替。
 - **GQA**：num_groups=2（vs MHA 几乎无损但省参/快，Table 8: 50.3 vs 50.8）。
 - **Logit soft-capping**：注意力层与最终层把 logits 压到 \([-\text{soft\_cap},+\text{soft\_cap}]\)：
-\[
-\text{logits}\leftarrow \text{soft\_cap}\cdot\tanh\!\big(\text{logits}/\text{soft\_cap}\big),
-\]
+\(\displaystyle \text{logits}\leftarrow \text{soft\_cap}\cdot\tanh\!\big(\text{logits}/\text{soft\_cap}\big),\)
 注意力层 soft_cap=50.0、最终层=30.0。
 - **pre-norm + post-norm（均 RMSNorm）**：对每个子层输入输出都归一。
 - **深 > 宽**：9B 深网络略优（Table 9: 52.0 vs 50.8）。具体规模：2B(d=2304,26 层)/9B(d=3584,42 层)/27B(d=4608,46 层)；GeGLU、RoPE、tied embedding、context 8192。

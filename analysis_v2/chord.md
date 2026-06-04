@@ -25,29 +25,19 @@ chord | On-Policy RL Meets Off-Policy Experts: Harmonizing SFT and RL via Dynami
 - 方法流水线（读完可复现）【原文 §3, Fig.3】：①一个 mini-batch 混合 RL 任务 prompt + 专家 \((x,y^*)\)→②对 RL 任务采 \(K\) 条 on-policy rollout、算 reward 与组归一化优势 \(A_k\)→③非专家数据走 GRPO 损失（PPO clipped surrogate），专家数据走 token 级 SFT 损失（\(-\phi(p)\cdot\log\pi\)）→④凸组合 \(\mathcal{L}=(1-\mu)\mathcal{L}_{\text{GRPO}}+\mu\mathcal{L}_{\text{SFT-}\phi}\)，\(\mu\) 随步数动态调度→⑤更新策略。Fig.3 画得很清楚：专家分支算 `SUM(φ(·)*LogProbs)`，RL 分支算 `SUM(Advantages*LogProbs)`，再按 \((1-\mu):\mu\) 合成。
 - 关键公式（真实形式 + 直觉）：
   - **SFT 损失**（式1，token 级 NLL）：
-    \[
-    \mathcal{L}_{\text{SFT}}(\theta)=-\frac{1}{\sum_{i=1}^B|y^*_i|}\sum_{i=1}^B\sum_{t=1}^{|y^*_i|}\log\pi_\theta(y^*_{i,t}\mid x_i,y^*_{i,<t})
-    \]
+    \(\displaystyle \mathcal{L}_{\text{SFT}}(\theta)=-\frac{1}{\sum_{i=1}^B|y^*_i|}\sum_{i=1}^B\sum_{t=1}^{|y^*_i|}\log\pi_\theta(y^*_{i,t}\mid x_i,y^*_{i,<t})\)
   - **GRPO 损失**（式2，PPO clipped，**不含 KL 项**以免限制性能）：
-    \[
-    \mathcal{L}_{\text{GRPO}}(\theta)=-\frac{1}{\sum_{i}\sum_{k}|\tau_{i,k}|}\sum_{i}\sum_{k}\sum_{t}\min\bigl(r_{i,k,t}(\theta)A_{i,k},\;\text{clip}(r_{i,k,t}(\theta),1-\epsilon,1+\epsilon)A_{i,k}\bigr)
-    \]
+    \(\displaystyle \mathcal{L}_{\text{GRPO}}(\theta)=-\frac{1}{\sum_{i}\sum_{k}|\tau_{i,k}|}\sum_{i}\sum_{k}\sum_{t}\min\bigl(r_{i,k,t}(\theta)A_{i,k},\;\text{clip}(r_{i,k,t}(\theta),1-\epsilon,1+\epsilon)A_{i,k}\bigr)\)
     其中优势 \(A_k=\dfrac{R(\tau_k)-\mu_R}{\sigma_R+\epsilon_z}\)（组内均值/标准差归一化），IS 比 \(r_{i,k,t}(\theta)\triangleq\dfrac{\pi_\theta(\tau_{i,k,t}\mid x,\tau_{i,k,<t})}{\pi_{\text{sample}}(\tau_{i,k,t}\mid x,\tau_{i,k,<t})}\)；strict on-policy（\(\pi_{\text{sample}}=\pi_\theta\)）时此比恒为 1，梯度退化为 \(\nabla_\theta\log\pi_\theta(\tau^*_{i,k,t}\mid\cdot)\)【§2 L193-206】。
   - **统一损失**（式3，CHORD 的"全局控制"）：
-    \[
-    \mathcal{L}_{\text{Hybrid}}(\theta)=(1-\mu)\,\mathcal{L}_{\text{GRPO}}(\theta)+\mu\,\mathcal{L}_{\text{SFT}}(\theta),\quad\mu\in[0,1]
-    \]
+    \(\displaystyle \mathcal{L}_{\text{Hybrid}}(\theta)=(1-\mu)\,\mathcal{L}_{\text{GRPO}}(\theta)+\mu\,\mathcal{L}_{\text{SFT}}(\theta),\quad\mu\in[0,1]\)
     SFT-then-RL = 二元调度（\(\mu\) 从 1 切到 0）的特例；交错 SFT/RL = 周期 \(\mu\) 调度的特例【§3.2 L308-313】。
   - **被否决的 IS 变体**（式4，作 \(\phi\) 的对照）：\(\mathcal{L}_{\text{SFT-IS}}=\mathbb{E}\bigl[-\sum_t\text{sg}\bigl(\tfrac{\pi_\theta(y^*_t\mid\cdot)}{\pi_{\text{sample}}(y^*_t\mid\cdot)}\bigr)\cdot\log\pi_\theta(y^*_t\mid\cdot)\bigr]\)，按惯例假设分母=1（把专家当 ground-truth 分布）；IS 下调低概率 token 防破坏，但**激进强化高概率 token**→熵坍缩→过自信、困在次优【§3.3 L398-431】。
   - **token 级权重**（式5，CHORD 的"细粒度控制"核心）：
-    \[
-    \phi(y^*_t;\pi_\theta)=p_t(1-p_t),\qquad p_t=\pi_\theta(y^*_t\mid x,y^*_{<t})
-    \]
+    \(\displaystyle \phi(y^*_t;\pi_\theta)=p_t(1-p_t),\qquad p_t=\pi_\theta(y^*_t\mid x,y^*_{<t})\)
     抛物线，峰在 \(p_t=0.5\)、两端趋零。信息论上 \(p_t(1-p_t)\) 是"生成该 token 这一二元事件"的策略**不确定性**度量，偏向"模型最不确定"的 token，制造 learning sweet spot（"novel enough to be informative but not so divergent as to disrupt"）【§3.3 L464-469】。
   - **最终 SFT 目标**（式6）：
-    \[
-    \mathcal{L}_{\text{SFT-}\phi}(\theta)=-\mathbb{E}_{(x,y^*)\sim D_{\text{SFT}}}\!\left[\sum_{t=1}^{|y^*|}\phi(y^*_t;\pi_\theta)\cdot\log\pi_\theta(y^*_t\mid x,y^*_{<t})\right]
-    \]
+    \(\displaystyle \mathcal{L}_{\text{SFT-}\phi}(\theta)=-\mathbb{E}_{(x,y^*)\sim D_{\text{SFT}}}\!\left[\sum_{t=1}^{|y^*|}\phi(y^*_t;\pi_\theta)\cdot\log\pi_\theta(y^*_t\mid x,y^*_{<t})\right]\)
     把式3 里的 \(\mathcal{L}_{\text{SFT}}\) 换成 \(\mathcal{L}_{\text{SFT-}\phi}\) 即得 CHORD 最终目标（\(\mu\) 全局 + \(\phi\) token 级双控）。
 - 逐组件必要性：
   - **全局 \(\mu\) 衰减**：负责"模仿→探索"平滑过渡；**Fig.7 消融**——固定 \(\mu\) 一律差于动态 \(\mu\)、甚至可能不及纯 RL；小固定 \(\mu\)(0.02) 减损但提升不显著；大固定 \(\mu\)(0.1/0.5) 明显更差【§4.3 L735-749】。

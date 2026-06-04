@@ -26,34 +26,21 @@ hapo | Heterogeneous Adaptive Policy Optimization (HAPO): Tailoring Optimization
 
 ### 熵的连续归一化（§4.1，全篇调制信号）
 逐 token 熵先做对数平滑 + 减分位数 + 除 std（式5），再**非对称缩放到 [−1,1]**（式6）：
-\[
-h_{i,t}=\frac{\log(H_{i,t})-Q_\rho(\log H)}{\sigma(\log H)},\qquad
-\tilde h_{i,t}=\begin{cases}h_{i,t}/h_{\max}, & h_{i,t}>0,\\ -h_{i,t}/|h_{\min}|, & h_{i,t}\le0,\end{cases}
-\]
+\(\displaystyle h_{i,t}=\frac{\log(H_{i,t})-Q_\rho(\log H)}{\sigma(\log H)},\qquad \tilde h_{i,t}=\begin{cases}h_{i,t}/h_{\max}, & h_{i,t}>0,\\ -h_{i,t}/|h_{\min}|, & h_{i,t}\le0,\end{cases}\)
 \(Q_\rho\)=ρ 分位(高/低熵分界，默认 ρ=80% 即关注 top 20% 高熵)。**meta 方程**(式7)：\(\text{Parameter}_{i,t}=\text{Parameter}_{\text{base}}\cdot f(\tilde h_{i,t})\)，把 ˜h 注入温度/优势/裁剪界。
 
 ### 四组件流水线（叠加在 DAPO 上，读完可复现）
 1. **A — 自适应温度采样**(§4.2，式8)：rollout 逐 token 在线调温(用上一步 token 统计量算分位/方差)：
-   \[
-   T_{i,t}=T_{\text{base}}\cdot\Big(1+\frac{\log(H_{i,t})-\hat\rho_{\log H}}{\hat\sigma_{\log H}}\cdot\tau\Big),
-   \]
+   \(\displaystyle T_{i,t}=T_{\text{base}}\cdot\Big(1+\frac{\log(H_{i,t})-\hat\rho_{\log H}}{\hat\sigma_{\log H}}\cdot\tau\Big),\)
    高熵升温(探索)、低熵降温(连贯)。默认 \(T_{\text{base}}=1.0,\ \tau=0.1\)。
 2. **B — token 级组平均优势**(§4.3，式9)：把序列奖励先分到每个 token \(a_{i,t}=r_i\in\{0,1\}\)，再在组内**所有 token**上归一：
-   \[
-   A_{i,t}=\frac{a_{i,t}-\mu_{\text{tok}}}{\sigma_{\text{tok}}},\quad \mu_{\text{tok}}=\tfrac{1}{|\mathcal{T}|}\sum_{(i,t)\in\mathcal{T}}a_{i,t},\ \mathcal{T}=\{(i,t)\}.
-   \]
+   \(\displaystyle A_{i,t}=\frac{a_{i,t}-\mu_{\text{tok}}}{\sigma_{\text{tok}}},\quad \mu_{\text{tok}}=\tfrac{1}{|\mathcal{T}|}\sum_{(i,t)\in\mathcal{T}}a_{i,t},\ \mathcal{T}=\{(i,t)\}.\)
    使 \(\sum_{(i,t)}\hat A_{i,t}=0\)，消除 token-mean loss 下长负样本梯度偏置，同时保留长序列梯度缩放(长序列贡献更大梯度)——兼得 GRPO 无偏 + DAPO token 粒度。
 3. **C — 差分优势再分配**(§4.4，式10-11，承重墙)：定义中性区 \([\gamma_L,\gamma_U]\)(默认 \([1-\epsilon_L/2,\,1+\epsilon_R/2]\))，只在**有明确更新趋势**时改优势：
-   \[
-   \hat A_{i,t}=\begin{cases}A_{i,t}\cdot(1+\tilde h_{i,t}), & C(\tilde h_{i,t},r_{i,t})\ \text{为真},\\ A_{i,t}, & \text{否则},\end{cases}\qquad
-   C(\tilde h_{i,t},r_{i,t})=\begin{cases}r_{i,t}\notin[\gamma_L,\gamma_U], & \tilde h_t>0\ (\text{高熵且比值出中性区→放大}),\\ r_{i,t}\in[\gamma_L,\gamma_U], & \tilde h_t\le0\ (\text{低熵且比值在中性区→抑制}).\end{cases}
-   \]
+   \(\displaystyle \hat A_{i,t}=\begin{cases}A_{i,t}\cdot(1+\tilde h_{i,t}), & C(\tilde h_{i,t},r_{i,t})\ \text{为真},\\ A_{i,t}, & \text{否则},\end{cases}\qquad C(\tilde h_{i,t},r_{i,t})=\begin{cases}r_{i,t}\notin[\gamma_L,\gamma_U], & \tilde h_t>0\ (\text{高熵且比值出中性区→放大}),\\ r_{i,t}\in[\gamma_L,\gamma_U], & \tilde h_t\le0\ (\text{低熵且比值在中性区→抑制}).\end{cases}\)
    核心直觉：**熵告诉你 token 重不重要，重要性比 r 告诉你它当前更不更新得动/方向明不明确**——两者结合才精准分配(回应 §3.3「相似熵 token 优化需求可能截然不同」)。
 4. **D — 非对称自适应裁剪**(§4.5，式12-13，"反 Archer")：
-   \[
-   \epsilon_L(i,t)=\begin{cases}\epsilon_L^{\text{base}}(1-\tilde h_{i,t}), & \tilde h_{i,t}\le0\ (\text{低熵→降左界,允许激进降概率压噪声}),\\ \epsilon_L^{\text{base}}, & \tilde h_{i,t}>0,\end{cases}\quad
-   \epsilon_R(i,t)=\begin{cases}\epsilon_R^{\text{base}}, & \tilde h_{i,t}\le0,\\ \epsilon_R^{\text{base}}(1+\tilde h_{i,t}), & \tilde h_{i,t}>0\ (\text{高熵→升右界,关键决策点探索}).\end{cases}
-   \]
+   \(\displaystyle \epsilon_L(i,t)=\begin{cases}\epsilon_L^{\text{base}}(1-\tilde h_{i,t}), & \tilde h_{i,t}\le0\ (\text{低熵→降左界,允许激进降概率压噪声}),\\ \epsilon_L^{\text{base}}, & \tilde h_{i,t}>0,\end{cases}\quad \epsilon_R(i,t)=\begin{cases}\epsilon_R^{\text{base}}, & \tilde h_{i,t}\le0,\\ \epsilon_R^{\text{base}}(1+\tilde h_{i,t}), & \tilde h_{i,t}>0\ (\text{高熵→升右界,关键决策点探索}).\end{cases}\)
    默认 \(\epsilon_L^{\text{base}}=0.2,\ \epsilon_R^{\text{base}}=0.28\)。全部是 ˜h 的平滑函数，熵在采样时已算，**几乎零额外开销**。
 
 ### 逐组件必要性（Table 4 消融，base DAPO 7B=46.97）

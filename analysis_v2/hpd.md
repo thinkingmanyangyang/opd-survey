@@ -25,15 +25,10 @@ hpd | Hybrid Policy Distillation for LLMs (HPD) | 上海交大 / 上海创智学
 
 ### 统一视角(§4.1，全篇地基)
 所有 KD(SFT/FKLD/RKLD)统一为 **token 级重加权对数似然**(Eq.9):
-\[
-\mathcal{L}(\theta)=\min_\theta\ -\mathbb{E}_{(s_t,a_t)\sim D_\pi}\big[w(a_t\mid s_t)\,\log q_\theta(a_t\mid s_t)\big],
-\]
+\(\displaystyle \mathcal{L}(\theta)=\min_\theta\ -\mathbb{E}_{(s_t,a_t)\sim D_\pi}\big[w(a_t\mid s_t)\,\log q_\theta(a_t\mid s_t)\big],\)
 其中 \(D_\pi\)=数据源(on-policy 取自 \(D_{\pi_\theta}\)、off-policy 取自固定集 D 或 teacher \(D_{\pi_T}\))。权重 \(w\) 捕捉师生在 \(s_t\) 处对 \(a_t\) 的局部差异(Table 1):**SFT** \(w=\mathbb{1}[a_t=a_t^*]\)(常数 1)、**FKLD/SeqKD** \(w=p(a_t\mid s_t)\)、**RKLD** \(w=\log p(a_t\mid s_t)-\log q_\theta(a_t\mid s_t)\)、**JSD** \(w=\tfrac12 q\cdot(\log q-\log\tfrac{p+q}{2})\)。
 关键洞察(Eq.10，跨整个词表的梯度):对采样 token \(a_t\)，
-\[
--\frac{\partial \mathcal{L}(\theta)}{\partial z_v}\propto
-\begin{cases}\hat w_t\,q_v(1-q_v), & v=a_t,\\[2pt]-\hat w_t\,q_{a_t}q_v, & v\neq a_t,\end{cases}
-\]
+\(\displaystyle -\frac{\partial \mathcal{L}(\theta)}{\partial z_v}\propto \begin{cases}\hat w_t\,q_v(1-q_v), & v=a_t,\\[2pt]-\hat w_t\,q_{a_t}q_v, & v\neq a_t,\end{cases}\)
 \(z_v\)=token v 的 logit、\(\hat w_t=w(a_t\mid s_t)\)。即**正权重升该 token 似然、负权重抑制它并把概率质量按当前分布摊给其他 token**——这正是 reverse K1 的天然行为。
 
 ### KL 的 MC 估计(§3.3)
@@ -42,21 +37,15 @@ KLD 精确算需遍历全词表(Eq.4)不可行 ⇒ MC 近似。最简 K1 估计�
 ### HPD 方法流水线(Algorithm 1，读完可复现)
 对每个 offline \((s_t,a_t^*)\):
 1. **算 expert token 的 reverse-K1 gap**(Eq.11):
-   \[
-   k_1=q_\theta(a_t^*\mid s_t)\big(\log p(a_t^*\mid s_t)-\log q_\theta(a_t^*\mid s_t)\big).
-   \]
+   \(\displaystyle k_1=q_\theta(a_t^*\mid s_t)\big(\log p(a_t^*\mid s_t)-\log q_\theta(a_t^*\mid s_t)\big).\)
    \(k_1>0\)⇒student **低估**专家 token(给它太低概率)；\(k_1\le0\)⇒已高估。
 2. **student 在同一 offline 前缀下采一个非专家 token** \(a_t\sim q_\theta(\cdot\mid s_t),\ a_t\neq a_t^*\)，算其 gap \(k_1'\)(对 \(a_t\) 套 Eq.11)。这是"轻量近似 on-policy"那一步。
 3. **合成 expert token 权重**(Eq.14，三分支):
-   \[
-   w_t^*\leftarrow\begin{cases}2p(a_t^*\mid s_t)+k_1, & k_1>0\ \text{且}\ k_1'<0\quad(\text{强化:加倍前向KL}),\\ k_1, & k_1<0\quad(\text{抑制:负权重,等价反向KL}),\\ p(a_t^*\mid s_t)+k_1, & \text{其他}\quad(\text{常规前向KL}).\end{cases}
-   \]
+   \(\displaystyle w_t^*\leftarrow\begin{cases}2p(a_t^*\mid s_t)+k_1, & k_1>0\ \text{且}\ k_1'<0\quad(\text{强化:加倍前向KL}),\\ k_1, & k_1<0\quad(\text{抑制:负权重,等价反向KL}),\\ p(a_t^*\mid s_t)+k_1, & \text{其他}\quad(\text{常规前向KL}).\end{cases}\)
    直觉:`k1>0` 用前向 KL 强化专家 token；当**同时**采样到的非专家被高估(`k1'<0`)时，把该被抑制的概率质量**加倍导回**专家 token(这就是 Reinforce 操作)。
 4. **合成采样 token 权重**(Eq.13 / Algorithm 1 line 15):\(w_t\leftarrow\mathbb{1}[a_t\neq a_t^*]\cdot\mathbb{1}[k_1'<0]\cdot k_1'\)。只在**被高估**的非专家 token 上取负权重压制；`k1'≥0` 则 mask 掉(置 0)以**不强化非专家 token**。
 5. **HPD 损失**(Eq.15):
-   \[
-   \mathcal{L}_{\text{HPD}}=\min_\theta\ \mathbb{E}_{(s_t,a_t^*)\sim D,\ a_t\sim q_\theta(\cdot\mid s_t)}\big[-w_t^*\log q_\theta(a_t^*\mid s_t)-w_t\log q_\theta(a_t\mid s_t)\big].
-   \]
+   \(\displaystyle \mathcal{L}_{\text{HPD}}=\min_\theta\ \mathbb{E}_{(s_t,a_t^*)\sim D,\ a_t\sim q_\theta(\cdot\mid s_t)}\big[-w_t^*\log q_\theta(a_t^*\mid s_t)-w_t\log q_\theta(a_t\mid s_t)\big].\)
    梯度更新 \(\theta\leftarrow\theta-\alpha\nabla_\theta\mathcal{L}_{\text{HPD}}\)。**Hybrid FKL/RKL 的 mask 直觉**:`k1≤0` 时屏蔽前向权重，因为 student 已高估专家 token，再加前向 KL 会与反向方向**梯度冲突**——这是无超参混合的关键。
 6. **可与标准 OPD 叠加**(§5.4，HPD+OPD)——HPD 当 OPD 的强初始化。
 

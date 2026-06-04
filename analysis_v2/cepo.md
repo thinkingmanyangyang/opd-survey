@@ -30,25 +30,16 @@ cepo | CEPO: RLVR Self-Distillation using Contrastive Evidence Policy Optimizati
   5. **\(\lambda\) 退火**：从 \(\lambda_0\) 线性降到 0，跨 \(T_{\text{warm}}\) 步（默认 \(\lambda_0=0.5\)、\(T_{\text{warm}}=25\)）。
 - 关键公式（真实形式 + 直觉）：
   - **OPSD/SDPO 的泄漏梯度**（式3，问题之源）：
-    \[
-    \nabla_\theta\mathcal{L}_{\text{OPSD}}=-\sum_{v\in V}P^+_T(v\mid r^+)\,\nabla_\theta\log P_S(v)
-    \]
+    \(\displaystyle \nabla_\theta\mathcal{L}_{\text{OPSD}}=-\sum_{v\in V}P^+_T(v\mid r^+)\,\nabla_\theta\log P_S(v)\)
     这个 vocab-wide 求和把 \(r^+\) 直接编进每个梯度方向【§3.2 L302-307】。
   - **RLSD 的修复**（式4）：\(w^{\text{RLSD}}_t=\exp\bigl(\text{sign}(A)\cdot\text{sg}(\log P^+_T(y_t)-\log P_S(y_t))\bigr)\)，\(\hat A^{(i)}_t=A^{(i)}\cdot[(1-\lambda)+\lambda\cdot\text{clip}(w^{\text{RLSD}}_t,1-\epsilon_w,1+\epsilon_w)]\)【§3.2 L317-333】。
   - **CEPO 对比证据 delta**（式5，核心）：
-    \[
-    \Delta^{CE}_t=\text{sg}\!\left(\log\frac{P^+_T(y_t)}{P^-_T(y_t)}\right)
-    \]
+    \(\displaystyle \Delta^{CE}_t=\text{sg}\!\left(\log\frac{P^+_T(y_t)}{P^-_T(y_t)}\right)\)
   - **贝叶斯解释**（式6，对两个 teacher 用 RLSD Thm 4 相减、\(P_S\) 抵消）：
-    \[
-    \Delta^{CE}_t=\underbrace{\log\frac{P(r^+\mid x,y_{\le t})}{P(r^+\mid x,y_{<t})}}_{\text{belief update for }r^+}\;-\;\underbrace{\log\frac{P(r^-\mid x,y_{\le t})}{P(r^-\mid x,y_{<t})}}_{\text{belief update for }r^-}
-    \]
+    \(\displaystyle \Delta^{CE}_t=\underbrace{\log\frac{P(r^+\mid x,y_{\le t})}{P(r^+\mid x,y_{<t})}}_{\text{belief update for }r^+}\;-\;\underbrace{\log\frac{P(r^-\mid x,y_{\le t})}{P(r^-\mid x,y_{<t})}}_{\text{belief update for }r^-}\)
     直觉：\(\Delta^{CE}_t\) = "token \(y_t\) 把 \(r^+\) 后验抬高多少" − "把 \(r^-\) 后验抬高多少"；决定性步同时支持正确答案 + 反对错误答案→大正值，filler 对两个答案都中性→\(\approx0\)【§3.4 L413-439】。
   - **对比权重 + 调制优势**（式7）：
-    \[
-    w^{CE}_t=\exp\bigl(\text{sign}(A)\cdot\Delta^{CE}_t\bigr)=\left(\frac{P^+_T(y_t)}{P^-_T(y_t)}\right)^{\text{sign}(A)},\qquad
-    \hat A^{(i)}_t=A^{(i)}\cdot\bigl[(1-\lambda)+\lambda\cdot\text{clip}(w^{CE}_t,1-\epsilon_w,1+\epsilon_w)\bigr]
-    \]
+    \(\displaystyle w^{CE}_t=\exp\bigl(\text{sign}(A)\cdot\Delta^{CE}_t\bigr)=\left(\frac{P^+_T(y_t)}{P^-_T(y_t)}\right)^{\text{sign}(A)},\qquad \hat A^{(i)}_t=A^{(i)}\cdot\bigl[(1-\lambda)+\lambda\cdot\text{clip}(w^{CE}_t,1-\epsilon_w,1+\epsilon_w)\bigr]\)
     注意符号由 \(A\) 锚定（verifier），对比比率只改**幅度**；\(\lambda\) 控对比信号占比，clip 把权重限在 \([1-\epsilon_w,1+\epsilon_w]\)【§3.4 L440-471】。
   - **理论保证**（Theorem 1，证明在附录 A）：(i) **方向锚定**——\(\text{sign}(\hat A_t)=\text{sign}(A)\) 对所有 \(t\)（因 \(w^{CE}_t>0\) 且凸组合保正），特权信息**不能翻转**任何 token 的更新方向；(ii) **leakage-free 梯度**——\(\nabla_\theta\mathcal{L}_{\text{CEPO}}\) 不含 vocab-wide \(r\)-条件求和，\(r^+/r^-\) 只作 stop-gradient 标量在采样 token 进入；(iii) **RLSD 包含**——令 \(P^-_T=P_S\) 精确退回 RLSD【§3.4 L472-481】。
   - **判别锐度**（Proposition 1）：对正确轨迹，\(w^{CE}_t>w^{\text{RLSD}}_t\) **当且仅当** \(P^-_T(y_t)<P_S(y_t)\)（错误答案相对学生先验更不喜欢该 token）；错误轨迹对称（\(P^-_T(y_t)>P_S(y_t)\)）；filler 处 \(P^-_T\approx P^+_T\approx P_S\)→\(w^{CE}_t\approx w^{\text{RLSD}}_t\approx1\)，CEPO 不在无信息位置引入噪声——"filler-token neutrality is therefore not a limitation but a correctness criterion"【§3.4 L580-604】。

@@ -23,38 +23,26 @@ fest | FEST: Boosting RLVR via Randomly Selected Few-Shot Guidance | UIUC（Kai 
 两套数据并用：few-shot SFT 集 \(D_E\)（128 条含专家长链推理轨迹）+ 大规模 answer-only RL 集 \(D_I\)（仅答案、用于 verifier 给奖励）。三大挑战 →三要素必须同时满足：**监督学习**（RLVR 二值奖励之外唯一外部知识来源）、**on-policy 学习**（让模型拿自己 rollout 对比示范，缓解 exposure bias、扩大极少题的学习面）、**自适应衰减权重**（早期重学 \(D_E\)、随 \(D_I\) 的 RLVR 信号变主导而降权，防过拟合）。
 
 ### 1. 总损失与两支（§3.2，Eq.3）
-\[
-L=c\cdot L_E+L_I,\qquad c>0\ \text{为常数系数}.
-\]
+\(\displaystyle L=c\cdot L_E+L_I,\qquad c>0\ \text{为常数系数}.\)
 - **\(D_E\) 支：semi-online DPO**（示范 \(y^+\) = preferred，当前 rollout \(y^-\sim\pi_{\theta_{\text{old}}}\) = non-preferred）：
-\[
-L_E=-\,\mathbb{E}_{(x,y^+)\sim D_E,\ y^-\sim\pi_{\theta_{\text{old}}}(\cdot\mid x)}\big[\log\sigma(\beta r^+-\beta r^-)\big],
-\]
+\(\displaystyle L_E=-\,\mathbb{E}_{(x,y^+)\sim D_E,\ y^-\sim\pi_{\theta_{\text{old}}}(\cdot\mid x)}\big[\log\sigma(\beta r^+-\beta r^-)\big],\)
 其中 \(r^+=\log\dfrac{\pi_\theta(y^+\mid x)}{\pi_{\text{ref}}(y^+\mid x)},\ r^-=\log\dfrac{\pi_\theta(y^-\mid x)}{\pi_{\text{ref}}(y^-\mid x)}\)，\(\sigma\) 为 sigmoid。
 - **\(D_I\) 支：GRPO**（沿 HPT/Dr.GRPO 省 KL 与 advantage std，带 DAPO 式非对称 clip \(1-\epsilon_1,1+\epsilon_2\)）：
-\[
-L_I=\mathbb{E}_{x\sim D_I,\ y\sim\pi_{\theta_{\text{old}}}}\!\Big[-\tfrac{1}{nM}\textstyle\sum_{i=1}^{n}\sum_{j=1}^{|y_i|}\min\big(\rho_{i,j}A_i,\ \mathrm{clip}(\rho_{i,j},1-\epsilon_1,1+\epsilon_2)A_i\big)\Big],\quad \rho_{i,j}=\tfrac{\pi_\theta(y_{i,j}\mid x,y_{i,<j})}{\pi_{\theta_{\text{old}}}(y_{i,j}\mid x,y_{i,<j})}.
-\]
+\(\displaystyle L_I=\mathbb{E}_{x\sim D_I,\ y\sim\pi_{\theta_{\text{old}}}}\!\Big[-\tfrac{1}{nM}\textstyle\sum_{i=1}^{n}\sum_{j=1}^{|y_i|}\min\big(\rho_{i,j}A_i,\ \mathrm{clip}(\rho_{i,j},1-\epsilon_1,1+\epsilon_2)A_i\big)\Big],\quad \rho_{i,j}=\tfrac{\pi_\theta(y_{i,j}\mid x,y_{i,<j})}{\pi_{\theta_{\text{old}}}(y_{i,j}\mid x,y_{i,<j})}.\)
 
 ### 2. 为什么选 semi-online DPO：梯度三要素（§3.2，Eq.4）
-\[
-\nabla_\theta L_E=-\beta\,\mathbb{E}_{(x,y^+)\sim D_E,\ y^-\sim\pi_{\theta_{\text{old}}}}\Big[\underbrace{\sigma(\beta(r^--r^+))}_{\text{衰减权重}}\cdot\big(\underbrace{\nabla\log\pi_\theta(y^+\mid x)}_{\text{监督}}-\underbrace{\nabla\log\pi_\theta(y^-\mid x)}_{\text{on-policy}}\big)\Big].
-\]
+\(\displaystyle \nabla_\theta L_E=-\beta\,\mathbb{E}_{(x,y^+)\sim D_E,\ y^-\sim\pi_{\theta_{\text{old}}}}\Big[\underbrace{\sigma(\beta(r^--r^+))}_{\text{衰减权重}}\cdot\big(\underbrace{\nabla\log\pi_\theta(y^+\mid x)}_{\text{监督}}-\underbrace{\nabla\log\pi_\theta(y^-\mid x)}_{\text{on-policy}}\big)\Big].\)
 衰减权重 \(\sigma(\beta(r^--r^+))\) 随训练（示范概率被学高、\(r^+\!\uparrow\)）自动趋小 → 自然降低对 few-shot 的学习强度（HPT 是手动降到 2%，FEST 是梯度内生）。SPIN 已证此范式 ≈ 对抗训练（判别器分 \(r^+/r^-\)、策略当生成器有闭式解，Appendix B.2）。
 
 ### 3. 自适应 β：按可解性三档（§3.2，Eq.5）
 对一 batch \(n\) 个 rollout，按二值奖励把每个 pair \((x,y^-_i)\) 的 \(\beta\) 设为：
-\[
-\beta(x,y^-_i)=\begin{cases}\beta_1,&\forall j,\ r(x,y^-_j)=0\ (\text{全错}),\\ \beta_2,&r(x,y^-_i)=0\ \text{且}\ \exists j,\ r(x,y^-_j)=1\ (\text{RLVR-可解但本条错}),\\ \beta_3,&r(x,y^-_i)=1\ (\text{本条正确}).\end{cases}
-\]
+\(\displaystyle \beta(x,y^-_i)=\begin{cases}\beta_1,&\forall j,\ r(x,y^-_j)=0\ (\text{全错}),\\ \beta_2,&r(x,y^-_i)=0\ \text{且}\ \exists j,\ r(x,y^-_j)=1\ (\text{RLVR-可解但本条错}),\\ \beta_3,&r(x,y^-_i)=1\ (\text{本条正确}).\end{cases}\)
 直觉：全错的难题最该强学示范（\(\beta_1\) 最大引导），已对的题该容忍偏离示范。\(\beta_1,\beta_2,\beta_3\) 为常数（启发式，Appendix D.3 调参）。Remark 3.2：长链推理需 \(\beta\in[0.001,0.1]\)（远小于标准 DPO 的 0.1–0.2，因序列长、log-ratio 差异大）。
 
 ### 4. FEST-GRPO 变体：治梯度幅度失配（§3.3）
 问题：\(L_E\)(DPO) 是**序列级**（log-sigmoid 内是整条响应的联合概率），\(L_I\)(GRPO) 是**token 级**（逐 token clip），二者梯度幅度差很大、需 exhaustive 调 \(c\)。
 解法：把 Eq.4 的衰减权重+on-policy 项 \(\mathbb{E}[\beta\sigma(\beta(r^--r^+))\nabla\log\pi_\theta(y^-\mid x)]\) 对照 REINFORCE 梯度，发现它 ≡ "负奖励 REINFORCE"（奖励 \(-\beta\sigma(\beta(r^--r^+))<0\)）；监督项 ≡ "正权重 \(\beta\sigma(\beta(r^--r^+))>0\) 的加权 SFT"。于是
-\[
-\textbf{Semi-online DPO}\ \approx\ \textbf{REINFORCE(负奖励)}\ +\ \textbf{加权 SFT}.
-\]
+\(\displaystyle \textbf{Semi-online DPO}\ \approx\ \textbf{REINFORCE(负奖励)}\ +\ \textbf{加权 SFT}.\)
 **把其中 REINFORCE 部分换成 GRPO** → FEST-GRPO（保留 \(L_I\)，把 DPO 式 \(L_E\) 换成"加权 SFT + 对 \(D_E\) 的 GRPO"）。消除失配，且这一等价把 DPO 纳入 HPT 统一框架（Remark 3.3）。负奖励 RL 的作用（Zhu et al.[108]）：把概率质量重分配到其他可行解、防过拟合、促鲁棒探索（Remark 3.4）。
 
 ### 数据流动 / 关键超参（§4 Training Recipe）

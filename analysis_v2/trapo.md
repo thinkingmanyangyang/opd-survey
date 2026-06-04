@@ -27,14 +27,10 @@ trapo | TRAPO: Trust-Region Adaptive Policy Optimization | 清华大学 CoAI 组
 - 关键机制/公式(直觉):
   - **标准 SFT 的爆炸权重(问题根源)**:LUFFY 式前缀 SFT 梯度可写为 \(\nabla_\theta L_{\mathrm{SFT}}\) 中带权重 \(\frac{1}{p^\theta_T(y^i_n\mid x^i,y^i_{<n})}\)(Eq 2 的 token 权重)。当专家 token \(y^i_n\) 落在远离当前策略模式处(如专家分布最右模式),该权重**爆炸**,把 \(p^\theta_T\) 先推进"空洞区"再慢修正(GMM pilot)。实例级交织时,任何分到空洞区的概率质量都立即产出退化 rollout。
   - **TrSFT(Eq 3)**:把权重的分母改为 \(\max(p^\theta_T,\alpha)\),得梯度
-    \[
-    \nabla_\theta L^\alpha_{\mathrm{TrSFT}}=-\frac{1}{N}\sum_{i=1}^{N}\sum_{n=1}^{|y^i|}\frac{1}{\max\big(p^\theta_T(y^i_n\mid x^i,y^i_{<n}),\,\alpha\big)}\,\nabla_\theta p^\theta_T(y^i_n\mid x^i,y^i_{<n}),
-    \]
+    \(\displaystyle \nabla_\theta L^\alpha_{\mathrm{TrSFT}}=-\frac{1}{N}\sum_{i=1}^{N}\sum_{n=1}^{|y^i|}\frac{1}{\max\big(p^\theta_T(y^i_n\mid x^i,y^i_{<n}),\,\alpha\big)}\,\nabla_\theta p^\theta_T(y^i_n\mid x^i,y^i_{<n}),\)
     其中 \(\alpha\in[0,1]\) 是信赖域边界。\(p^\theta_T\ge\alpha\) 用标准 SFT 激进模仿("近"的专家智慧、保留已有强项);\(p^\theta_T<\alpha\) 用常数 \(1/\alpha\) 压制梯度、只追专家主模式,避免大梯度把策略推进空洞区。
   - **Prop.1(最优解,KKT 推导)**:令 \(S(\lambda)=\{c\mid p_E(c)>\alpha\lambda,\,c\in C\}\)(\(C\)=词表),存在唯一 \(\lambda\in(0,1)\) 使 \(\lambda=\sum_{c\in S(\lambda)}p_E(c)\),且最优解为
-    \[
-    p^*_T(c)=\begin{cases}\dfrac{p_E(c)}{\lambda}, & \text{若 } p_E(c)>\alpha\lambda,\\[2mm] 0, & \text{否则,}\end{cases}
-    \]
+    \(\displaystyle p^*_T(c)=\begin{cases}\dfrac{p_E(c)}{\lambda}, & \text{若 } p_E(c)>\alpha\lambda,\\[2mm] 0, & \text{否则,}\end{cases}\)
     即**剪掉专家低概率区**(\(p^*_T(c)=0\))、**对主模式重标定**(\(p^*_T(c)=p_E(c)/\lambda\))。直觉:把目标从 forward-KL 的 mode-covering 转向 reverse-KL 的 mode-seeking,逼策略聚焦专家核心技能、利于高回报 rollout。
   - **Micro-group(§2.3)**:每 prompt 顺序建 \(N\) 微组,各由 (前缀长度比 \(L_i\), 回报阈值 \(t_i\), 采样预算 \(n_i\)) 决定。\(0=L_1<L_2<\dots<L_N=1\):\(L_1=0\) 保证恒从无引导自探索起(配 \(t_1=-1\) 必触发无引导),\(L_N=1\) 可给完整专家路径。判定:对 \(g_i\) 先算前面所有微组样本的平均回报,若 < \(t_i\) 则给比例 \(L_i\) 前缀再采 \(n_i\) 补全,否则直接采 \(n_i\) 无引导 rollout。"仅在需要时给最小引导"。
   - 另一直觉(Fig.2 pilot):越长专家前缀稳步提升准确率并激发 backtracking / backward chaining 等高级推理行为。

@@ -19,31 +19,31 @@ ampo | AMPO: Adaptive Multi-Guidance Policy Optimization for Diverse Exploration
 ## 怎么做 + 靠不靠谱
 ### 0. 基座 GRPO（§3.1）
 \(\pi_{\theta_{\mathrm{old}}}\) 对 query \(q\) 采 \(G\) 个解，组内归一化算 advantage：
-\[ A_{i,t}=\frac{R(o_i)-\mathrm{mean}(\{R(o_i)\}_{i=1}^{G})}{\mathrm{std}(\{R(o_i)\}_{i=1}^{G})} \quad(\text{Eq.1}) \]
+\(\displaystyle A_{i,t}=\frac{R(o_i)-\mathrm{mean}(\{R(o_i)\}_{i=1}^{G})}{\mathrm{std}(\{R(o_i)\}_{i=1}^{G})} \quad(\text{Eq.1})\)
 \(R(\cdot)\) 是 rule-based verifier(二值正确性)。目标(本文实现)：
-\[ J_{\mathrm{GRPO}}(\pi_\theta)=\frac{1}{G}\sum_{i=1}^{G}\frac{1}{|o_i|}\sum_{t=1}^{|o_i|}\min\big[r_{i,t}A_{i,t},\,\mathrm{clip}(r_{i,t},1-\epsilon,1+\epsilon)A_{i,t}\big] \quad(\text{Eq.2}) \]
+\(\displaystyle J_{\mathrm{GRPO}}(\pi_\theta)=\frac{1}{G}\sum_{i=1}^{G}\frac{1}{|o_i|}\sum_{t=1}^{|o_i|}\min\big[r_{i,t}A_{i,t},\,\mathrm{clip}(r_{i,t},1-\epsilon,1+\epsilon)A_{i,t}\big] \quad(\text{Eq.2})\)
 其中重要性比 \(r_{i,t}=\frac{\pi_\theta(o_{i,t}|q,o_{i,<t})}{\pi_{\theta_{\mathrm{old}}}(o_{i,t}|q,o_{i,<t})}\)。随 Yu/Yan 2025 **省略 KL 项**。
 
 ### 1. 自适应多教师替换（§3.2，guidance-on-demand）
 - 预构建 **Multi-Guidance Pool** \(P_G\)：多个不同教师对题目的**正确** off-policy 解。
 - 触发判据：\(\pi_{\theta_{\mathrm{old}}}\) 先采 \(G\) 个解；若**全部** reward 低于阈值 \(\tau\) 则置替换标志
-  \[ I=\begin{cases}\text{True}&\text{if }R(o_i)<\tau,\ \forall i\in\{1,\dots,G\}\\ \text{False}&\text{otherwise}\end{cases} \quad(\text{Eq.3}) \]
+  \(\displaystyle I=\begin{cases}\text{True}&\text{if }R(o_i)<\tau,\ \forall i\in\{1,\dots,G\}\\ \text{False}&\text{otherwise}\end{cases} \quad(\text{Eq.3})\)
   即"只有一条 on-policy 解都不对"时才兜底。
 - 若 \(I=\text{True}\)：随机选 \(k\) 个错误 on-policy 解，用按可理解度选出的 top-\(k\) off-policy 解替换，\(k=\min(k_0,N_g)\)(\(k_0\)=目标替换数，\(N_g\)=池中可用解数)，形成增广 batch
-  \[ G_{\mathrm{aug}}=\begin{cases}\{o_i\sim\pi_{\theta_{\mathrm{old}}}\}_{i=1}^{N_{\mathrm{on}}}\cup\{o_j\in P_G\}_{j=1}^{N_{\mathrm{off}}}&\text{if }I=\text{True}\\ \{o_i\sim\pi_{\theta_{\mathrm{old}}}\}_{i=1}^{G}&\text{otherwise}\end{cases} \quad(\text{Eq.4}) \]
+  \(\displaystyle G_{\mathrm{aug}}=\begin{cases}\{o_i\sim\pi_{\theta_{\mathrm{old}}}\}_{i=1}^{N_{\mathrm{on}}}\cup\{o_j\in P_G\}_{j=1}^{N_{\mathrm{off}}}&\text{if }I=\text{True}\\ \{o_i\sim\pi_{\theta_{\mathrm{old}}}\}_{i=1}^{G}&\text{otherwise}\end{cases} \quad(\text{Eq.4})\)
   \(N_{\mathrm{on}}=G-k\)、\(N_{\mathrm{off}}=k\)。保证每步都有正确解可学，同时优先自探索路径。
 
 ### 2. 可理解度选路（§3.3，核心创新之二）
 - 设池中一条 off-policy 解 \(o_{\mathrm{off}}=(z_{\mathrm{off}},y)\)(教师推理 \(z_{\mathrm{off}}\) + 答案 \(y\))；构造修正轨迹 \(o^*=(z_{\mathrm{off}},y^*)\)(把答案换成 ground-truth \(y^*\))。
 - **Probability Reward \(r_p\)** = 学生顺着 \(z_{\mathrm{off}}\) 生成正确答案 token 的几何平均概率(用平均对数概率算并裁剪到 [0,1])：
-  \[ r_p(o_{\mathrm{off}})=\mathrm{clip}\Big(\exp\big(\tfrac{1}{|y^*|}\sum_{\tau_i\in y^*}\log\pi_\theta(\tau_i|z_{\mathrm{off}},y^*_{<i})\big),\,0,\,1\Big) \quad(\text{Eq.5}) \]
+  \(\displaystyle r_p(o_{\mathrm{off}})=\mathrm{clip}\Big(\exp\big(\tfrac{1}{|y^*|}\sum_{\tau_i\in y^*}\log\pi_\theta(\tau_i|z_{\mathrm{off}},y^*_{<i})\big),\,0,\,1\Big) \quad(\text{Eq.5})\)
 - 直觉：\(r_p\) 高 = 教师推理与学生内部知识表征更对齐 = 更易吸收 = 脚手架搭在学生够得着的高度。按 \(r_p\) 排序取 top-\(k\)；并列时**取更短(更简洁)路径**当 tie-breaker。需配 format reward 以提取 \(y\)(§A.1.3)。
 
 ### 3. 混合策略优化（§3.4）
 - 增广 batch \(G_{\mathrm{aug}}\) 内统一归一化算 advantage：
-  \[ \hat A_{i,t}=\frac{R(o_i)-\mathrm{mean}(\{R(o_i)|o_i\in G_{\mathrm{aug}}\})}{\mathrm{std}(\{R(o_i)|o_i\in G_{\mathrm{aug}}\})} \quad(\text{Eq.6}) \]
+  \(\displaystyle \hat A_{i,t}=\frac{R(o_i)-\mathrm{mean}(\{R(o_i)|o_i\in G_{\mathrm{aug}}\})}{\mathrm{std}(\{R(o_i)|o_i\in G_{\mathrm{aug}}\})} \quad(\text{Eq.6})\)
 - 混合目标(off-policy 教师策略记 \(\pi_{\phi_j}\))：
-  \[ J_{\mathrm{Mixed}}(\theta)=\underbrace{\frac{1}{N_{\mathrm{off}}}\sum_{j=1}^{N_{\mathrm{off}}}\frac{1}{|o_j|}\sum_{t=1}^{|o_j|}\mathrm{CLIP}\big(f(\hat r_{j,t}),\hat A_{j,t},\epsilon\big)}_{\text{off-policy（序列级聚合）}}+\underbrace{\frac{1}{T_{\mathrm{on}}}\sum_{i=1}^{N_{\mathrm{on}}}\sum_{t=1}^{|o_i|}\mathrm{CLIP}\big(r_{i,t},\hat A_{i,t},\epsilon\big)}_{\text{on-policy（token 级聚合）}} \quad(\text{Eq.7}) \]
+  \(\displaystyle J_{\mathrm{Mixed}}(\theta)=\underbrace{\frac{1}{N_{\mathrm{off}}}\sum_{j=1}^{N_{\mathrm{off}}}\frac{1}{|o_j|}\sum_{t=1}^{|o_j|}\mathrm{CLIP}\big(f(\hat r_{j,t}),\hat A_{j,t},\epsilon\big)}_{\text{off-policy（序列级聚合）}}+\underbrace{\frac{1}{T_{\mathrm{on}}}\sum_{i=1}^{N_{\mathrm{on}}}\sum_{t=1}^{|o_i|}\mathrm{CLIP}\big(r_{i,t},\hat A_{i,t},\epsilon\big)}_{\text{on-policy（token 级聚合）}} \quad(\text{Eq.7})\)
   其中 \(\mathrm{CLIP}(r,A,\epsilon)=\min[r A,\mathrm{clip}(r,1-\epsilon,1+\epsilon)A]\)；off-policy 重要性比 \(\hat r_{j,t}=\frac{\pi_\theta(o_{j,t}|q,o_{j,<t})}{\pi_{\phi_j}(o_{j,t}|q,o_{j,<t})}\)、on-policy \(r_{i,t}=\frac{\pi_\theta}{\pi_{\theta_{\mathrm{old}}}}\)；\(T_{\mathrm{on}}=\sum_i|o_i|\)；shaping \(f(x)=\frac{x}{x+0.1}\)(沿用 LUFFY)。
 - **聚合粒度设计(§3.4 明确)**：off-policy 用**序列级**(每条教师解等权)，因不同教师序列长度不一，token 级等权会让长序列主导梯度引入 bias；on-policy 用 token 级(DAPO 式)。\(N_{\mathrm{off}}=0\) 时无缝退化为 GRPO。
 

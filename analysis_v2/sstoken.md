@@ -22,15 +22,11 @@ sstoken | ssToken: Self-modulated and Semantic-aware Token Selection for LLM Fin
   1. **输入**:一个 SFT 样本 \(x=\{x_1,\dots,x_L\}\),prompt 段 \(I_{prompt}\)、response 段 \(I_{resp}\);只对 response token 选 + 算 loss(prompt 仅作条件)。
   2. **REL 分(自调制 loss 轴)**:对每个 response token \(x_i\),同时跑当前模型 \(\theta\) 与历史模型 \(\theta_{his}\) 一次 forward,取各自 per-token NLL,作差得 \(\mathrm{REL}(x_i)=\log\frac{P_\theta(x_i\mid x_{<i})}{P_{\theta_{his}}(x_i\mid x_{<i})}\)(Eq.3)。直觉:当前模型相对历史在该 token loss 大降 ⇒ 该 token"还可学且有信息";已掌握/噪声 token 的 REL 接近 0 或负。
   3. **AttnScore 分(语义轴)**:forward 时用 **hook 存目标层 hidden state、再单独重算该层**得注意力矩阵(避开输出完整 attention,兼容 FlashAttention);取子矩阵 \(A^{(h)}_{resp\to prompt}:=A^{(h)}[I_{resp},I_{prompt}]\in\mathbb{R}^{L_{resp}\times L_{prompt}}\)(Eq.5),沿 prompt 维求和 \(\mathrm{AttnScore}^{(h)}=A^{(h)}_{resp\to prompt}\cdot\mathbf{1}_{prompt}\)(Eq.6),再对所有 head 平均:
-     \[
-     \mathrm{AttnScore}(x_i)=\frac{1}{H}\sum_{h=1}^{H}\mathbf{1}^{\top}_{prompt}\cdot\mathrm{softmax}\!\left(\frac{q^{(h)}_i K^{(h)\top}+M_i}{\sqrt{d_k}}\right),
-     \]
+     \(\displaystyle \mathrm{AttnScore}(x_i)=\frac{1}{H}\sum_{h=1}^{H}\mathbf{1}^{\top}_{prompt}\cdot\mathrm{softmax}\!\left(\frac{q^{(h)}_i K^{(h)\top}+M_i}{\sqrt{d_k}}\right),\)
      其中 \(M_i\) 是因果 mask(Eq.7)。该分天然 \(\in[0,1]\)。
   4. **归一 + 融合**:REL 在样本内做 min-max 归一 \(\mathrm{Normalize}(\mathrm{REL}(x_i))=\frac{\mathrm{REL}(x_i)-\min_j \mathrm{REL}(x_j)}{\max_j \mathrm{REL}(x_j)-\min_j \mathrm{REL}(x_j)}\)(Eq.8),映到 [0,1];AttnScore 已在 [0,1];线性融合 \(\mathrm{Score}(x_i)=\gamma\cdot\mathrm{Normalize}(\mathrm{REL}(x_i))+(1-\gamma)\cdot\mathrm{AttnScore}(x_i)\)(Eq.9,默认 \(\gamma=0.5\))。
   5. **top-\(\rho\) 选择 + mask loss**:按 Score 取每样本 response token 的前 \(\rho\) 比例,指示函数 \(I_\rho(x_i)=\mathbb{1}[x_i\in\text{top-}\rho\text{ by }\mathrm{Score}]\);loss 只对选中 token 算并按选中数归一:
-     \[
-     L_\theta(x)=-\frac{1}{L_{resp}\cdot\rho}\sum_i I_\rho(x_i)\,\log P_\theta(x_i\mid x_{<i}),
-     \]
+     \(\displaystyle L_\theta(x)=-\frac{1}{L_{resp}\cdot\rho}\sum_i I_\rho(x_i)\,\log P_\theta(x_i\mid x_{<i}),\)
      (Eq.10/11,默认 \(\rho=0.6\))→ 输出梯度,未选 token 不进 loss。
 - 逐组件必要性(每条都有消融支撑):
   - **REL(自调制)**:负责"免 reference 地找可学 token"。没它就退回需 reference 的老路。消融 \(\gamma=1\)(纯 REL)已超 full-data。【原文 Fig.3a】

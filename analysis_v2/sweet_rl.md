@@ -22,14 +22,10 @@ sweet_rl | SWEET-RL: Training Multi-Turn LLM Agents on Collaborative Reasoning T
 - 问题形式(POMDP):\(M=\{O,C,A,T,\mu_1,R,N\}\),\(O\) 可观测态、\(C\) 隐藏态;episode 初抽初始指令 \(o_1\) 与隐藏训练期信息 \(c\in C\)(如参考解,episode 内不变)。第 \(t\) 轮 agent 见交互历史 \(o_t\)、出动作 \(a_t=a^{1:L}_t\)(token 序列),环境把最新交互追加进历史得新态;每步可得标量奖励 \(r(o_t,a_t,c)\)。目标 \(\max\sum_{t=1}^N r(o_t,a_t,c)\)。**offline 设定**(在线人类交互太贵)。Q/V/A:\(A^\pi(o_t,a_t,c)=Q^\pi(o_t,a_t,c)-V^\pi(o_t,c)\)。【原文 §4.1, lines 385-410】
 - 方法流水线(两阶段,输入→输出):
   1. **训 critic/advantage(BT 目标)**:同任务下取两条离线轨迹,按累计回报标 chosen \(\tau^+\) / rejected \(\tau^-\) → 用 Bradley-Terry 目标在**轨迹级**训:原始 BT \(J_{BT}=-\log\sigma\big(\sum_t\beta r(o^+_t,a^+_t,c)-\sum_t\beta r(o^-_t,a^-_t,c)\big)\)(Eq 1),用 advantage 改写为 \(J_A(\theta)=-\log\sigma\big(\sum_t\beta A_\theta(o^+_t,a^+_t,c)-\sum_t\beta A_\theta(o^-_t,a^-_t,c)\big)\)(Eq 2);effect=抬高 \(\tau^+\) 每动作 advantage、压低 \(\tau^-\) 每动作 advantage。advantage 用动作平均 log-prob 比参数化(复用 LLM head,critic 输入含特权信息 \(c\)):
-     \[
-     A_\theta(o_t,a_t,c)=\frac{1}{L}\sum_{l=1}^{L}\log\frac{\pi_\theta(a^l_t\mid o_t,a^{1:l-1}_t,c)}{\pi_{ref}(a^l_t\mid o_t,a^{1:l-1}_t,c)},
-     \]
+     \(\displaystyle A_\theta(o_t,a_t,c)=\frac{1}{L}\sum_{l=1}^{L}\log\frac{\pi_\theta(a^l_t\mid o_t,a^{1:l-1}_t,c)}{\pi_{ref}(a^l_t\mid o_t,a^{1:l-1}_t,c)},\)
      (Eq 3,\(\pi_\theta\) 是待训 advantage LLM,\(\pi_{ref}\) 是冻结 seed,\(1/L\) 长度归一稳定训练)。
   2. **policy improvement(DPO)**:把训好的 advantage 当每轮 reward model,对 actor \(\pi_\phi\)(只看交互历史 \(o_t\)、不看 \(c\))做 DPO——每轮采 16 候选动作、按 advantage 排序,top-50% 分位随机取为 chosen \(a^+\)、bottom-50% 取为 rejected \(a^-\),标准 DPO loss:
-     \[
-     J_\pi(\phi)=-\log\sigma\!\left(\beta'\frac{\log\pi_\phi(a^+\mid o_t)}{\log\pi_{ref}(a^+\mid o_t)}-\beta'\frac{\log\pi_\phi(a^-\mid o_t)}{\log\pi_{ref}(a^-\mid o_t)}\right).
-     \]
+     \(\displaystyle J_\pi(\phi)=-\log\sigma\!\left(\beta'\frac{\log\pi_\phi(a^+\mid o_t)}{\log\pi_{ref}(a^+\mid o_t)}-\beta'\frac{\log\pi_\phi(a^-\mid o_t)}{\log\pi_{ref}(a^-\mid o_t)}\right).\)
      (Eq 4)此阶段无需人类交互(offline)。【原文 §4.1-4.3, lines 510-523】
 - 逐组件必要性(消融齐全):
   - **训练期特权信息 \(c\)**:核心。Fig.3a"SWEET-RL w/o Training-Time Information"Best-of-N 成功率大幅低于 SWEET-RL,Table 3 同结论 → 没它信用分配能力骤降。

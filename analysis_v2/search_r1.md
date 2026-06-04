@@ -19,10 +19,10 @@ search_r1 | Search-R1: Training LLMs to Reason and Leverage Search Engines with 
 
 ## 怎么做(到可复现粒度)
 - **总目标(Eq.1)**【原文 §3.1】:把搜索引擎 \(R\) 写进 RL 目标,最大化结果奖励减 KL 锚定:
-  \[ \max_{\pi_\theta}\ \mathbb{E}_{x\sim D,\ y\sim\pi_\theta(\cdot|x;R)}\big[r_\phi(x,y)\big]\;-\;\beta\,D_{\mathrm{KL}}\!\big[\pi_\theta(y|x;R)\,\|\,\pi_{\mathrm{ref}}(y|x;R)\big] \]
+  \(\displaystyle \max_{\pi_\theta}\ \mathbb{E}_{x\sim D,\ y\sim\pi_\theta(\cdot|x;R)}\big[r_\phi(x,y)\big]\;-\;\beta\,D_{\mathrm{KL}}\!\big[\pi_\theta(y|x;R)\,\|\,\pi_{\mathrm{ref}}(y|x;R)\big]\)
   关键记号:策略 \(\pi_\theta(\cdot|x;R)=\pi_\theta(\cdot|x)\otimes R\),其中 \(\otimes\) 表示"检索-推理交织"——即 rollout 序列由 LLM 生成 token 与检索回来的 token **交错拼接**而成。这区别于普通 RL 的 \(\pi_\theta(\cdot|x)\)(只生成、无外部观测)。
 - **奖励(Eq.4,极简规则奖励)**【原文 §3.3】:
-  \[ r_\phi(x,y)=\mathrm{EM}(a_{\mathrm{pred}},a_{\mathrm{gold}}) \]
+  \(\displaystyle r_\phi(x,y)=\mathrm{EM}(a_{\mathrm{pred}},a_{\mathrm{gold}})\)
   \(a_{\mathrm{pred}}\)=从 \(y\) 抽取的最终答案,\(a_{\mathrm{gold}}\)=ground truth。**显式不用 format reward**(因学到的模型已有强格式遵从)、**不训神经奖励模型**(规避 reward hacking 与 RM 训练成本,follow Guo 2025)。
 - **多轮交织 rollout(Algorithm 1,可复现的循环逻辑)**【原文 §3.2、Alg.1】:输入 query \(x\)、策略 \(\pi_\theta\)、搜索引擎 \(R\)、最大 action 预算 \(B\)。
   1. 初始化 rollout 序列 \(y\leftarrow\varnothing\)、action 计数 \(b\leftarrow 0\)。
@@ -39,10 +39,10 @@ search_r1 | Search-R1: Training LLMs to Reason and Leverage Search Engines with 
   设计意图:**只约束格式、不注入内容偏置**(不强制反思、不强制搜索、不背书特定解法),好让 RL 的"自然学习动态"保持可观测、无偏(§3.3 原话)。
 - **检索 token 的 loss masking(核心承重设计)**【原文 §3.1】:定义掩码 \(I(y_t)\):若 \(y_t\) 是 **LLM 生成 token** 则 \(I(y_t)=1\),若是**检索回来的 token** 则 \(I(y_t)=0\)。所有 token 级损失项与 **KL 损失项**都乘 \(I(y_t)\)。直觉:检索 token 是外部环境观测,模型无法控制其内容,对它求策略梯度会引入"优化无法控制内容"的不稳定动态。
 - **优化器之一:PPO with Search(Eq.2)**【原文 §3.1】(actor-critic,默认算法):
-  \[ \mathcal{J}_{\mathrm{PPO}}(\theta)=\mathbb{E}_{x\sim D,\ y\sim\pi_{\mathrm{old}}(\cdot|x;R)}\!\left[\frac{1}{\sum_{t}I(y_t)}\sum_{t:\,I(y_t)=1}\min\!\Big(\rho_t A_t,\ \mathrm{clip}(\rho_t,1\!-\!\epsilon,1\!+\!\epsilon)A_t\Big)\right] \]
+  \(\displaystyle \mathcal{J}_{\mathrm{PPO}}(\theta)=\mathbb{E}_{x\sim D,\ y\sim\pi_{\mathrm{old}}(\cdot|x;R)}\!\left[\frac{1}{\sum_{t}I(y_t)}\sum_{t:\,I(y_t)=1}\min\!\Big(\rho_t A_t,\ \mathrm{clip}(\rho_t,1\!-\!\epsilon,1\!+\!\epsilon)A_t\Big)\right]\)
   其中比率 \(\rho_t=\dfrac{\pi_\theta(y_t|x,y_{<t};R)}{\pi_{\mathrm{old}}(y_t|x,y_{<t};R)}\),\(\epsilon\) 是 PPO 裁剪超参;**优势 \(A_t\) 用 GAE**(Schulman 2015)基于未来奖励 \(\{r_{\geq t}\}\) 与学习到的价值函数 \(V_\phi\) 估计。注意归一化分母 \(\sum_t I(y_t)\) 与求和下标 \(t:I(y_t)=1\) 都体现"只算 LLM token"。
 - **优化器之二:GRPO with Search(Eq.3)**【原文 §3.1】(去 critic,组内相对优势):对每个 \(x\) 采一组 \(G\) 条响应 \(\{y_1,\dots,y_G\}\),
-  \[ \mathcal{J}_{\mathrm{GRPO}}(\theta)=\mathbb{E}_{x\sim D,\ \{y_i\}_{i=1}^{G}\sim\pi_{\mathrm{old}}}\!\left[\frac{1}{G}\sum_{i=1}^{G}\frac{1}{\sum_t I(y_{i,t})}\sum_{t:\,I(y_{i,t})=1}\!\min\!\Big(\rho_{i,t}\hat{A}_{i,t},\ \mathrm{clip}(\rho_{i,t},1\!-\!\epsilon,1\!+\!\epsilon)\hat{A}_{i,t}\Big)-\beta D_{\mathrm{KL}}[\pi_\theta\|\pi_{\mathrm{ref}}]\right] \]
+  \(\displaystyle \mathcal{J}_{\mathrm{GRPO}}(\theta)=\mathbb{E}_{x\sim D,\ \{y_i\}_{i=1}^{G}\sim\pi_{\mathrm{old}}}\!\left[\frac{1}{G}\sum_{i=1}^{G}\frac{1}{\sum_t I(y_{i,t})}\sum_{t:\,I(y_{i,t})=1}\!\min\!\Big(\rho_{i,t}\hat{A}_{i,t},\ \mathrm{clip}(\rho_{i,t},1\!-\!\epsilon,1\!+\!\epsilon)\hat{A}_{i,t}\Big)-\beta D_{\mathrm{KL}}[\pi_\theta\|\pi_{\mathrm{ref}}]\right]\)
   \(\hat{A}_{i,t}\)=用组内相对奖励算的优势(无需 value 网络);GRPO 把 KL **直接加到 loss**(而非像 PPO 塞进 reward),且 **KL 计算同样施 masking**。
 - 逐组件必要性:
   - **loss masking**:做了消融(Table 4),去掉掉 0.088,**必要性最强**。机制上对应 Eq.2/3 里的 \(I(y_t)\) 在求和与归一化两处同时生效。

@@ -23,25 +23,15 @@ hpt_upge | Towards a Unified View of LLM Post-Training (UPGE / HPT) | 清华大�
 ## 怎么做 + 靠不靠谱
 ### UPGE 的推导(§2.2，全篇地基)
 - **共同目标**(Eq.1)：最大化期望成功率 + 不偏离示范(behavior)策略 \(\pi_\beta\)：
-  \[
-  J_\mu(\theta)=\mathbb{E}_{\tau\sim\pi_\theta(\cdot\mid q)}\big[r(\tau\mid q)\big]-\mu\,\mathrm{KL}\big(\pi_\beta(\cdot\mid q)\,\|\,\pi_\theta(\cdot\mid q)\big),\quad \mu\ge0.
-  \]
+  \(\displaystyle J_\mu(\theta)=\mathbb{E}_{\tau\sim\pi_\theta(\cdot\mid q)}\big[r(\tau\mid q)\big]-\mu\,\mathrm{KL}\big(\pi_\beta(\cdot\mid q)\,\|\,\pi_\theta(\cdot\mid q)\big),\quad \mu\ge0.\)
 - **求导**(Eq.2)：得两项之和——reward 项(采自 π_θ) + data-adherence/SFT 项(采自 π_β)：
-  \[
-  \nabla_\theta J_\mu(\theta)=\mathbb{E}_{\tau\sim\pi_\theta}\big[r(\tau\mid q)\nabla_\theta\log\pi_\theta(\tau\mid q)\big]+\mu\,\mathbb{E}_{\tau\sim\pi_\beta}\big[\nabla_\theta\log\pi_\theta(\tau\mid q)\big].
-  \]
+  \(\displaystyle \nabla_\theta J_\mu(\theta)=\mathbb{E}_{\tau\sim\pi_\theta}\big[r(\tau\mid q)\nabla_\theta\log\pi_\theta(\tau\mid q)\big]+\mu\,\mathbb{E}_{\tau\sim\pi_\beta}\big[\nabla_\theta\log\pi_\theta(\tau\mid q)\big].\)
 - **测度变换 + ∇logπ=(1/π)∇π**(Eq.3)，引入 reference 策略 \(\pi_{\text{ref}}\)：
-  \[
-  \nabla_\theta J_\mu(\theta)=\mathbb{E}_{\tau\sim\pi_{\text{ref}}(\cdot\mid q)}\Big[\frac{1}{\pi_{\text{ref}}(\tau\mid q)}\,\hat A_{\text{uni}}(\tau,q)\,\nabla_\theta\pi_\theta(\tau\mid q)\Big].
-  \]
+  \(\displaystyle \nabla_\theta J_\mu(\theta)=\mathbb{E}_{\tau\sim\pi_{\text{ref}}(\cdot\mid q)}\Big[\frac{1}{\pi_{\text{ref}}(\tau\mid q)}\,\hat A_{\text{uni}}(\tau,q)\,\nabla_\theta\pi_\theta(\tau\mid q)\Big].\)
 - **统一优势**(Eq.4，关键)：SFT 不过是优势退化为重要性比、且 off-policy 常令 \(\pi_{\text{ref}}=1\) 的特例：
-  \[
-  \hat A_{\text{uni}}(\tau,q)=\underbrace{r(\tau\mid q)}_{\hat A_{\text{RL}}}+\underbrace{\mu\,\frac{\pi_\beta(\tau\mid q)}{\pi_\theta(\tau\mid q)}}_{\hat A_{\text{SFT}}}.
-  \]
+  \(\displaystyle \hat A_{\text{uni}}(\tau,q)=\underbrace{r(\tau\mid q)}_{\hat A_{\text{RL}}}+\underbrace{\mu\,\frac{\pi_\beta(\tau\mid q)}{\pi_\theta(\tau\mid q)}}_{\hat A_{\text{SFT}}}.\)
 - **插入稳定化掩码**(乘性、不改目标)得 **UPGE**(Eq.6)：
-  \[
-  \mathrm{grad}_{\text{uni}}=\mathbb{E}_{\tau\sim\pi_{\text{ref}}}\Big[\mathbb{1}_{\text{stable}}(\tau,q)\,\frac{1}{\pi_{\text{ref}}(\tau\mid q)}\,\hat A_{\text{uni}}(\tau,q)\,\nabla_\theta\pi_\theta(\tau\mid q)\Big]=\mathbb{1}_{\text{stable}}\,\frac{1}{\pi_{\text{ref}}}\,\hat A\,\nabla\pi_\theta.
-  \]
+  \(\displaystyle \mathrm{grad}_{\text{uni}}=\mathbb{E}_{\tau\sim\pi_{\text{ref}}}\Big[\mathbb{1}_{\text{stable}}(\tau,q)\,\frac{1}{\pi_{\text{ref}}(\tau\mid q)}\,\hat A_{\text{uni}}(\tau,q)\,\nabla_\theta\pi_\theta(\tau\mid q)\Big]=\mathbb{1}_{\text{stable}}\,\frac{1}{\pi_{\text{ref}}}\,\hat A\,\nabla\pi_\theta.\)
   四组件:① \(\mathbb{1}_{\text{stable}}\) 稳定化掩码(PPO clip 的 stop-gradient)；② \(1/\pi_{\text{ref}}\) 参考策略分母(token 级重加权——概率小=更重要=权重更大；SFT 用 1/π_θ、PPO 用 1/π_θold、offline 用 π_ref=1)；③ \(\hat A\) 优势(GRPO 归一见 Eq.5)；④ \(\nabla\pi_\theta\) 似然梯度(跨所有算法不变)。**SFT/RL 同源 ⇒ 可在一个 loss 里联合**。
 
 ### HPT 算法流水线(Algorithm 1，读完可复现)

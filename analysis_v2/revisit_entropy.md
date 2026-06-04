@@ -25,7 +25,7 @@ revisit_entropy | Revisiting Entropy in Reinforcement Learning for Large Reasoni
 
 ### A. 基底:token-level、去 KL 的 GRPO(全文训练用)
 对每 prompt \(x\) 采 \(G\) 个响应 \(\{y_i\}\),组相对 advantage \(\hat A_{i,t}\) 用组内 reward 的均值/标准差归一(沿 DAPO 用 token-level loss + 去掉 KL 惩罚):
-\[J(\theta)=\mathbb E_{x\sim\mathcal D,\{y_i\}\sim\pi_{\theta_{\text{old}}}}\!\Big[\tfrac{1}{\sum_i|y_i|}\sum_{i=1}^{G}\sum_{t=1}^{|y_i|}\min\!\big(r_{i,t}(\theta)\hat A_{i,t},\ \mathrm{clip}(r_{i,t}(\theta),1-\varepsilon_{\text{low}},1+\varepsilon_{\text{high}})\hat A_{i,t}\big)\Big],\]
+\(\displaystyle J(\theta)=\mathbb E_{x\sim\mathcal D,\{y_i\}\sim\pi_{\theta_{\text{old}}}}\!\Big[\tfrac{1}{\sum_i|y_i|}\sum_{i=1}^{G}\sum_{t=1}^{|y_i|}\min\!\big(r_{i,t}(\theta)\hat A_{i,t},\ \mathrm{clip}(r_{i,t}(\theta),1-\varepsilon_{\text{low}},1+\varepsilon_{\text{high}})\hat A_{i,t}\big)\Big],\)
 其中 \(r_{i,t}(\theta)\) 是重要性比率。熵的定义 \(H(\pi_\theta)\) = \(\pi_\theta\) 的 token 级平均熵;熵正则把目标加项 \(\alpha H(\pi_\theta)\)。【附录A.1】
 
 ### B. 诊断扫描(同模型/同数据,沿三轴)
@@ -37,7 +37,7 @@ revisit_entropy | Revisiting Entropy in Reinforcement Learning for Large Reasoni
 
 ### C. token 级因果归因:正优势 token 是主因(§7,全文支柱)
 - **梯度符号分析(§7.1,式3/4)**:对某 token \(v\) 的 logit \(z_v\) 求梯度,符号取决于"该步是否采样到 \(v\) × advantage 正负 × 是否被 clip"。当 \(v\) **未被采样**时(式3):
-\[\frac{\partial J(\theta)}{\partial z_v}=\begin{cases}-\,r_t(\theta)\,\pi_\theta(v\mid x,y_{<t})\,\hat A_t,&\hat A_t>0\ \text{且}\ r_t(\theta)<1+\varepsilon_{\text{high}}\\[2pt]0,&\hat A_t>0\ \text{且}\ r_t(\theta)>1+\varepsilon_{\text{high}}\\[2pt]-\,r_t(\theta)\,\pi_\theta(v\mid x,y_{<t})\,\hat A_t,&\hat A_t<0\ \text{且}\ r_t(\theta)>1-\varepsilon_{\text{low}}\\[2pt]0,&\hat A_t<0\ \text{且}\ r_t(\theta)<1-\varepsilon_{\text{low}}\end{cases}\]
+\(\displaystyle \frac{\partial J(\theta)}{\partial z_v}=\begin{cases}-\,r_t(\theta)\,\pi_\theta(v\mid x,y_{<t})\,\hat A_t,&\hat A_t>0\ \text{且}\ r_t(\theta)<1+\varepsilon_{\text{high}}\\[2pt]0,&\hat A_t>0\ \text{且}\ r_t(\theta)>1+\varepsilon_{\text{high}}\\[2pt]-\,r_t(\theta)\,\pi_\theta(v\mid x,y_{<t})\,\hat A_t,&\hat A_t<0\ \text{且}\ r_t(\theta)>1-\varepsilon_{\text{low}}\\[2pt]0,&\hat A_t<0\ \text{且}\ r_t(\theta)<1-\varepsilon_{\text{low}}\end{cases}\)
 当 \(v\) **被采样**时(式4),把 \(\pi_\theta(v)\) 换成 \((1-\pi_\theta(v))\) 且去掉负号:\(\frac{\partial J}{\partial z_v}=r_t(\theta)\,(1-\pi_\theta(v\mid x,y_{<t}))\,\hat A_t\)(同样的 clip 边界归零)。**因 RLVR 做梯度上升**:正优势 → 抬高已采样 token 概率、压低未采样 token;因高概率 token 更易被采样,质量越堆越集中 → **熵坍缩**。负优势反之 → 压高概率已采样 token、抬未采样的 → 抗坍缩。clip 把比率截断时梯度归零,所以 **clip 阈值 = 在调节正/负优势 token 的相对梯度贡献** → 与 §6.1 实证一致。【§7.1,推导见附录E.1】
 - **直接实证(§7.2,关键)**:只训 Adv≥0 token vs 只训 Adv≤0 token。**只训 Adv≥0 → 熵坍缩最重(熵 ≈ 0.0146)**;**只训 Adv≤0 → 熵很高(≈ 0.884)**(图5)。对照 Ada-Ent-Reg / Clip-Cov / KL-Cov / Entropy-Adv / Rand-Pos-Clip 同台。这是"正优势 token 主导坍缩"的因果支柱。【§7.2,图5】
 
@@ -46,7 +46,7 @@ revisit_entropy | Revisiting Entropy in Reinforcement Learning for Large Reasoni
 1. **Stage-based**:训练分两等阶段;前半 \(\lambda=0\)(只用非正优势 token),后半 \(\lambda\) 线性 0→1。
 2. **Epoch-wise**:\(\lambda=(e-1)/(E-1)\)(\(E\) 总 epoch、\(e\) 当前 epoch),逐 epoch 线性升。
 3. **Entropy-guided(主推)**:按当前熵自适应——熵超阈值 \(\delta\) 则 \(\lambda+\Delta\) 压熵,否则 \(\lambda-\Delta\) 升熵,把熵稳在 \(\delta\) 附近:
-\[\lambda_{k+1}=\begin{cases}\mathrm{clip}(\lambda_k-\Delta,\,0,\,1),&H_k(\pi_\theta)<\delta\\[2pt]\mathrm{clip}(\lambda_k+\Delta,\,0,\,1),&\text{otherwise}\end{cases}\]
+\(\displaystyle \lambda_{k+1}=\begin{cases}\mathrm{clip}(\lambda_k-\Delta,\,0,\,1),&H_k(\pi_\theta)<\delta\\[2pt]\mathrm{clip}(\lambda_k+\Delta,\,0,\,1),&\text{otherwise}\end{cases}\)
 默认 \(\delta=0.2\)(与 Ada-Ent-Reg 对齐)、\(\Delta=0.05\)、\(\lambda_0=0\)。结果:Stage/Epoch 版熵先升后降;Entropy-guided 把熵稳在 0.2 附近,且拿到最高 ID Avg@64(45.66),并在 6/7 benchmark 上 Avg@64 超 Clip-Higher。**消融额外发现**:Rand-Pos-Clip(随机把一小撮正优势 token 梯度置零)就已能缓解坍缩且 Avg@64≈Clip-Cov——印证"调正优势 token 的损失权重是有效的控熵手段"。【§7.3,Table2,图5】
 
 ### 数据/模型/评测(复现锚点)

@@ -25,17 +25,15 @@ nemotron_nano2 | NVIDIA Nemotron Nano 2: An Accurate and Efficient Hybrid Mamba-
 ### 压缩:剪枝重要性估计(§4.1,真实形式)
 全程**只用前向传播**(梯度敏感性在 LLM 规模不实际)。
 - **层重要性(MSE)**：迭代式——逐个临时移除候选层、算原模型 logits 与剪后 logits 的 MSE;**移除 MSE 最低(影响最小)的层**,重复到目标深度。
-- **FFN/embedding 通道重要性**：FFN 形式 `\(\text{FFN}(X)=\delta(X\cdot W_1^T)\cdot W_2\)`(`\(\delta\)`=squared ReLU,`\(W_1,W_2\in\mathbb{R}^{d_{ffn}\times d_{model}}\)`)。第一线性算子第 `\(i\)` 个神经元重要性按其输出在 batch×seq 维聚合:
-\[
-F^{(i)}_{\text{neuron}}=\sum_{B,S}\delta\big(X(W_1^i)^T\big),
-\]
-聚合函数用 mean(`\(\frac1n\sum|S_i|\)`)与 l2-norm(`\(\sqrt{\sum S_i^2}\)`),校准集 1024 样本;embedding 通道同理(看 LayerNorm 输出)。
+- **FFN/embedding 通道重要性**：FFN 形式 \(\text{FFN}(X)=\delta(X\cdot W_1^T)\cdot W_2\)(\(\delta\)=squared ReLU,\(W_1,W_2\in\mathbb{R}^{d_{ffn}\times d_{model}}\))。第一线性算子第 \(i\) 个神经元重要性按其输出在 batch×seq 维聚合:
+\(\displaystyle F^{(i)}_{\text{neuron}}=\sum_{B,S}\delta\big(X(W_1^i)^T\big),\)
+聚合函数用 mean(\(\frac1n\sum|S_i|\))与 l2-norm(\(\sqrt{\sum S_i^2}\)),校准集 1024 样本;embedding 通道同理(看 LayerNorm 输出)。
 - **Mamba head 重要性**：按 Taghibakhshi 2025 的 nested activation 评分(1024 校准样本);**实测剪 Mamba head 导致严重精度损失**——因本工作压缩比小(深度剪后 <15%),剪 Mamba 收益有限,故**只剪 FFN+embedding+深度**。
 
 ### 压缩:架构搜索 + KD 恢复(§4.2-4.3)
 1. **定深度**:固定 4 个 attention 层(attn:total≈7-8%),比较 52/54/56 层(各 6B token KD):52→44.92、54→47.35、**56→51.48** → 定 56 层。
 2. **宽度剪枝 + 选候选**:在 56 层上做 60B token KD,再沿 embedding/FFN/Mamba 枚举满足 128k/bs1 内存预算的候选,按估计显存降序取 top-3,各做 **19B token 短 KD** + 测吞吐 → 选 **Candidate 2**(56 层/hidden 4480/FFN 15680/128 Mamba heads/8.89B,精度 63.02,吞吐 156.42)。
-3. **forward-KL logit 蒸馏(精度恢复核心)**：**仅用 forward KL 散度损失**做 logit 蒸馏(教师=原 12B,固定 logits),优于普通微调;损失具体形式**沿用 Minitron 论文 §3**(本文未重列公式 → 标注:原文未在正文重列 KD 损失式)。本质是 `\(\min_\theta \mathrm{KL}[p_{\text{teacher}}\|q_\theta^{\text{student}}]\)`,让剪小后的学生覆盖教师整个输出分布。数据配比消融(Table 11,~6B token KD,reasoning-SFT/pretraining):50/50→57.5、**70/30→58.5(最佳)**、90/10→57.2。
+3. **forward-KL logit 蒸馏(精度恢复核心)**：**仅用 forward KL 散度损失**做 logit 蒸馏(教师=原 12B,固定 logits),优于普通微调;损失具体形式**沿用 Minitron 论文 §3**(本文未重列公式 → 标注:原文未在正文重列 KD 损失式)。本质是 \(\min_\theta \mathrm{KL}[p_{\text{teacher}}\|q_\theta^{\text{student}}]\),让剪小后的学生覆盖教师整个输出分布。数据配比消融(Table 11,~6B token KD,reasoning-SFT/pretraining):50/50→57.5、**70/30→58.5(最佳)**、90/10→57.2。
 
 ### 最终 9B 推理模型的 7 步分阶段恢复链(§4.3,带 token 数)
 1. 深度剪到 56 层;KD ~60B token @ 8192 长度。
@@ -52,7 +50,7 @@ F^{(i)}_{\text{neuron}}=\sum_{B,S}\delta\big(X(W_1^i)^T\big),
 - **Stage-3 SFT(截断训练)**：加入把推理轨迹**突然截断到 1-2k token**(保留最终答案)的样本——没它短 budget 下 well-formedness 暴跌(Fig.5a→5b)。
 - **iterative on-policy DPO(工具)**：在 WorkBench 多步可验证工具环境,对每个 prompt 用**当前 checkpoint** 生成 on-policy **正样本(成功调用)/负样本(失败生成)** 迭代 DPO;BFCL v3 评测。
 - **GRPO(RLHF,Qwen-based RM,HelpSteer3 英文)**：提升 instruction-following/对齐,生成带/不带 thinking 两种 rollout 评分;**暂时损害 MMLU-Pro**(post-GRPO KD 恢复)。
-- **模型合并(checkpoint 插值)**：`\((1-\alpha)\cdot w_{\text{model1}}+\alpha\cdot w_{\text{model2}}\)`,把推理强/chat 强两个 RL checkpoint 调和;`\(\alpha\)` 在 0.1-0.9 扫(步长 0.1),**`\(\alpha\approx0.5\)` 最佳折中**——缓解 RLHF 引入的回退(Fig.6)。
+- **模型合并(checkpoint 插值)**：\((1-\alpha)\cdot w_{\text{model1}}+\alpha\cdot w_{\text{model2}}\),把推理强/chat 强两个 RL checkpoint 调和;\(\alpha\) 在 0.1-0.9 扫(步长 0.1),**\(\alpha\approx0.5\) 最佳折中**——缓解 RLHF 引入的回退(Fig.6)。
 
 ### budget 控制机制(§3.4,可复现细节)
 推理时从生成 `<think>` 起计 token;到 budget 后**不立即插 `</think>`,而是让模型把当前句子写完、在下一个换行处插**;极端情况无换行则在 **(budget+500)** 处强插。两种失效模式:① compensation(thinking 受限→在 final answer 里补)→ 截断训练消除;② 强插后仍停在 thinking 模式(再吐一个 `</think>`)→ 用 "Well-Formedness"(只含单个闭合标签为良)度量,截断训练后短 budget 也稳定良形(Fig.5b)。
@@ -70,7 +68,7 @@ F^{(i)}_{\text{neuron}}=\sum_{B,S}\delta\big(X(W_1^i)^T\big),
   - 【原文 §4.1/§4.2】剪枝**只剪 FFN+embedding+深度、不剪 Mamba head**——因本工作**压缩比小(12B→9B,深度剪后 <15%)**;【推断】激进压缩下该结论(及 forward-KL KD 的恢复力)未必外推。
   - 【原文 §3.4】thinking budget 控制依赖训练时截断样本 + 推理时 (budget+500) 强插 `</think>`——对极短 budget 仍有鲁棒性边界。
   - 【推断】**这是模型/数据发布而非可复现方法论**——完整训练代码(NeMo/Megatron 内部栈)闭源,超参/阶段多为工程经验选择,缺替代方案系统对照。
-  - 【原文 §3.2/§4.3】模型合并固定 `\(\alpha\approx0.5\)`——为经验做法,虽扫了 0.1-0.9 但**缺合并方式(非线性/任务向量等)的系统对照**。
+  - 【原文 §3.2/§4.3】模型合并固定 \(\alpha\approx0.5\)——为经验做法,虽扫了 0.1-0.9 但**缺合并方式(非线性/任务向量等)的系统对照**。
 - 祛魅总结【推断】：
   - 真贡献：一条**完整、消融到位的工业级产线**(混合架构 + 推理模型压缩 + budget 控制 + 多分支对齐合并)，且开源大量预/后训练数据与权重;Fig.6 把各对齐/恢复阶段作用拆开、Table 11 给数据配比,工程透明度高。
   - 与本课题(on-policy 蒸馏)的关系**被高估的风险**:① 它的"蒸馏"是 **forward-KL logit 蒸馏 + 固定教师 logits/数据**,本质是 **off-policy KD**(教师不在学生轨迹上打分),与 on-policy distillation **不是同一范式**;② 真正 on-policy 的只有"iterative on-policy DPO(工具)"那一支——且那是偏好优化不是蒸馏;③ reverse vs forward KL 的取舍、on-policy 蒸馏的分布真实性收益均未讨论。所以它对本课题更多是**背景/对照**(工业如何混用 SFT+RL+KD),而非方法直接对标。

@@ -20,7 +20,7 @@ scaf_grpo | Scaf-GRPO: Scaffolded Group Relative Policy Optimization for Enhanci
 
 ## 怎么做 + 靠不靠谱
 - **GRPO 前置(§3.1)**:对 prompt \(q\),策略 \(\pi_\theta\) 采 \(N\) 条轨迹 \(G=\{o_1,\dots,o_N\}\),verifier 给终端奖励 \(R(o_i)\);归一化 advantage \(\hat A_i=\frac{R(o_i)-\mu_G}{\sigma_G+\epsilon_{\mathrm{std}}}\);clipped surrogate
-  \[\mathcal{J}_{\mathrm{GRPO}}(\theta)=\hat{\mathbb{E}}_{i,t}\Big[\min\big(r_{i,t}(\theta)\hat A_i,\ \mathrm{clip}(r_{i,t}(\theta),1-\epsilon,1+\epsilon)\hat A_i\big)\Big],\quad r_{i,t}(\theta)=\frac{\pi_\theta(o_{i,t}\mid o_{i,<t},q)}{\pi_{\theta_{\mathrm{old}}}(o_{i,t}\mid o_{i,<t},q)}.\]
+  \(\displaystyle \mathcal{J}_{\mathrm{GRPO}}(\theta)=\hat{\mathbb{E}}_{i,t}\Big[\min\big(r_{i,t}(\theta)\hat A_i,\ \mathrm{clip}(r_{i,t}(\theta),1-\epsilon,1+\epsilon)\hat A_i\big)\Big],\quad r_{i,t}(\theta)=\frac{\pi_\theta(o_{i,t}\mid o_{i,<t},q)}{\pi_{\theta_{\mathrm{old}}}(o_{i,t}\mid o_{i,<t},q)}.\)
   全零奖励时 \(\hat A_i\to0\),梯度消失=学习悬崖。【原文】§3.1、Eq.1
 - **方法流水线(§3.2 + Fig.3,输入→输出)**:
   1. **输入**:query \(q\);预定义三层提示 \(H=\{H_{\mathrm{knowledge}},H_{\mathrm{planning}},H_{\mathrm{solution}}\}\)(由 DeepSeek-R1 基于 ground-truth 解题步骤**离线一次性**生成,§4.1)。三层语义:\(H_{\mathrm{knowledge}}\) 指关键概念/公式,\(H_{\mathrm{planning}}\) 给高层策略框架,\(H_{\mathrm{solution}}\) 给具体计算步。
@@ -28,9 +28,9 @@ scaf_grpo | Scaf-GRPO: Scaffolded Group Relative Policy Optimization for Enhanci
   3. **标准 GRPO 步**:对 \(q\) 采一组 \(N\) 条 \(G\);若 \(\ge1\) 条对 → 正常 GRPO(不干预,Eq.5 \(\mathcal{J}_{\mathrm{Scaf}}\equiv\mathcal{J}_{\mathrm{GRPO}}\))。
   4. **Phase 2 — 全错时触发分层引导**:确定性搜索,从最抽象层(Knowledge)起、层内**增量给提示**(\(H_{\mathrm{knowledge}}\to H_{\mathrm{planning}}\to H_{\mathrm{solution}}\)),一旦 \(\pi_\theta\) 在 \(q\oplus h\) 上采出正确解即终止 → 得**最小有效提示 \(h^*\)**(附录 D.1 给算法)。**输出**:\(h^*\) 与一条带提示成功轨迹 \(o^*_h\sim\pi_\theta(\cdot\mid q\oplus h^*)\)。
   5. **on-policy batch 增强**:用 \(o^*_h\) **替换**一条随机失败轨迹 \(o_j\) → \(G_{\mathrm{final}}=(G\setminus\{o_j\})\cup\{o^*_h\}\);advantage 在 \(G_{\mathrm{final}}\) 上重算
-     \[\hat A'_i=\frac{R(o'_i)-\mu_{G_{\mathrm{final}}}}{\sigma_{G_{\mathrm{final}}}+\epsilon_{\mathrm{std}}},\qquad o'_i\in G_{\mathrm{final}},\]
+     \(\displaystyle \hat A'_i=\frac{R(o'_i)-\mu_{G_{\mathrm{final}}}}{\sigma_{G_{\mathrm{final}}}+\epsilon_{\mathrm{std}}},\qquad o'_i\in G_{\mathrm{final}},\)
      恢复 \(\mu_{G_{\mathrm{final}}}>0\)、非零 \(\hat A'_i\)。损失仍是 GRPO clipped surrogate \(\mathcal{J}_{\mathrm{Scaf\text{-}GRPO}}(\theta)=\hat{\mathbb{E}}_{i,t}[\min(r'_{i,t}\hat A'_i,\mathrm{clip}(r'_{i,t},1-\epsilon,1+\epsilon)\hat A'_i)]\),但**比率分段**(Eq.4):
-     \[r'_{i,t}(\theta)=\begin{cases}\dfrac{\pi_\theta(o'_{i,t}\mid o'_{i,<t},q)}{\pi_{\theta_{\mathrm{old}}}(o'_{i,t}\mid o'_{i,<t},q)},& o'_i\in G_{\mathrm{final}}\ \text{且}\ o'_i\ne o^*_h\\[10pt]\dfrac{\pi_\theta(o'_{i,t}\mid o'_{i,<t},q\oplus h^*)}{\pi_{\theta_{\mathrm{old}}}(o'_{i,t}\mid o'_{i,<t},q\oplus h^*)},& o'_i=o^*_h.\end{cases}\]
+     \(\displaystyle r'_{i,t}(\theta)=\begin{cases}\dfrac{\pi_\theta(o'_{i,t}\mid o'_{i,<t},q)}{\pi_{\theta_{\mathrm{old}}}(o'_{i,t}\mid o'_{i,<t},q)},& o'_i\in G_{\mathrm{final}}\ \text{且}\ o'_i\ne o^*_h\\[10pt]\dfrac{\pi_\theta(o'_{i,t}\mid o'_{i,<t},q\oplus h^*)}{\pi_{\theta_{\mathrm{old}}}(o'_{i,t}\mid o'_{i,<t},q\oplus h^*)},& o'_i=o^*_h.\end{cases}\)
      普通轨迹比率对 \(q\) 算,\(o^*_h\) 的比率对 \(q\oplus h^*\) 算——保 on-policy 一致性的关键。
   6. KL penalty=0(最大化探索);**输出**:能持续从 true-hard 题学习的策略。
 - **逐组件必要性(消融在 Table 2,Qwen2.5-Math-7B,基线 No Guidance=vanilla GRPO 50.9 vs 45.2;降幅为相对 full 的相对值)**:

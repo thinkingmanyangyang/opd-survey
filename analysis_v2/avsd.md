@@ -26,30 +26,30 @@ avsd | AVSD: Adaptive-View Self-Distillation by Balancing Consensus and Teacher-
 1. **采 on-policy rollout**：student 当前策略 \(P^S_\theta\) 对 prompt \(x\) 生成一条轨迹 \(y\)（温度 0.7，每 prompt 只采 1 条——见超参表）。**只此一处顺序生成，是主成本**。
 2. **构造 M 个特权视图**：\(r^{(m)}=T_m(r)\)，变换 \(T_m\) 保留任务相关信息、只改"暴露给 teacher 的视图"。数学三视图 = full solution / partial solution（保留前若干步推理）/ final answer;代码三视图 = reference implementation / algorithmic hint / execution feedback（跑 student rollout 拿 pass/fail）。\(M=3\) 经验最佳（Algorithm 1 注）。
 3. **逐 view 算 teacher 分布与 advantage**：对同一前缀 \(h_t\)，让**同一个模型**条件化在 \((h_t,r^{(m)})\) 上做一次 **prefill-only 前向**（可 batch），得 \(q^{(m)}_t(v):=\mathrm{sg}\big[P^T_\theta(Y_t=v\mid h_t,r^{(m)})\big]\)（\(\mathrm{sg}\)=停梯度）。per-view distillation advantage：
-   \[ \Delta^{(m)}_t(v):=\log q^{(m)}_t(v)-\log p_t(v),\qquad p_t(v):=P^S_\theta(Y_t=v\mid h_t). \]
+   \(\displaystyle \Delta^{(m)}_t(v):=\log q^{(m)}_t(v)-\log p_t(v),\qquad p_t(v):=P^S_\theta(Y_t=v\mid h_t).\)
    直觉:这是 **reverse-KL 的 token 级 advantage**——\(\Delta>0\) 表示该 view 的 teacher 给 token \(v\) 比 student 更高概率（应 promote），\(<0\) 则 suppress。
 4. **两个池化目标 + 残差（§2.2）**：
    - **几何共识（intersection support，强调"所有视图都顶"的 token）**：未归一分数 \(\tilde q^G_t(v)=\big(\prod_m q^{(m)}_t(v)\big)^{1/M}=\exp(\frac1M\sum_m\log q^{(m)}_t(v))\)。对应 advantage 是 per-view advantage 的**算术均值**（归一化只差一个 token 无关常数,故可直接用未归一分数）：
-     \[ A^G_t(v):=\log\tilde q^G_t(v)-\log p_t(v)=\tfrac1M\textstyle\sum_{m=1}^M\Delta^{(m)}_t(v). \]
+     \(\displaystyle A^G_t(v):=\log\tilde q^G_t(v)-\log p_t(v)=\tfrac1M\textstyle\sum_{m=1}^M\Delta^{(m)}_t(v).\)
      几何均值会**下压任何一个视图给低概率的 token**，故保守。理论上 \(q^G_t\) 是**最小化"到各 teacher 的平均 reverse-KL"** \(\arg\min_q \frac1M\sum_m D_{KL}(q\|q_m)\) 的解（Appendix B.2，log-linear / product-of-experts pool）。
    - **算术边际（union support，强调"至少一个视图强顶"的 token）**：\(q^A_t(v)=\frac1M\sum_m q^{(m)}_t(v)\)，advantage \(A^A_t(v)=\log q^A_t(v)-\log p_t(v)\)。它是**最小化平均 forward-KL** \(\arg\min_q\frac1M\sum_m D_{KL}(q_m\|q)\) 的解（=随机均匀抽视图后的边际分布,Appendix B.2，linear pool）。permissive，但**对 view-specific artifact 敏感**（某视图因有参考解强 promote 某 token,另一视图毫无支持）。
    - **跨视图残差**：由 AM-GM 不等式 \(q^A_t\ge\tilde q^G_t\) 逐 token 成立，故
-     \[ A^A_t(v)=A^G_t(v)+J_t(v),\qquad J_t(v):=\log q^A_t(v)-\log\tilde q^G_t(v)\ \ge 0. \]
+     \(\displaystyle A^A_t(v)=A^G_t(v)+J_t(v),\qquad J_t(v):=\log q^A_t(v)-\log\tilde q^G_t(v)\ \ge 0.\)
      \(J_t\) 量化"算术边际里有、但严格几何共识里没有"的那部分概率质量。\(J_t=0\) 表示所有 teacher 精确一致;\(J_t\) 大表示只有部分 teacher 支持（可能是有用互补,也可能是特权 artifact——单看残差分不清,所以**用共识定方向、残差只调幅度**）。
 5. **门控重构（§2.3，核心）**：重构 advantage \(\hat A_t(v):=A^G_t(v)+\lambda_t(v)J_t(v)\)，\(\lambda_t(v)\in[0,1]\)。门控两分量：
    - **对齐分量**（views 方向冲突时压制残差）：
-     \[ C_t(v):=\frac{|A^G_t(v)|}{\frac1M\sum_{m}|\Delta^{(m)}_t(v)|+\epsilon}=\frac{\frac1M\big|\sum_m\Delta^{(m)}_t(v)\big|}{\frac1M\sum_m|\Delta^{(m)}_t(v)|+\epsilon}\in[0,1]. \]
+     \(\displaystyle C_t(v):=\frac{|A^G_t(v)|}{\frac1M\sum_{m}|\Delta^{(m)}_t(v)|+\epsilon}=\frac{\frac1M\big|\sum_m\Delta^{(m)}_t(v)\big|}{\frac1M\sum_m|\Delta^{(m)}_t(v)|+\epsilon}\in[0,1].\)
      各 view advantage **同号或互不矛盾时 \(C_t\to1\)**（分子≈分母）;正负互相抵消时 \(C_t\to0\)。即"平均后的净幅度 / 各自幅度之和"——区分"互补支持"与"冲突驱动的支持"。
    - **幅度分量**（残差盖过共识时压制）：
-     \[ R_t(v)=\frac{|A^G_t(v)|}{|A^G_t(v)|+J_t(v)+\epsilon}. \]
+     \(\displaystyle R_t(v)=\frac{|A^G_t(v)|}{|A^G_t(v)|+J_t(v)+\epsilon}.\)
      \(J_t\gg|A^G_t|\) 时 \(R_t\to0\)，防残差反转共识方向（例如 \(A^G_t<0\) 但 \(J_t\) 巨大会让算术目标去 promote 一个均值上该被压的 token）。
    - 合成 \(\lambda_t(v)=C_t(v)R_t(v)\)（**Eq.2**）。**有界性证明（Appendix B.3）**：因 \(C_t\le1\) 且 \(\frac{J_t}{|A^G_t|+J_t+\epsilon}\le1\)，得
-     \[ 0\le \lambda_t(v)J_t(v)=C_t(v)\frac{|A^G_t(v)|\,J_t(v)}{|A^G_t(v)|+J_t(v)+\epsilon}\le |A^G_t(v)|. \]
+     \(\displaystyle 0\le \lambda_t(v)J_t(v)=C_t(v)\frac{|A^G_t(v)|\,J_t(v)}{|A^G_t(v)|+J_t(v)+\epsilon}\le |A^G_t(v)|.\)
      于是 \(\hat A_t\) **保号**:\(A^G_t>0\Rightarrow\hat A_t\ge0\)，\(A^G_t<0\Rightarrow\hat A_t\le0\)——残差**只能加强正共识或软化负共识，永远不能翻转方向**。这正是它"经验性抑制 Yang 2026 所指特权泄漏风险"的机制。
 6. **重构目标 + 训练损失（§2.3 Eq.3）**：把几何共识目标按门控残差重加权再归一：
-   \[ q^\star_t(v)=\frac{\tilde q^G_t(v)\exp(\lambda_t(v)J_t(v))}{\sum_{u\in V}\tilde q^G_t(u)\exp(\lambda_t(u)J_t(u))}. \]
+   \(\displaystyle q^\star_t(v)=\frac{\tilde q^G_t(v)\exp(\lambda_t(v)J_t(v))}{\sum_{u\in V}\tilde q^G_t(u)\exp(\lambda_t(u)J_t(u))}.\)
    \(\lambda_t\equiv0\) 退几何共识目标，\(\lambda_t\equiv1\) 退算术边际目标——逐 token 在二者间插值。最终在 \(q^\star_t\) 上跑**标准 per-token reverse-KL**:
-   \[ \mathcal L_{\text{AVSD}}(\theta)=\mathbb E_{(x,r)}\,\mathbb E_{y\sim P^S_\theta(\cdot\mid x)}\Big[\textstyle\sum_{t=1}^{|y|}D_{KL}\big(p_\theta(\cdot\mid h_t)\,\|\,\mathrm{sg}[q^\star_t(\cdot)]\big)\Big]. \]
+   \(\displaystyle \mathcal L_{\text{AVSD}}(\theta)=\mathbb E_{(x,r)}\,\mathbb E_{y\sim P^S_\theta(\cdot\mid x)}\Big[\textstyle\sum_{t=1}^{|y|}D_{KL}\big(p_\theta(\cdot\mid h_t)\,\|\,\mathrm{sg}[q^\star_t(\cdot)]\big)\Big].\)
    梯度**只流过 student** \(p_\theta\);用 log-derivative 形式,采样 token 的更新就是 \(\hat A_t(y_t)\)（天然 on-policy）。
 - **逐组件必要性（消融真值）**：
   - **几何共识 \(A^G\)（定方向）**——去掉就成纯算术边际,§4.1 Fig.3 平均**输 1.7%**（AIME25 增益有限）。

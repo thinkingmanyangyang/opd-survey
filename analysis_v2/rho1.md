@@ -30,12 +30,12 @@ rho1 | RHO-1: Not All Tokens Are What You Need | 厦门大学 / 清华 / 上海A
 
 ### B. SLM 三步流水线(§2.2,图4;数据流动:RM → token 打分 → 选择性回传)
 - **Step 1 训参考模型 RM**:在反映"理想分布"的 curated 高质量语料上,用标准交叉熵训 RM。RM 的 token 概率定义参考 loss
-\[\mathcal L_{\text{RM}}(x_i)=-\log P(x_i\mid x_{<i}).\]
+\(\displaystyle \mathcal L_{\text{RM}}(x_i)=-\log P(x_i\mid x_{<i}).\)
 - **Step 2 用 RM 给大语料每个 token 打分**:对预训练语料每个 token 算 \(\mathcal L_{\text{RM}}(x_i)\)(可离线一次算完缓存)。
 - **Step 3 选择性训练目标模型**:标准 CLM 是 \(\mathcal L_{\text{CLM}}(\theta)=-\frac1N\sum_{i=1}^N\log P(x_i\mid x_{<i};\theta)\)。SLM 改为只在高 excess loss 的 token 上回传。**excess loss**:
-\[\mathcal L_\Delta(x_i)=\mathcal L_\theta(x_i)-\mathcal L_{\text{RM}}(x_i),\]
+\(\displaystyle \mathcal L_\Delta(x_i)=\mathcal L_\theta(x_i)-\mathcal L_{\text{RM}}(x_i),\)
 即"当前训练模型还没学会(\(\mathcal L_\theta\) 高)但 RM(理想分布)认为该会(\(\mathcal L_{\text{RM}}\) 低)"的差。引入选择比例 \(k\%\),只对 batch 内 excess loss 排名 top-\(k\%\) 的 token 算交叉熵:
-\[\mathcal L_{\text{SLM}}(\theta)=-\frac{1}{N\cdot k\%}\sum_{i=1}^{N}\mathbb I_{k\%}(x_i)\cdot\log P(x_i\mid x_{<i};\theta),\qquad \mathbb I_{k\%}(x_i)=\begin{cases}1,&x_i\ \text{在 top-}k\%\ \text{(按打分}\ S(x_i)\text{)}\\0,&\text{otherwise}\end{cases}\]
+\(\displaystyle \mathcal L_{\text{SLM}}(\theta)=-\frac{1}{N\cdot k\%}\sum_{i=1}^{N}\mathbb I_{k\%}(x_i)\cdot\log P(x_i\mid x_{<i};\theta),\qquad \mathbb I_{k\%}(x_i)=\begin{cases}1,&x_i\ \text{在 top-}k\%\ \text{(按打分}\ S(x_i)\text{)}\\0,&\text{otherwise}\end{cases}\)
 默认打分函数 \(S=\mathcal L_\Delta\)。**关键工程**:整段序列照常喂前向(保持上下文/注意力完整、不破坏语言连贯),只在**反向**掩掉非选 token 的损失——故"无额外预训练开销、易集成"(只是把梯度预算集中)。【§2.2 式1-5】
 
 ### C. 各组件必要性(消融)

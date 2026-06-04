@@ -24,29 +24,21 @@ gkd | On-Policy Distillation of Language Models: Learning from Self-Generated Mi
 - 温度 \(\gamma\) 的 softmax：\(p(y_n\mid x)=\dfrac{\exp(z_n/\gamma)}{\sum_i\exp(z_i/\gamma)}\)，学生训练 \(\gamma=1\)，评测用贪心(\(\gamma\to0\))或温度采样。
 - KL：\(D_{\text{KL}}(P\Vert Q)=\sum_c P(c)\log\frac{P(c)}{Q(c)}\)，不对称——forward KL（=最大似然、均值寻求/覆盖全支撑）vs reverse KL（模式寻求/聚焦高概率区）。
 - **广义 JSD(β)**（Eq.1，0<β<1 在 forward/reverse KL 间插值，且对不相交支撑有界）：
-\[
-D_{\text{JSD}(\beta)}(P\Vert Q)=\beta\,D_{\text{KL}}\!\big(P\,\Vert\,\beta P+(1-\beta)Q\big)+(1-\beta)\,D_{\text{KL}}\!\big(Q\,\Vert\,\beta P+(1-\beta)Q\big).
-\]
+\(\displaystyle D_{\text{JSD}(\beta)}(P\Vert Q)=\beta\,D_{\text{KL}}\!\big(P\,\Vert\,\beta P+(1-\beta)Q\big)+(1-\beta)\,D_{\text{KL}}\!\big(Q\,\Vert\,\beta P+(1-\beta)Q\big).\)
 \(\beta\to0\) 时梯度 ≈ forward KL，\(\beta\to1\) 时 ≈ reverse KL。
 
 ### 1. 序列级散度记号（§3 Eq.2）
 对教师 \(p_T\)、学生 \(p^\theta_S\)（\(\theta\) 可微），定义 token 级散度按序列长归一：
-\[
-D\big(p_T\Vert p^\theta_S\big)(y\mid x):=\frac{1}{L_y}\sum_{n=1}^{L_y} D\big(p_T(\cdot\mid y_{<n},x)\,\Vert\,p^\theta_S(\cdot\mid y_{<n},x)\big).
-\]
+\(\displaystyle D\big(p_T\Vert p^\theta_S\big)(y\mid x):=\frac{1}{L_y}\sum_{n=1}^{L_y} D\big(p_T(\cdot\mid y_{<n},x)\,\Vert\,p^\theta_S(\cdot\mid y_{<n},x)\big).\)
 监督 KD = \(L_{\text{SD}}(\theta)=\mathbb{E}_{(x,y)\sim(X,Y)}[D_{\text{KL}}(p_T\Vert p^\theta_S)(y\mid x)]\)（固定数据上的 forward KL，Eq.3）。
 
 ### 2. on-policy KD（§3.1 Eq.4，核心）
 学生自生成 \(y\sim p_S(\cdot\mid x)\)、在中间状态 \(y_{<n}\) 上模仿教师 token 分布：
-\[
-L_{\text{OD}}(\theta):=\mathbb{E}_{x\sim X}\Big[\mathbb{E}_{y\sim p_S(\cdot\mid x)}\big[D_{\text{KL}}(p_T\Vert p^\theta_S)(y\mid x)\big]\Big],\quad\text{且不反传穿过 }p_S(\cdot\mid x)\text{ 的采样}.
-\]
+\(\displaystyle L_{\text{OD}}(\theta):=\mathbb{E}_{x\sim X}\Big[\mathbb{E}_{y\sim p_S(\cdot\mid x)}\big[D_{\text{KL}}(p_T\Vert p^\theta_S)(y\mid x)\big]\Big],\quad\text{且不反传穿过 }p_S(\cdot\mid x)\text{ 的采样}.\)
 "不反传穿采样"使训练稳定高效（区别于 MiniLLM 的 policy gradient）；温度 \(\gamma=1\) 鼓励学生生成多样性。
 
 ### 3. 统一目标 GKD（§3.1）
-\[
-L_{\text{GKD}}(\theta):=(1-\lambda)\,\mathbb{E}_{(x,y)\sim(X,Y)}\big[D(p_T\Vert p^\theta_S)(y\mid x)\big]+\lambda\,\mathbb{E}_{x\sim X}\Big[\mathbb{E}_{y\sim p_S(\cdot\mid x)}\big[D(p_T\Vert p^\theta_S)(y\mid x)\big]\Big].
-\]
+\(\displaystyle L_{\text{GKD}}(\theta):=(1-\lambda)\,\mathbb{E}_{(x,y)\sim(X,Y)}\big[D(p_T\Vert p^\theta_S)(y\mid x)\big]+\lambda\,\mathbb{E}_{x\sim X}\Big[\mathbb{E}_{y\sim p_S(\cdot\mid x)}\big[D(p_T\Vert p^\theta_S)(y\mid x)\big]\Big].\)
 两旋钮：\(\lambda\in[0,1]\)（on-policy 学生数据比例）、\(D\)（任意散度）。监督 KD = \((\lambda{=}0,\text{forward KL})\)，on-policy KD = \((\lambda{=}1,\text{forward KL})\)。
 
 ### 4. 算法（Algorithm 1，6 步）
@@ -54,9 +46,7 @@ L_{\text{GKD}}(\theta):=(1-\lambda)\,\mathbb{E}_{(x,y)\sim(X,Y)}\big[D(p_T\Vert 
 
 ### 5. 可选 RL + on-policy GKD（§3.2 Eq.5）
 直接优化非可微的真实目标（reward \(r\)）同时向教师正则：
-\[
-\mathbb{E}_{x\sim X}\Big[\underbrace{(1-\alpha)\,\mathbb{E}_{y\sim p^\theta_S(\cdot\mid x)}[r(y)]}_{\text{RL 目标}}-\underbrace{\alpha\,\mathbb{E}_{y\sim p_S(\cdot\mid x)}\big[D(p_T\Vert p^\theta_S)(y\mid x)\big]}_{\text{Generalized On-Policy Distillation}}\Big],
-\]
+\(\displaystyle \mathbb{E}_{x\sim X}\Big[\underbrace{(1-\alpha)\,\mathbb{E}_{y\sim p^\theta_S(\cdot\mid x)}[r(y)]}_{\text{RL 目标}}-\underbrace{\alpha\,\mathbb{E}_{y\sim p_S(\cdot\mid x)}\big[D(p_T\Vert p^\theta_S)(y\mid x)\big]}_{\text{Generalized On-Policy Distillation}}\Big],\)
 \(\alpha\in[0,1]\) 控蒸馏 vs RL 强度，\(\alpha=1\) 即纯蒸馏。可减"alignment tax"。Remark：与 RL 结合时推荐用 reverse KL 或 JSD(0.9)。
 
 ### 关键超参/起点假设

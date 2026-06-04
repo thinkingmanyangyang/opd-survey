@@ -23,25 +23,13 @@ deepdive | DeepDive: Advancing Deep Search Agents with Knowledge Graphs and Mult
 KG 形式化为有向图 \(\mathcal G=(V,E)\),实体 \(v_i\in V\) 带属性集 \(A(v)=\{a_i^0,a_i^1,\dots,a_i^t\}\)。流水线:
 1. **随机游走抽长路径**:从 \(v_0\) 走 \(k\) 步得 \(P=[v_0,v_1,\dots,v_k]\),每步 \((v_i,v_{i+1})\in E\);取长路径(\(k>5\),主实验 \(k\in[5,9]\))提升推理复杂度。
 2. **属性富化 + 模糊化**(造 blurry entity):把每节点与其属性拼成属性丰富路径
-\[
-P_A=\big[v_0,(a_0^0,a_0^1,\dots),\;v_1,(a_1^0,a_1^1,\dots),\;\dots,\;v_k,(a_k^0,a_k^1,\dots)\big]
-\tag{2}
-\]
+\(\displaystyle P_A=\big[v_0,(a_0^0,a_0^1,\dots),\;v_1,(a_1^0,a_1^1,\dots),\;\dots,\;v_k,(a_k^0,a_k^1,\dots)\big] \tag{2}\)
 取终点 \(v_k\) 的某属性 \(a_k^i\) 作 ground-truth 答案,再用 LLM 沿整条路径**模糊化**信息(如把具体日期泛化成区间):
-\[
-(q,a_k^i)=\text{LLM-obscure}(P_A)
-\tag{3}
-\]
+\(\displaystyle (q,a_k^i)=\text{LLM-obscure}(P_A) \tag{3}\)
 3. **路径质量两约束**:(i)按出度区间过滤候选下一节点——出度过高=太流行答案可预测,过低=难扩路径:
-\[
-\mathcal N(v_i)=\{u\mid (v_i,u)\in E\;\wedge\;d_{\min}\le d(u)\le d_{\max}\}\quad(d_{\min}=4,\,d_{\max}=8)
-\tag{4}
-\]
+\(\displaystyle \mathcal N(v_i)=\{u\mid (v_i,u)\in E\;\wedge\;d_{\min}\le d(u)\le d_{\max}\}\quad(d_{\min}=4,\,d_{\max}=8) \tag{4}\)
 (ii)LLM 在候选里选**逻辑最连贯**的下一节点(\(d=3\) 为每步候选数设定):
-\[
-v_{i+1}=\text{LLM-select}(P_i,\mathcal N(v_i))
-\tag{5}
-\]
+\(\displaystyle v_{i+1}=\text{LLM-select}(P_i,\mathcal N(v_i)) \tag{5}\)
 4. **难度过滤**:frontier 模型(GPT-4o + 基础搜索)对每题试 4 次,**任一次答对即丢弃**,只留 4 次全错的题 → 得 **3,250 QA**,切 **1,016 SFT + 2,234 RL**。
 
 ### B. agent 交互范式(ReAct 式多轮循环,§2)
@@ -49,27 +37,15 @@ agent 迭代执行 reason → tool execution → observe:在第 \(t\) 步先输�
 
 ### C. 端到端多轮 GRPO + 复合奖励(§2.2,Eq.6-9)
 - **多轮 GRPO 目标(Eq.6)**:对每题从当前策略 \(\pi_\theta\) 采 \(G\) 条**轨迹**(非单响应),按最终 reward 组内归一得优势 \(A_i=\big(r_i-\mathrm{mean}\{r_k\}_{k=1}^G\big)/\mathrm{std}\{r_k\}_{k=1}^G\),最大化 clip 代理目标:
-\[
-\mathcal L(\theta)=\frac1G\sum_{i=1}^{G}\Big[\min\big(\rho_i A_i,\;\mathrm{clip}(\rho_i,1-\epsilon,1+\epsilon)A_i\big)-\beta\,\mathrm{KL}(\pi_\theta\|\pi_{\mathrm{ref}})\Big],\quad \rho_i=\frac{\pi_\theta(T)}{\pi_{\theta_{\mathrm{old}}}(T)}
-\tag{6}
-\]
+\(\displaystyle \mathcal L(\theta)=\frac1G\sum_{i=1}^{G}\Big[\min\big(\rho_i A_i,\;\mathrm{clip}(\rho_i,1-\epsilon,1+\epsilon)A_i\big)-\beta\,\mathrm{KL}(\pi_\theta\|\pi_{\mathrm{ref}})\Big],\quad \rho_i=\frac{\pi_\theta(T)}{\pi_{\theta_{\mathrm{old}}}(T)} \tag{6}\)
 注意重要性比 \(\rho_i\) 是**整条轨迹级** \(\pi_\theta(T)/\pi_{\theta_{\mathrm{old}}}(T)\);实际训练设 \(\beta=0\)(去 KL 促探索,见超参)。
 - **冗余惩罚(Eq.7,促搜索多样)**:轨迹内查询集 \(Q=[q_1,\dots,q_T]\),每查询是关键词集 \(q_i=\{w_{i,1},\dots,w_{i,n_i}\}\);两查询 Jaccard 相似度 \(\mathrm{sim}(q_i,q_j)=|q_i\cap q_j|/|q_i\cup q_j|\);轨迹整体相似度:
-\[
-S(T)=\frac{1}{T(T-1)}\sum_{i\ne j}\mathrm{sim}(q_i,q_j)\;\in[0,1]
-\tag{7}
-\]
+\(\displaystyle S(T)=\frac{1}{T(T-1)}\sum_{i\ne j}\mathrm{sim}(q_i,q_j)\;\in[0,1] \tag{7}\)
 \(S=1\) 时所有查询相同,\(S=0\) 时完全不重叠;越低=搜索越多样。
 - **严格二值奖励(Eq.8,全有或全无)**:仅当**每一步格式都对**(reason \(c_i\)、action \(a_i\))**且**最终答案经 LLM judge 判对才给 +1:
-\[
-r(T)=\begin{cases}1,&\big(\forall i,\;\text{Format}(c_i,a_i)\big)\wedge \text{Judge}(a_{\text{eos}},a^*)\\0,&\text{otherwise}\end{cases}
-\tag{8}
-\]
+\(\displaystyle r(T)=\begin{cases}1,&\big(\forall i,\;\text{Format}(c_i,a_i)\big)\wedge \text{Judge}(a_{\text{eos}},a^*)\\0,&\text{otherwise}\end{cases} \tag{8}\)
 - **复合奖励(Eq.9)**:把冗余惩罚叠加:
-\[
-r'(T)=r(T)-\lambda\cdot S(T),\qquad \lambda=0.1
-\tag{9}
-\]
+\(\displaystyle r'(T)=r(T)-\lambda\cdot S(T),\qquad \lambda=0.1 \tag{9}\)
 
 ### D. 逐组件必要性(消融)
 - **KG 难数据合成**:有消融(Table 2)。HotpotQA 轨迹 SFT/RL 仅微弱增益,合成数据在四 benchmark 大涨(尤其 BrowseComp-266)。没它→agent 学不到长 horizon 深搜【原文 §3.4 Table 2】。
